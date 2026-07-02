@@ -1476,7 +1476,7 @@ const Dashboard = () => {
                     ))}
                   </div>
 
-                  {/* 2. Container chứa các cột */}
+                  {/* 2. Container chứa các cột ('HIGH','MEDIUM','LOW')*/}
                   <div className="absolute inset-x-0 bottom-0 h-full flex items-end justify-around px-2">
                     {[
                       { label: 'Highest', value: 0, color: '#ff4d4d' },
@@ -1525,7 +1525,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Legend / X-Axis Labels */}
+            {/* Legend / X-Axis Labels ('HIGH','MEDIUM','LOW')*/}
             <div className="flex justify-around pl-14 mt-6">
               {[
                 { label: 'Highest', color: '#ff4d4d', icon: 'keyboard_double_arrow_up' },
@@ -1715,11 +1715,10 @@ const Dashboard = () => {
                             setShowStatusFilter(!showStatusFilter);
                             setShowDateFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedStatus !== "All Status" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedStatus !== "All Status"
+                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
                               : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                            }`}
                         >
                           <span className="truncate">{selectedStatus}</span>
                           <span className={`material-symbols-outlined text-gray-400 transition-transform ${showStatusFilter ? 'rotate-180' : ''}`}>expand_more</span>
@@ -1746,11 +1745,10 @@ const Dashboard = () => {
                             setShowDateFilter(!showDateFilter);
                             setShowStatusFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedDate !== "All Dates" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedDate !== "All Dates"
+                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
                               : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2 truncate">
                             <span className="material-symbols-outlined text-gray-400 text-lg">calendar_today</span>
