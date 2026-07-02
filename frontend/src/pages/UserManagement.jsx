@@ -60,8 +60,8 @@ export default function UserManagement() {
       
       {/* Tiêu đề trang */}
       <div>
-        <h2 className="text-[16px] font-bold text-[#5e4db2]">User Management</h2>
-        <p className="text-gray-400 text-[12px] mt-1 italic">Manage users, roles, account status, and permissions.</p>
+        <h2 className="text-2xl font-bold text-[#4C2B74]">User Management</h2>
+        <p className="text-gray-500 text-sm">Manage users, roles, account status, and permissions.</p>
       </div>
 
       {/* Thanh công cụ tìm kiếm & bộ lọc */}

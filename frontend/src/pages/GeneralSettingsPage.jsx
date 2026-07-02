@@ -8,8 +8,8 @@ const GeneralSettingsPage = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      <h1 className="text-2xl font-bold text-[#5e4db2]">General Settings</h1>
-      <p className="mt-1 text-sm text-gray-600 italic">Customize your application appearance, timezone, language, and default preferences.</p>
+      <h1 className="text-2xl font-bold text-[#4C2B74]">General Settings</h1>
+      <p className="text-sm text-gray-500">Customize your application appearance, timezone, language, and default preferences.</p>
 
       <div className="mt-6 bg-white p-6 rounded-lg shadow">
         {/* Appearance Section */}

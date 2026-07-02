@@ -1325,7 +1325,7 @@ const Dashboard = () => {
         {/* Page Title & KPI Banner */}
         <div className="space-y-4">
           <div>
-            <h2 className="text-2xl font-extrabold text-[#170338] tracking-tight">Dashboard</h2>
+            <h2 className="text-2xl font-bold text-[#4C2B74]">Dashboard</h2>
             <p className="text-sm text-[#5e636e] font-medium">Track task progress, monitor task status, and stay updated with recent activities.</p>
           </div>
 

@@ -16,7 +16,7 @@ const HelpCenter = () => {
       {/* Header Section */}
       <div className="mb-6 pb-6 border-b border-gray-200">
         <h1 className="text-2xl font-bold text-[#4C2B74] mb-1">Help Center</h1>
-        <p className="text-gray-600 italic text-[15px] mt-2">Find answers, browse documentation, or ask the AI Assistant for instant help.</p>
+        <p className="text-gray-500 text-sm">Find answers, browse documentation, or ask the AI Assistant for instant help.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">

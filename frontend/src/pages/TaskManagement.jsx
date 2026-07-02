@@ -126,7 +126,8 @@ export default function TaskManagement() {
   ]);
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
-
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
+  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
 
   // Sync tasks with MainLayout context for the CreateTaskModal's RichTextEditor
   useEffect(() => {
@@ -275,6 +276,14 @@ export default function TaskManagement() {
       }
     }
 
+    if (selectedStatusFilter !== 'All' && task.status !== selectedStatusFilter) {
+      return false;
+    }
+
+    if (selectedPriorityFilter !== 'All' && task.priority !== selectedPriorityFilter) {
+      return false;
+    }
+
     if (selectedDate) {
       try {
         const selTime = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()).getTime();
@@ -302,7 +311,7 @@ export default function TaskManagement() {
             <i className="w-3 h-3 mx-2 text-gray-400 material-symbols-outlined text-[12px]">chevron_right</i>
             <span className="cursor-pointer text-gray-500 transition-colors hover:text-[#5e4db2] active:text-[#5e4db2]" onClick={() => navigate(`/dashboard/spaces${location.search}`)}>Space Management</span>
           </div>
-          <h1 className="text-base font-bold text-[#5e4db2]">Task Management</h1>
+          <h1 className="text-2xl font-bold text-[#4C2B74]">Task Management</h1>
         </div>
         <div className="flex items-center gap-3 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
           <button
@@ -336,35 +345,56 @@ export default function TaskManagement() {
           </div>
           {/* Status Filter */}
           <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer">
-              <span className="text-xs font-bold text-[#5e4db2]">Status</span>
+            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedStatusFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+              <span className="text-xs font-bold text-[#5e4db2]">{selectedStatusFilter === 'All' ? 'Status' : selectedStatusFilter}</span>
               <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
             </button>
             <div className="absolute top-[100%] left-0 pt-1 w-48 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden">
+              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatusFilter('All')}
+                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                >
+                  All statuses
+                </button>
                 {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
-                  <div key={status} className="px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface">
+                  <button 
+                    key={status} 
+                    type="button"
+                    onClick={() => setSelectedStatusFilter(status)}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                  >
                     {status}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           </div>
           {/* Priority Filter */}
           <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer">
-              <span className="text-xs font-bold text-[#5e4db2]">Priority</span>
+            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedPriorityFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+              <span className="text-xs font-bold text-[#5e4db2]">{selectedPriorityFilter === 'All' ? 'Priority' : selectedPriorityFilter}</span>
               <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
             </button>
             <div className="absolute top-[100%] left-0 pt-1 w-40 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden">
+              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPriorityFilter('All')}
+                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                >
+                  All priorities
+                </button>
                 {['High', 'Medium', 'Low'].map(priority => (
-                  <div
+                  <button
                     key={priority}
-                    className="px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                    type="button"
+                    onClick={() => setSelectedPriorityFilter(priority)}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
                   >
                     {priority}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1005,6 +1035,46 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
     setShowMenu(true);
   };
 
+  const handleMove = (direction) => {
+    setTasks(prev => {
+      const columnTasks = prev.filter(t => t.status === task.status);
+      const globalIdx = prev.findIndex(t => t.id === task.id);
+      if (globalIdx === -1) return prev;
+      
+      const colIdx = columnTasks.findIndex(t => t.id === task.id);
+      let newPrev = [...prev];
+      
+      if (direction === 'up' && colIdx > 0) {
+        const taskAbove = columnTasks[colIdx - 1];
+        newPrev.splice(globalIdx, 1);
+        const newAboveGlobalIdx = newPrev.findIndex(t => t.id === taskAbove.id);
+        newPrev.splice(newAboveGlobalIdx, 0, task);
+      } 
+      else if (direction === 'down' && colIdx < columnTasks.length - 1) {
+        const taskBelow = columnTasks[colIdx + 1];
+        newPrev.splice(globalIdx, 1);
+        const newBelowGlobalIdx = newPrev.findIndex(t => t.id === taskBelow.id);
+        newPrev.splice(newBelowGlobalIdx + 1, 0, task);
+      }
+      else if (direction === 'top' && colIdx > 0) {
+        const firstTask = columnTasks[0];
+        newPrev.splice(globalIdx, 1);
+        const newFirstGlobalIdx = newPrev.findIndex(t => t.id === firstTask.id);
+        newPrev.splice(newFirstGlobalIdx, 0, task);
+      }
+      else if (direction === 'bottom' && colIdx < columnTasks.length - 1) {
+        const lastTask = columnTasks[columnTasks.length - 1];
+        newPrev.splice(globalIdx, 1);
+        const newLastGlobalIdx = newPrev.findIndex(t => t.id === lastTask.id);
+        newPrev.splice(newLastGlobalIdx + 1, 0, task);
+      }
+      
+      return newPrev;
+    });
+    setShowMenu(false);
+    setShowMoveSubMenu(false);
+  };
+
   return (
     <Draggable draggableId={id} index={index}>
       {(provided, snapshot) => (
@@ -1066,14 +1136,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                   >
                     {index > 0 && (
                       <>
-                        <button className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">To the top</button>
-                        <button className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">Up</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleMove('top'); }} className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">To the top</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleMove('up'); }} className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">Up</button>
                       </>
                     )}
                     {index < totalCount - 1 && (
                       <>
-                        <button className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">Down</button>
-                        <button className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">To the bottom</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleMove('down'); }} className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">Down</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleMove('bottom'); }} className="w-full px-4 py-2.5 hover:bg-[#E8EAF6] hover:text-[#003d9b] hover:font-semibold transition-colors text-[13px] text-left text-on-surface">To the bottom</button>
                       </>
                     )}
                   </div>
@@ -1105,7 +1175,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                     {statuses.map(s => (
                       <button
                         key={s}
-                        onClick={() => {
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setTasks(prev => prev.map(t => t.id === id ? { ...t, status: s } : t));
                           setShowMenu(false);
                           setShowStatusSubMenu(false);

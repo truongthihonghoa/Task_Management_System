@@ -91,8 +91,8 @@ const SpaceManagement = () => {
       {/* Page Header */}
       <div className="flex justify-between items-center mb-6">
           <div>
-          <h1 className="text-base font-bold text-[#5e4db2]">Space Management</h1>
-          <p className="text-gray-400 text-[11px] mt-1 italic">Manage and organize your team's project ecosystems.</p>
+          <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
+          <p className="text-gray-500 text-sm">Manage and organize your team's project ecosystems.</p>
           </div>
         {isAdmin && (
           <button
