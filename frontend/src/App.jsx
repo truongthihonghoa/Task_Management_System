@@ -19,9 +19,6 @@ import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
-
-// Import thêm 2 trang thông báo đúng theo cấu trúc thư mục của bạn
-import NotificationsPage from "./pages/NotificationsPage";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 import GeneralSettingsPage from "./pages/GeneralSettingsPage";
 
@@ -46,8 +43,7 @@ export default function App() {
                     <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                     <Route path="tasks" element={<TaskManagement />} />
 
-                    {/* Nối link trang danh sách thông báo */}
-                    <Route path="notifications" element={<NotificationsPage />} />
+
                     <Route path ="users" element={<UserManagement />} />
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="help" element={<HelpCenter />} />
