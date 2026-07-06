@@ -18,6 +18,23 @@ const formatDateValue = (year, month, day) => {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
+const getInitialFormData = () => ({
+  space: 'Task Management System (SCRUM)',
+  status: 'New',
+  summary: '',
+  description: '',
+  assignee: 'Unassigned',
+  priority: 'Medium',
+  createdAt: formatDateValue(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()),
+  completed_at: '',
+  updated_at: '',
+  sprint: '',
+  storyPoints: '',
+  comment: '',
+  attachments: [],
+  createAnother: false
+});
+
 function CalendarDropdown({ value, onSelect, onClose }) {
   const initialDate = parseDateValue(value);
   const [viewDate, setViewDate] = useState(new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
@@ -87,26 +104,30 @@ function CalendarDropdown({ value, onSelect, onClose }) {
   );
 }
 
-const CreateTaskModal = ({ isOpen, onClose, tasks = [], onCreateTask, currentRole = 'ADMIN', currentUser }) => {
+const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSprint = '', onCreateTask, currentRole = 'ADMIN', currentUser }) => {
   const statusOptions = currentRole === 'ADMIN'
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
-  const [formData, setFormData] = useState({
-    space: 'Task Management System (SCRUM)',
-    status: 'New',
-    summary: '',
-    description: '',
-    assignee: 'Unassigned',
-    priority: 'Medium',
-    createdAt: '',
-    completed_at: '',
-    updated_at: '',
-    sprint: '',
-    storyPoints: '',
-    comment: '',
-    attachments: [],
-    createAnother: false
-  });
+  const [formData, setFormData] = useState(getInitialFormData());
+
+  useEffect(() => {
+    if (isOpen) {
+      const initialData = getInitialFormData();
+      if (initialSprint) {
+        initialData.sprint = initialSprint;
+      }
+      setFormData(initialData);
+      setErrors({});
+      setIsStatusOpen(false);
+      setIsPriorityOpen(false);
+      setIsAssigneeOpen(false);
+      setIsCreatedAtOpen(false);
+      setIsCompletedAtOpen(false);
+      setIsUpdatedAtOpen(false);
+      setIsSprintOpen(false);
+      setOnlyShowCurrentSpace(true);
+    }
+  }, [isOpen, initialSprint]);
 
   const [errors, setErrors] = useState({});
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -524,7 +545,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], onCreateTask, currentRol
             <div className="flex flex-col gap-4">
 
               {/* Created At */}
-              <div className="form-group mb-0!">
+              <div className="form-group">
                 <label>Created At</label>
                 <div className="relative">
                   <div
@@ -551,35 +572,13 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], onCreateTask, currentRol
                 </div>
               </div>
 
-              {/* Updated At */}
-              <div className="form-group mb-0!">
-                <label>Updated At</label>
-                <div className="relative">
-                  <div
-                    className="date-custom-trigger"
-                    onClick={() => setIsUpdatedAtOpen(!isUpdatedAtOpen)}
-                  >
-                    <span className={formData.updated_at ? 'text-on-surface' : 'text-gray-400'}>
-                      {formData.updated_at || 'Select date'}
-                    </span>
-                    <i data-lucide="calendar" className="w-4 h-4 text-gray-500"></i>
-                  </div>
-
-                  {isUpdatedAtOpen && (
-                    <CalendarDropdown
-                      value={formData.updated_at}
-                      onSelect={(date) => setFormData(prev => ({ ...prev, updated_at: date }))}
-                      onClose={() => setIsUpdatedAtOpen(false)}
-                    />
-                  )}
-                </div>
-              </div>
+        
 
             </div>
 
             {/* Completed At */}
             <div className="form-group self-start">
-              <label>Completed_at</label>
+              <label>Completed At</label>
 
               <div className="relative">
                 <div
@@ -632,16 +631,19 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], onCreateTask, currentRol
                   
                   <div className="sprint-list-content">
                     <div className="sprint-section-title">Active</div>
-                    <div 
-                      className="sprint-item-box active-item"
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, sprint: 'SCRUM Sprint 1' }));
-                        setIsSprintOpen(false);
-                      }}
-                    >
-                      <div className="sprint-item-main">SCRUM Sprint 1</div>
-                      <div className="sprint-item-sub">SCRUM board</div>
-                    </div>
+                    {(sprints && sprints.length > 0 ? sprints : [{ id: 'sprint-1', name: 'SCRUM Sprint 1' }]).map(s => (
+                      <div 
+                        key={s.id}
+                        className="sprint-item-box active-item"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, sprint: s.name }));
+                          setIsSprintOpen(false);
+                        }}
+                      >
+                        <div className="sprint-item-main">{s.name}</div>
+                        <div className="sprint-item-sub">SCRUM board</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -650,7 +652,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], onCreateTask, currentRol
 
           {/* Story point estimate */}
           <div className="form-group">
-            <label>Story point estimate</label>
+            <label>Story Point Estimate</label>
             <input 
               type="number" 
               name="storyPoints" 
