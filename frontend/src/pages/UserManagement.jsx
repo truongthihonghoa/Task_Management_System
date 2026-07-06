@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import UserModal from '../components/tasks/CreateUserModal';
+import UserModal from '../components/tasks/EditUserModal';
 
 // ── Static user data (replace with API data later) ──────────────────────────
 const USERS = [
@@ -60,15 +60,15 @@ export default function UserManagement() {
       
       {/* Tiêu đề trang */}
       <div>
-        <h2 className="text-[16px] font-bold text-[#5e4db2]">User Management</h2>
-        <p className="text-gray-400 text-[12px] mt-1 italic">Manage users, roles, account status, and permissions.</p>
+        <h2 className="text-2xl font-bold text-[#4C2B74]">User Management</h2>
+        <p className="text-sm text-gray-500">Manage users, roles, account status, and permissions.</p>
       </div>
 
       {/* Thanh công cụ tìm kiếm & bộ lọc */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
         <div className="space-y-1.5">
           <label className="block text-[11px] font-bold text-[#6B7280] tracking-wider uppercase">
-            Search Spaces
+            Search User
           </label>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -93,14 +93,6 @@ export default function UserManagement() {
                 <span>All Status</span> <i data-lucide="chevron-down" className="w-3.5 h-3.5 text-gray-400"></i>
               </button>
             </div>
-
-            {/* + Create User button */}
-            <button 
-              onClick={openCreateModal}
-              className="h-10 px-5 bg-[#4C1D95] hover:bg-[#3B1578] text-white rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 shadow-md transition flex-shrink-0 active:scale-95"
-            >
-              <i data-lucide="plus" className="w-4 h-4 stroke-[3]"></i> <span>Create User</span>
-            </button>
           </div>
         </div>
       </div>
@@ -170,11 +162,10 @@ export default function UserManagement() {
 
       {/* User Modal – create or edit */}
       <UserModal
-        isOpen={modalOpen}
-        initialMode={modalMode}
-        selectedUser={selectedUser}
-        onClose={() => setModalOpen(false)}
-        onSaveSuccess={(msg) => triggerToast(msg)}
+          isOpen={modalOpen}
+          selectedUser={selectedUser}
+          onClose={() => setModalOpen(false)}
+          onSaveSuccess={triggerToast}
       />
 
       {/* Thông báo Toast Popup */}

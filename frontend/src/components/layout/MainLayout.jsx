@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
+// import { useNavigate } from "react-router-dom";
 import { Outlet, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
-import SettingsDropdown from '../settings/SettingsDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import HelpCenter from '../../pages/HelpCenter';
+import usFlag from "../../assets/us.png";
+import vnFlag from "../../assets/vn.png";
 
 export default function MainLayout() {
   const location = useLocation();
@@ -21,6 +23,11 @@ export default function MainLayout() {
 
   const avatarRef = useRef(null);
   const avatarDropdownRef = useRef(null);
+  const [showApps, setShowApps] = useState(false);
+  const [language, setLanguage] = useState("en");
+
+  const appsRef = useRef(null);
+  const appsDropdownRef = useRef(null);
   // Refs hỗ trợ đóng dropdown khi click ra ngoài
   const dropdownRef = useRef(null);
   const bellRef = useRef(null);
@@ -149,6 +156,14 @@ export default function MainLayout() {
       ) {
         setShowAvatarDropdown(false);
       }
+      if (
+          appsDropdownRef.current &&
+          !appsDropdownRef.current.contains(event.target) &&
+          appsRef.current &&
+          !appsRef.current.contains(event.target)
+      ) {
+          setShowApps(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -159,14 +174,14 @@ export default function MainLayout() {
     if (window.lucide) {
       window.lucide.createIcons();
     }
-  }, [location.pathname, showNotifications, showSettings, showAvatarDropdown]);
+  }, [location.pathname, showNotifications, showSettings, showAvatarDropdown,showApps]);
 
   const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
   const isTasksActive = location.pathname === '/dashboard/spaces' || location.pathname.includes('/dashboard/tasks');
   const isUsersActive = location.pathname === '/dashboard/users';
   const isProfileActive = location.pathname === '/dashboard/profile';
   const isNotificationsActive = location.pathname === '/dashboard/notifications';
-  const isSettingsActive = location.pathname === '/dashboard/notification-settings' || location.pathname === '/dashboard/settings/general';
+  const isSettingsActive = location.pathname === '/dashboard/notification-settings';
   const isHelpActive = location.pathname === '/dashboard/help';
 
   // Handlers for AvatarDropdown actions
@@ -180,11 +195,6 @@ export default function MainLayout() {
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
-  const handleGeneralClick = () => {
-    navigate(`/dashboard/settings/general${location.search}`);
-    setShowAvatarDropdown(false); // Close dropdown after navigation
-  };
-
   const handleNotificationClick = () => {
     navigate(`/dashboard/notification-settings${location.search}`);
     setShowAvatarDropdown(false); // Close dropdown after navigation
@@ -195,6 +205,10 @@ export default function MainLayout() {
     console.log("User logged out"); // Placeholder for actual logout logic
     navigate('/'); // Redirect to login or home page
     setShowAvatarDropdown(false); // Close dropdown after logout
+  };
+  const handleChangeLanguage = (lang) => {
+    setLanguage(lang);
+    setShowApps(false);
   };
   return (
     <div className="h-screen flex overflow-hidden font-['Inter'] bg-[#F5F7FA]">
@@ -281,23 +295,6 @@ export default function MainLayout() {
               <span className="text-sm font-medium">Users</span>
             </Link>
           )}
-
-          {/* Profile Item */}
-          {isProfileActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/profile${location.search}`}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="user-circle"></i>
-                <span className="text-sm font-bold">Profile</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/profile${location.search}`}>
-              <i className="w-5 h-5 mr-3" data-lucide="user-circle"></i>
-              <span className="text-sm font-medium">Profile</span>
-            </Link>
-          )}
-
           {/* Notifications Item */}
           {isNotificationsActive ? (
             <div className="relative flex items-center">
@@ -344,21 +341,28 @@ export default function MainLayout() {
           )}
           <div className="relative" ref={settingsRef}>
             <button
-              onClick={() => setShowSettings(!showSettings)}
-              className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${isSettingsActive || showSettings ? 'bg-[#E0E8FF] text-[#2D1B4E]' : 'text-[#6B7280] hover:bg-gray-50'}`}
+              onClick={() => navigate("/dashboard/notification-settings")}
+              className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
+                isSettingsActive
+                  ? "bg-[#E0E8FF] text-[#2D1B4E]"
+                  : "text-[#6B7280] hover:bg-gray-50"
+              }`}
             >
-              {(isSettingsActive || showSettings) && <div className="sidebar-active-indicator"></div>}
+              {isSettingsActive && <div className="sidebar-active-indicator"></div>}
+
               <div className="flex items-center flex-1">
-                <i className={`w-5 h-5 mr-3 ${isSettingsActive || showSettings ? 'text-[#2D1B4E]' : ''}`} data-lucide="settings"></i>
-                <span className={`text-sm ${isSettingsActive || showSettings ? 'font-bold' : 'font-medium'}`}>Settings</span>
+                <i
+                  className={`w-5 h-5 mr-3 ${
+                    isSettingsActive ? "text-[#2D1B4E]" : ""
+                  }`}
+                  data-lucide="settings"
+                ></i>
+
+                <span className={`text-sm ${isSettingsActive ? "font-bold" : "font-medium"}`}>
+                  Settings
+                </span>
               </div>
             </button>
-
-            {showSettings && (
-              <div ref={settingsDropdownRef} className="absolute left-0 top-full mt-2 z-50 w-full">
-                <SettingsDropdown onClose={() => setShowSettings(false)} />
-              </div>
-            )}
           </div>
         </div>
       </aside>
@@ -399,9 +403,60 @@ export default function MainLayout() {
               className="bg-[#2D1B4E] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all font-['Inter']"
             >
               <i className="w-4 h-4 mr-2" data-lucide="plus"></i>
-              Create
+              Create Task
             </button>
+            
+            <div className="relative" ref={appsRef}>
+            <button
+                onClick={() => setShowApps(!showApps)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+                <img
+                    src={language === "en" ? usFlag : vnFlag}
+                    alt="Language"
+                    className="w-7 h-5 rounded-sm"
+                />
 
+                <span className="text-sm font-medium">
+                    {language === "en"} 
+                </span>
+
+                <i
+                    className="w-4 h-4 text-gray-500"
+                    data-lucide="chevron-down"
+                ></i>
+            </button>
+            {showApps && (
+              <div
+                ref={appsDropdownRef}
+                className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl border border-gray-200 shadow-lg py-2 z-[9999]"
+              >
+                <button
+                  onClick={() => handleChangeLanguage("en")}
+                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                >
+                  <img
+                    src={usFlag}
+                    alt="English"
+                    className="w-5 h-5 rounded-sm"
+                  />
+                  <span className="text-sm">English</span>
+                </button>
+
+                <button
+                  onClick={() => handleChangeLanguage("vi")}
+                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                >
+                  <img
+                    src={vnFlag}
+                    alt="Tiếng Việt"
+                    className="w-5 h-5 rounded-sm"
+                  />
+                  <span className="text-sm">Tiếng Việt</span>
+                </button>
+              </div>
+            )}
+          </div>
             {/* Notification Bell Dropdown */}
             <div className="relative" ref={bellRef}>
               <button
@@ -456,9 +511,8 @@ export default function MainLayout() {
                         currentRole={currentRole}
                         onClose={() => setShowAvatarDropdown(false)}
                         onProfileClick={handleProfileClick}
-                        onSettingsClick={handleSettingsClick}
-                        onGeneralClick={handleGeneralClick}
                         onNotificationClick={handleNotificationClick}
+                        onSettingsClick={handleSettingsClick}
                         onLogoutClick={handleLogoutClick}
                     />
                 </div>

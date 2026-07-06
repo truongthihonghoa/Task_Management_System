@@ -302,7 +302,7 @@ export default function TaskManagement() {
             <i className="w-3 h-3 mx-2 text-gray-400 material-symbols-outlined text-[12px]">chevron_right</i>
             <span className="cursor-pointer text-gray-500 transition-colors hover:text-[#5e4db2] active:text-[#5e4db2]" onClick={() => navigate(`/dashboard/spaces${location.search}`)}>Space Management</span>
           </div>
-          <h1 className="text-base font-bold text-[#5e4db2]">Task Management</h1>
+          <h1 className="text-2xl font-bold text-[#4C2B74]">Task Management</h1>
         </div>
         <div className="flex items-center gap-3 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
           <button
