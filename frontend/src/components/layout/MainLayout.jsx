@@ -7,7 +7,89 @@ import NotificationDropdown from '../notifications/NotificationDropdown';
 import SettingsDropdown from '../settings/SettingsDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import HelpCenter from '../../pages/HelpCenter';
-import { globalNotifications, updateGlobalNotifications } from '../notifications/notificationsState';
+const INITIAL_NOTIFICATIONS = [
+  {
+    NOTI_id: 1,
+    type: 'task_assigned',
+    task_name: 'Design Dashboard',
+    triggered_by_name: 'Hoa',
+    triggered_by_avatar: true,
+    triggered_by_initials: 'H',
+    is_read: false,
+    created_at: '2 min ago',
+    group: 'Today',
+    role: 'USER',
+    task_status: 'To Do',
+    space_id: 'spaces'
+  },
+  {
+    NOTI_id: 2,
+    type: 'status_changed',
+    task_name: 'Design System',
+    new_status: 'In Review',
+    triggered_by_name: 'Pham Thi Cam Tien',
+    triggered_by_avatar: true,
+    triggered_by_initials: 'PT',
+    is_read: false,
+    created_at: '33 sec ago',
+    group: 'Today',
+    role: 'USER',
+    task_status: 'In Progress',
+    space_id: 'spaces'
+  },
+  {
+    NOTI_id: 3,
+    type: 'comment_added',
+    task_name: 'Audit Logs Screen',
+    triggered_by_name: 'Trung',
+    triggered_by_avatar: true,
+    triggered_by_initials: 'T',
+    is_read: true,
+    created_at: 'Yesterday',
+    group: 'Yesterday',
+    role: 'USER',
+    task_status: 'In Progress',
+    space_id: 'spaces'
+  },
+  {
+    NOTI_id: 4,
+    type: 'due_today',
+    task_name: 'Database Migration',
+    is_read: false,
+    created_at: '3 hours ago',
+    group: 'Today',
+    role: 'USER',
+    task_status: 'Pending',
+    space_id: 'spaces'
+  },
+  {
+    NOTI_id: 10,
+    type: 'user_registered',
+    target_user: 'Nguyen Van A',
+    is_read: false,
+    created_at: '5 min ago',
+    group: 'Today',
+    role: 'ADMIN'
+  },
+  {
+    NOTI_id: 11,
+    type: 'account_locked',
+    target_user: 'User123',
+    is_read: false,
+    created_at: '10 min ago',
+    group: 'Today',
+    role: 'ADMIN'
+  },
+  {
+    NOTI_id: 12,
+    type: 'user_verified',
+    target_user: 'Alex Morgan',
+    is_read: true,
+    created_at: '2 days ago',
+    group: 'Earlier',
+    role: 'ADMIN'
+  }
+];
 const SEARCH_TASKS = [
   { id: 'TM-1', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
   { id: 'TM-2', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
@@ -56,23 +138,15 @@ export default function MainLayout() {
     ? { id: 'admin-demo-user', name: 'Alex Morgan', initials: 'AM', role: 'ADMIN' }
     : { id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trang Nguyễn', initials: 'TN', role: 'USER' };
 
-  // State dữ liệu thông báo được đồng bộ với globalNotifications
-  const [allNotifications, setAllNotifications] = useState(globalNotifications);
-
-  useEffect(() => {
-    const handleSync = () => setAllNotifications([...globalNotifications]);
-    window.addEventListener('sync_global_notifications', handleSync);
-    return () => window.removeEventListener('sync_global_notifications', handleSync);
-  }, []);
+  const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
 
   const filteredNotifications = allNotifications.filter(n => n.role === currentRole);
   const unreadCount = filteredNotifications.filter(n => !n.is_read).length;
 
   const handleMarkAllRead = () => {
-    const updated = globalNotifications.map(n =>
+    setAllNotifications(prev => prev.map(n =>
       n.role === currentRole ? { ...n, is_read: true } : n
-    );
-    updateGlobalNotifications(updated);
+    ));
   };
 
   // Click outside listener
@@ -571,6 +645,8 @@ export default function MainLayout() {
         isOpen={showNotificationsModal}
         onClose={() => setShowNotificationsModal(false)}
         currentRole={currentRole}
+        notifications={allNotifications}
+        onUpdateNotifications={setAllNotifications}
       />
     </div>
   );

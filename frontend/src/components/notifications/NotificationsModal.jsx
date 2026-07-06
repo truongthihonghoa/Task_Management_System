@@ -1,27 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, BellOff, X } from 'lucide-react';
 import NotificationItem from './NotificationItem';
-import { globalNotifications, updateGlobalNotifications } from './notificationsState';
 
-const NotificationsModal = ({ isOpen, onClose, currentRole }) => {
+const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], onUpdateNotifications }) => {
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [allNotifications, setAllNotifications] = useState(globalNotifications);
-
-  // Sync with global notifications updates
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleSync = () => setAllNotifications([...globalNotifications]);
-    window.addEventListener('sync_global_notifications', handleSync);
-    // Initial sync on open
-    handleSync();
-    return () => window.removeEventListener('sync_global_notifications', handleSync);
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
-  const roleFiltered = allNotifications.filter(n => n.role === currentRole);
+  const roleFiltered = notifications.filter(n => n.role === currentRole);
 
   const filteredNotifications = roleFiltered.filter(n => {
     const matchesFilter =
@@ -42,17 +29,17 @@ const NotificationsModal = ({ isOpen, onClose, currentRole }) => {
   });
 
   const markAllAsRead = () => {
-    const updated = globalNotifications.map(n =>
+    const updated = notifications.map(n =>
       n.role === currentRole ? { ...n, is_read: true } : n
     );
-    updateGlobalNotifications(updated);
+    onUpdateNotifications?.(updated);
   };
 
   const handleNotificationClick = (clickedNoti) => {
-    const updated = globalNotifications.map(n =>
+    const updated = notifications.map(n =>
       n.NOTI_id === clickedNoti.NOTI_id ? { ...n, is_read: true } : n
     );
-    updateGlobalNotifications(updated);
+    onUpdateNotifications?.(updated);
     onClose();
   };
 
