@@ -2,13 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import CreateSpaceModal from '../components/tasks/CreateSpaceModal';
 
-const DEMO_USERS = [
-  { id: 'alex-morgan', name: 'Alex Morgan', role: 'SUPER_ADMIN' },
-  { id: 'pham-tien', name: 'Pham Tien', role: 'OWNER' },
-  { id: 'trang-nguyen', name: 'Trang Nguyen', role: 'USER' }
-];
-
-const DEMO_SPACES = [
+export const DEMO_SPACES = [
   {
     id: 'SP-001',
     title: 'Task Management System',
@@ -50,7 +44,7 @@ const DEMO_SPACES = [
     memberIds: ['trang-nguyen']
   }
 ];
- 
+
 const SpaceManagement = () => {
   const navigate = useNavigate();
   const location = useLocation();
