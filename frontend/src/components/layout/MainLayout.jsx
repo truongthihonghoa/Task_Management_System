@@ -16,6 +16,7 @@ export default function MainLayout() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [tasksForModal, setTasksForModal] = useState([]);
   const [createTaskHandler, setCreateTaskHandler] = useState(null);
+  const [createTaskInitialSprint, setCreateTaskInitialSprint] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -134,6 +135,10 @@ export default function MainLayout() {
       n.role === currentRole ? { ...n, is_read: true } : n
     ));
   };
+
+  const [sprintsForModal, setSprintsForModal] = useState([
+    { id: 'sprint-1', name: 'SCRUM Sprint 1' }
+  ]);
 
   // Click outside listener
   useEffect(() => {
@@ -524,7 +529,7 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <Outlet context={{ setShowCreateModal, setTasksForModal, setCreateTaskHandler, currentRole, currentUser }} />
+          <Outlet context={{ setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole, currentUser }} />
         </main>
         {/* END: MainContentArea */}
 
@@ -532,8 +537,10 @@ export default function MainLayout() {
 
       <CreateTaskModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => { setShowCreateModal(false); setCreateTaskInitialSprint(''); }}
         tasks={tasksForModal}
+        sprints={sprintsForModal}
+        initialSprint={createTaskInitialSprint}
         onCreateTask={createTaskHandler}
         currentRole={currentRole}
         currentUser={currentUser}
