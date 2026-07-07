@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick, onGeneralClick, onNotificationClick }) => {
+const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick}) => {
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
 
   // Re-initialize Lucide icons when submenu expands
@@ -36,25 +36,12 @@ const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick,
           <span>Profile</span>
         </button>
         <div>
-          <button onClick={() => setIsSettingsExpanded(!isSettingsExpanded)} className="w-full flex items-center justify-between gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
+          <button onClick={onSettingsClick} className="w-full flex items-center justify-between gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
             <div className="flex items-center gap-3">
               <i className="w-4 h-4 text-gray-400" data-lucide="settings"></i>
               <span>Settings</span>
             </div>
-            <i className={`w-4 h-4 text-gray-400 transition-transform ${isSettingsExpanded ? 'rotate-90' : ''}`} data-lucide="chevron-right"></i>
           </button>
-          {isSettingsExpanded && (
-            <div className="ml-4 mt-1 space-y-1">
-              <button onClick={onGeneralClick} className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
-                <i className="w-4 h-4 text-gray-400" data-lucide="layout-grid"></i>
-                <span>General</span>
-              </button>
-              <button onClick={onNotificationClick} className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
-                <i className="w-4 h-4 text-gray-400" data-lucide="bell"></i>
-                <span>Notification</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
