@@ -384,7 +384,7 @@ const SpaceManagement = () => {
           );
         })}
       </div>
-      )}
+  
  
       <CreateSpaceModal
         isOpen={isCreateModalOpen}
