@@ -47,7 +47,9 @@ export default function LoginPage() {
                 setIsRedirecting(false);
                 setEmail('');
                 setPassword('');
-                navigate('/dashboard');
+                const normalizedEmail = email.trim().toLowerCase();
+                const isSuperAdminLogin = normalizedEmail.includes('admin') || normalizedEmail.includes('alex') || normalizedEmail.includes('super');
+                navigate(isSuperAdminLogin ? '/dashboard' : '/dashboard/spaces?role=USER');
             }, 1000);
         }, 2000);
     };

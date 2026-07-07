@@ -18,6 +18,7 @@ const INITIAL_NOTIFICATIONS = [
     created_at: '2 min ago',
     group: 'Today',
     role: 'USER',
+    audience: 'MEMBER',
     task_status: 'To Do',
     space_id: 'spaces'
   },
@@ -33,6 +34,7 @@ const INITIAL_NOTIFICATIONS = [
     created_at: '33 sec ago',
     group: 'Today',
     role: 'USER',
+    audience: 'MEMBER',
     task_status: 'In Progress',
     space_id: 'spaces'
   },
@@ -47,6 +49,7 @@ const INITIAL_NOTIFICATIONS = [
     created_at: 'Yesterday',
     group: 'Yesterday',
     role: 'USER',
+    audience: 'MEMBER',
     task_status: 'In Progress',
     space_id: 'spaces'
   },
@@ -58,8 +61,34 @@ const INITIAL_NOTIFICATIONS = [
     created_at: '3 hours ago',
     group: 'Today',
     role: 'USER',
+    audience: 'MEMBER',
     task_status: 'Pending',
     space_id: 'spaces'
+  },
+  {
+    NOTI_id: 5,
+    type: 'space_member_added',
+    space_name: 'Task Management System',
+    triggered_by_name: 'Trang Nguyen',
+    triggered_by_avatar: true,
+    triggered_by_initials: 'TN',
+    is_read: false,
+    created_at: '1 hour ago',
+    group: 'Today',
+    role: 'USER',
+    audience: 'OWNER',
+    space_id: 'SP-001'
+  },
+  {
+    NOTI_id: 6,
+    type: 'owner_space_update',
+    space_name: 'Task Management System',
+    is_read: true,
+    created_at: 'Yesterday',
+    group: 'Yesterday',
+    role: 'USER',
+    audience: 'OWNER',
+    space_id: 'SP-001'
   },
   {
     NOTI_id: 10,
@@ -68,7 +97,8 @@ const INITIAL_NOTIFICATIONS = [
     is_read: false,
     created_at: '5 min ago',
     group: 'Today',
-    role: 'ADMIN'
+    role: 'ADMIN',
+    audience: 'SUPER_ADMIN'
   },
   {
     NOTI_id: 11,
@@ -77,7 +107,8 @@ const INITIAL_NOTIFICATIONS = [
     is_read: false,
     created_at: '10 min ago',
     group: 'Today',
-    role: 'ADMIN'
+    role: 'ADMIN',
+    audience: 'SUPER_ADMIN'
   },
   {
     NOTI_id: 12,
@@ -86,7 +117,28 @@ const INITIAL_NOTIFICATIONS = [
     is_read: true,
     created_at: '2 days ago',
     group: 'Earlier',
-    role: 'ADMIN'
+    role: 'ADMIN',
+    audience: 'SUPER_ADMIN'
+  },
+  {
+    NOTI_id: 13,
+    type: 'permission_changed',
+    target_user: 'Hoang Hoa',
+    is_read: false,
+    created_at: 'Yesterday',
+    group: 'Yesterday',
+    role: 'ADMIN',
+    audience: 'SUPER_ADMIN'
+  },
+  {
+    NOTI_id: 14,
+    type: 'audit_log_event',
+    message: 'Security audit event recorded for a sensitive permission update.',
+    is_read: true,
+    created_at: '3 days ago',
+    group: 'Earlier',
+    role: 'ADMIN',
+    audience: 'SUPER_ADMIN'
   }
 ];
 const SEARCH_TASKS = [
@@ -100,11 +152,48 @@ const SEARCH_TASKS = [
   { id: 'TM-11', title: 'Push Notification Service', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
 ];
 
+const SEARCH_SPACES = [
+  {
+    id: 'SP-001',
+    taskId: 'SP-001',
+    title: 'Task Management System',
+    description: 'Final project for task management system integration.',
+    owner: 'Trang Nguyen',
+    ownerInitials: 'TN',
+    memberCount: 4,
+    status: 'Active',
+    memberAccess: true
+  },
+  {
+    id: 'SP-002',
+    taskId: 'SP-002',
+    title: 'E-Commerce Platform',
+    description: 'Headless commerce rebuild with Next.js and high-performance API.',
+    owner: 'Hoang Hoa',
+    ownerInitials: 'HH',
+    memberCount: 3,
+    status: 'Active',
+    memberAccess: true
+  },
+  {
+    id: 'SP-003',
+    taskId: 'SP-003',
+    title: 'CRM System',
+    description: 'Legacy customer relationship management maintenance and data cleanup.',
+    owner: 'Alex Morgan',
+    ownerInitials: 'AM',
+    memberCount: 2,
+    status: 'Archived',
+    memberAccess: false
+  },
+];
+
 const SEARCH_USERS = [
-  { id: 'USR-1', name: 'Trang Nguyen', email: 'ntttrang241205@gmail.com', role: 'Administrator', status: 'Active', initials: 'TN' },
-  { id: 'USR-2', name: 'Tien Phham', email: 'tienthicamphamqn20@gmail.com', role: 'User', status: 'Active', initials: 'TP' },
-  { id: 'USR-3', name: 'Hoang Hoa', email: 'hoanghoa@example.com', role: 'User', status: 'Active', initials: 'HH' },
-  { id: 'USR-4', name: 'Trong Nghia', email: 'trongnghia@example.com', role: 'User', status: 'Active', initials: 'TN' },
+  { id: 'USR-1', name: 'Alex Morgan', email: 'alex.morgan@taskcore.com', role: 'Super Admin', status: 'Active', initials: 'AM', space: 'System' },
+  { id: 'USR-2', name: 'Trang Nguyen', email: 'trangnguyen@example.com', role: 'Owner', status: 'Active', initials: 'TN', space: 'Task Management System' },
+  { id: 'USR-3', name: 'Tien Pham', email: 'tienthicamphamqn20@gmail.com', role: 'User', status: 'Active', initials: 'TP', space: 'Task Management System' },
+  { id: 'USR-4', name: 'Hoang Hoa', email: 'hoanghoa@example.com', role: 'Owner', status: 'Active', initials: 'HH', space: 'E-Commerce Platform' },
+  { id: 'USR-5', name: 'Trong Nghia', email: 'trongnghia@example.com', role: 'User', status: 'Active', initials: 'TN', space: 'CRM System' },
 ];
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
@@ -141,18 +230,30 @@ export default function MainLayout() {
 
   const roleParam = searchParams.get('role')?.toUpperCase();
   const currentRole = roleParam === 'USER' ? 'USER' : 'ADMIN';
-  const currentUser = currentRole === 'ADMIN'
-    ? { id: 'admin-demo-user', name: 'Alex Morgan', initials: 'AM', role: 'ADMIN' }
+  const isSuperAdmin = currentRole === 'ADMIN';
+  const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
+  const currentUser = isSuperAdmin
+    ? { id: 'admin-demo-user', name: 'Alex Morgan', initials: 'AM', role: 'SUPER_ADMIN', displayRole: 'Super Admin' }
     : { id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trang Nguyễn', initials: 'TN', role: 'USER' };
+
+  if (!isSuperAdmin) {
+    currentUser.name = 'Trang Nguyen';
+    currentUser.displayRole = currentSpaceRole === 'OWNER' ? 'Owner in this space' : 'User';
+  }
 
   const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
 
-  const filteredNotifications = allNotifications.filter(n => n.role === currentRole);
+  const filteredNotifications = allNotifications.filter(n => {
+    if (isSuperAdmin) {
+      return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
+    }
+    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+  });
   const unreadCount = filteredNotifications.filter(n => !n.is_read).length;
 
   const handleMarkAllRead = () => {
     setAllNotifications(prev => prev.map(n =>
-      n.role === currentRole ? { ...n, is_read: true } : n
+      filteredNotifications.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
     ));
   };
 
@@ -219,6 +320,17 @@ export default function MainLayout() {
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const isAdmin = currentRole === 'ADMIN';
+  const visibleSpaces = useMemo(() => {
+    const searchableSpaces = isSuperAdmin ? SEARCH_SPACES : SEARCH_SPACES.filter(space => space.memberAccess);
+    if (!normalizedSearchQuery) return searchableSpaces.slice(0, 3);
+    return searchableSpaces.filter(space =>
+      space.id.toLowerCase().includes(normalizedSearchQuery) ||
+      space.title.toLowerCase().includes(normalizedSearchQuery) ||
+      space.description.toLowerCase().includes(normalizedSearchQuery) ||
+      space.owner.toLowerCase().includes(normalizedSearchQuery)
+    ).slice(0, 5);
+  }, [isSuperAdmin, normalizedSearchQuery]);
+
   const visibleTasks = useMemo(() => {
     if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
     return SEARCH_TASKS.filter(task =>
@@ -230,15 +342,23 @@ export default function MainLayout() {
   }, [normalizedSearchQuery]);
 
   const visibleUsers = useMemo(() => {
-    if (!isAdmin || !normalizedSearchQuery) return [];
+    if (!isAdmin) return [];
+    if (!normalizedSearchQuery) return SEARCH_USERS.slice(0, 4);
     return SEARCH_USERS.filter(user =>
       user.name.toLowerCase().includes(normalizedSearchQuery) ||
       user.email.toLowerCase().includes(normalizedSearchQuery) ||
-      user.role.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 4);
+      user.role.toLowerCase().includes(normalizedSearchQuery) ||
+      user.space.toLowerCase().includes(normalizedSearchQuery)
+    ).slice(0, 5);
   }, [isAdmin, normalizedSearchQuery]);
 
-  const hasSearchResults = visibleTasks.length > 0 || visibleUsers.length > 0;
+  const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
+
+  const handleSearchSpaceClick = (taskId) => {
+    navigate(`/dashboard/tasks/${taskId}${location.search}`);
+    setSearchQuery('');
+    setShowSearchDropdown(false);
+  };
 
   const handleSearchTaskClick = (taskId) => {
     navigate(`/dashboard/tasks/${taskId}${location.search}`);
@@ -310,7 +430,7 @@ export default function MainLayout() {
         {/* Navigation Links */}
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {/* Dashboard Item */}
-          {isDashboardActive ? (
+          {isSuperAdmin && (isDashboardActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
               <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard${location.search}`}>
@@ -323,7 +443,7 @@ export default function MainLayout() {
               <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
               <span className="text-sm font-medium">Dashboard</span>
             </Link>
-          )}
+          ))}
 
           {/* Tasks Item */}
           {isTasksActive ? (
@@ -348,7 +468,7 @@ export default function MainLayout() {
           )}
 
           {/* Users Item */}
-          {isUsersActive ? (
+          {isSuperAdmin && (isUsersActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
               <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/users${location.search}`}>
@@ -361,7 +481,7 @@ export default function MainLayout() {
               <i className="w-5 h-5 mr-3" data-lucide="users"></i>
               <span className="text-sm font-medium">Users</span>
             </Link>
-          )}
+          ))}
         </nav>
 
         {/* Bottom Navigation */}
@@ -383,7 +503,7 @@ export default function MainLayout() {
           )}
           <div className="relative" ref={settingsRef}>
             <button
-              onClick={() => navigate("/dashboard/notification-settings")}
+              onClick={() => navigate(`/dashboard/notification-settings${location.search}`)}
               className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
                 isSettingsActive
                   ? "bg-[#E0E8FF] text-[#2D1B4E]"
@@ -431,8 +551,8 @@ export default function MainLayout() {
                 <i className="h-4 w-4 text-gray-400" data-lucide="search"></i>
               </div>
               <input
-                className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#2D1B4E] focus:border-[#2D1B4E]"
-                placeholder={isAdmin ? "Search tasks or users..." : "Search tasks..."}
+                className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-200 focus:border-gray-300"
+                placeholder={isAdmin ? "Search spaces, users, or tasks..." : "Search spaces or tasks..."}
                 type="text"
                 value={searchQuery}
                 onFocus={() => setShowSearchDropdown(true)}
@@ -441,7 +561,11 @@ export default function MainLayout() {
                   setShowSearchDropdown(true);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && visibleTasks[0]) {
+                  if (event.key === 'Enter' && visibleSpaces[0]) {
+                    handleSearchSpaceClick(visibleSpaces[0].taskId);
+                  } else if (event.key === 'Enter' && visibleUsers[0]) {
+                    handleSearchUserClick();
+                  } else if (event.key === 'Enter' && visibleTasks[0]) {
                     handleSearchTaskClick(visibleTasks[0].id);
                   }
                 }}
@@ -455,7 +579,7 @@ export default function MainLayout() {
                         {normalizedSearchQuery ? 'Search results' : 'Recently viewed'}
                       </p>
                       <p className="text-[11px] text-gray-400 mt-0.5">
-                        {isAdmin ? 'Quickly open tasks or users.' : 'Quickly open tasks.'}
+                        {isAdmin ? 'Quickly open spaces, users, or tasks.' : 'Quickly open spaces or tasks.'}
                       </p>
                     </div>
                     {searchQuery && (
@@ -470,8 +594,41 @@ export default function MainLayout() {
                   </div>
 
                   <div className="max-h-[360px] overflow-y-auto custom-scrollbar py-2">
-                    {visibleTasks.length > 0 && (
+                    {visibleSpaces.length > 0 && (
                       <div>
+                        <div className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                          Spaces
+                        </div>
+                        {visibleSpaces.map((space) => (
+                          <button
+                            key={space.id}
+                            type="button"
+                            onClick={() => handleSearchSpaceClick(space.taskId)}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                          >
+                            <div className="w-9 h-9 rounded-lg bg-[#F0EDFF] border border-purple-100 flex items-center justify-center shrink-0">
+                              <i className="w-4 h-4 text-[#4C2B74]" data-lucide="folder-kanban"></i>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-[11px] font-black text-gray-400 shrink-0">{space.id}</span>
+                                <span className="text-sm font-bold text-gray-800 truncate">{space.title}</span>
+                              </div>
+                              <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-400 font-semibold">
+                                <span>{space.status}</span>
+                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                <span>{space.memberCount} members</span>
+                                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                <span className="truncate">Owner: {space.owner}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {visibleTasks.length > 0 && (
+                      <div className={visibleSpaces.length > 0 ? "border-t border-gray-50 mt-2 pt-2" : ""}>
                         <div className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider">
                           Tasks
                         </div>
@@ -523,7 +680,9 @@ export default function MainLayout() {
                                 <span className="text-sm font-bold text-gray-800 truncate">{user.name}</span>
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0">{user.role}</span>
                               </div>
-                              <p className="text-[11px] text-gray-400 font-semibold truncate mt-1">{user.email}</p>
+                              <p className="text-[11px] text-gray-400 font-semibold truncate mt-1">
+                                {user.email} - {user.space}
+                              </p>
                             </div>
                           </button>
                         ))}
@@ -536,7 +695,9 @@ export default function MainLayout() {
                           <i className="w-5 h-5 text-gray-300" data-lucide="search-x"></i>
                         </div>
                         <p className="text-sm font-bold text-gray-700">No results found</p>
-                        <p className="text-xs text-gray-400 mt-1">Try a task ID, task title, or user name.</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {isAdmin ? 'Try a space name, user name, or task title.' : 'Try a space name, task ID, or task title.'}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -549,7 +710,7 @@ export default function MainLayout() {
                     }}
                     className="w-full px-4 py-3 border-t border-gray-100 text-left text-xs font-bold text-[#4C2B74] hover:bg-[#FAF8FF] transition-colors"
                   >
-                    View all tasks
+                    View all spaces
                   </button>
                 </div>
               )}
@@ -688,7 +849,7 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <Outlet context={{ setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole, currentUser }} />
+          <Outlet context={{ setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole, currentUser, currentSpaceRole, isSuperAdmin }} />
         </main>
         {/* END: MainContentArea */}
 
@@ -709,6 +870,8 @@ export default function MainLayout() {
         isOpen={showNotificationsModal}
         onClose={() => setShowNotificationsModal(false)}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
+        isSuperAdmin={isSuperAdmin}
         notifications={allNotifications}
         onUpdateNotifications={setAllNotifications}
       />
