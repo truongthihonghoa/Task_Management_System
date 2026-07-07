@@ -42,7 +42,7 @@ const DeleteTaskModal = ({ isOpen, onClose, onConfirm, task }) => {
           <p className="text-slate-600 text-sm font-medium">Are you sure you want to delete this task?</p>
           
           {/* Task Details Box */}
-          <div className="bg-blue-50/50 rounded-[8px] p-4 text-sm" data-purpose="task-details-preview">
+          <div className="bg-blue-50/50 rounded-[8px] p-3 text-sm" data-purpose="task-details-preview">
             <div className="grid grid-cols-[80px_1fr] gap-y-1">
               <span className="text-slate-500">Task ID:</span>
               <span className="text-slate-700 font-medium">{task.id}</span>
@@ -52,12 +52,12 @@ const DeleteTaskModal = ({ isOpen, onClose, onConfirm, task }) => {
           </div>
 
           {/* Warning Alert Box */}
-          <div className="bg-red-50 border border-red-100 rounded-[8px] p-4 flex gap-3" data-purpose="impact-warning">
+          <div className="bg-red-50 border border-red-100 rounded-[8px] p-3 flex gap-3" data-purpose="impact-warning">
             <svg className="h-5 w-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-xs leading-relaxed text-red-800">
-              This task will be removed from the active task list and marked as deleted. Associated comments, attachments, and task history will be preserved in the system for audit and recovery purposes.
+              This task will be removed from the active task list. Associated comments, attachments, and task history will be preserved in the system.
             </p>
           </div>
 

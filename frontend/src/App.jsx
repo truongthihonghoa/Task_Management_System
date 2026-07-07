@@ -20,8 +20,6 @@ import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
-import GeneralSettingsPage from "./pages/GeneralSettingsPage";
-
 
 
 export default function App() {
@@ -49,7 +47,6 @@ export default function App() {
                     <Route path="help" element={<HelpCenter />} />
                     {/* Nối link trang cài đặt thông báo (nếu cần dùng sau này) */}
                     <Route path="notification-settings" element={<NotificationSettingsPage />} />
-                    <Route path="settings/general" element={<GeneralSettingsPage />} />
                 </Route>
 
                 {/* Dự phòng trường hợp user vào thẳng /dashboard không có dấu gạch chéo */}
