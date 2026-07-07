@@ -233,7 +233,6 @@ export default function MainLayout() {
   }, [isAdmin, location.pathname, location.search, navigate]);
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const isAdmin = currentRole === 'ADMIN';
   const visibleTasks = useMemo(() => {
     if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
     return SEARCH_TASKS.filter(task =>

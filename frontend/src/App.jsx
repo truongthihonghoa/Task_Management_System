@@ -20,7 +20,6 @@ import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
-import NotificationsPage from "./pages/NotificationsPage";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
 /**
@@ -50,7 +49,6 @@ export default function App() {
                     <Route path="spaces" element={<SpaceManagement />} />
                     <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                     <Route path="tasks" element={<TaskManagement />} />
-                    <Route path="notifications" element={<NotificationsPage />} />
                     <Route path="users" element={<UserManagement />} />
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="help" element={<HelpCenter />} />
