@@ -159,7 +159,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
       const next = prev.map(a => {
         if (a.id !== replaceTargetId) return a;
         if (a.previewUrl) {
-          try { URL.revokeObjectURL(a.previewUrl); } catch (_) {}
+          try { URL.revokeObjectURL(a.previewUrl); } catch (_) { }
         }
         return {
           ...a,
@@ -767,19 +767,10 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
 
             {/* Attachments */}
             <div style={{ marginBottom: '28px' }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+              <div className="flex items-center" style={{ marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Attachments ({attachments.length})
                 </h3>
-                {canEditTaskContent && (
-                  <button
-                    onClick={openUploadDialog}
-                    style={{ fontSize: '12px', fontWeight: 600, color: '#4C2B74', background: 'none', border: 'none', cursor: 'pointer' }}
-                    className="hover:text-[#2E1C54] transition-colors"
-                  >
-                    Upload file
-                  </button>
-                )}
                 <input
                   type="file"
                   ref={uploadInputRef}
@@ -853,9 +844,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 ))}
                 <input type="file" ref={replaceInputRef} onChange={handleReplaceFile} style={{ display: 'none' }} />
               </div>
-              {isUploadAreaOpen && (
+              {canEditTaskContent && (
                 <div
-                  className="mt-4 p-5 rounded-2xl border border-dashed border-[#DFE1E6] bg-[#FAFBFC]"
+                  className="mt-4 p-5 rounded-2xl border border-dashed border-[#DFE1E6] bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors"
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
                   onClick={openUploadDialog}
                 >
@@ -1267,7 +1258,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                       {localTask.priority === 'High' ? (
                         <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#DE350B' }}>keyboard_arrow_up</span>
                       ) : localTask.priority === 'Medium' ? (
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#FF8B00' }}>keyboard_double_arrow_up</span>
+                        <span style={{ fontSize: '18px', color: '#FF8B00', fontWeight: 700 }}>=</span>
                       ) : (
                         <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#4C2B74' }}>keyboard_arrow_down</span>
                       )}
@@ -1281,7 +1272,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                     <div className="priority-custom-dropdown" style={{ left: 0, width: '100%' }}>
                       {[
                         { label: 'High', icon: 'keyboard_arrow_up', color: '#DE350B' },
-                        { label: 'Medium', icon: 'keyboard_double_arrow_up', color: '#FF8B00' },
+                        { label: 'Medium', icon: '=', color: '#FF8B00' },
                         { label: 'Low', icon: 'keyboard_arrow_down', color: '#4C2B74' }
                       ].map(p => (
                         <div
@@ -1293,7 +1284,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                             setIsPriorityOpen(false);
                           }}
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: '18px', color: p.color }}>{p.icon}</span>
+                          {p.label === 'Medium' ? (
+                            <span style={{ fontSize: '18px', color: p.color, fontWeight: 700 }}>{p.icon}</span>
+                          ) : (
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: p.color }}>{p.icon}</span>
+                          )}
                           <span style={{ fontSize: '12px' }}>{p.label}</span>
                         </div>
                       ))}

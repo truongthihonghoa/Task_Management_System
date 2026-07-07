@@ -22,12 +22,11 @@ const EMPTY_FORM = {
 // ─── Main component ────────────────────────────────────────────────────────────
 const CreateUserModal = ({
   isOpen,
-  initialMode   = 'create',
-  selectedUser  = null,
+  selectedUser = null,
   onClose,
   onSaveSuccess,
 }) => {
-  const isEditMode = initialMode === 'edit';
+  const isEditMode = Boolean(selectedUser);
 
   const [form, setForm]             = useState(EMPTY_FORM);
   const [showPassword, setShowPwd]  = useState(false);
@@ -37,7 +36,7 @@ const CreateUserModal = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    if (isEditMode && selectedUser) {
+    if (selectedUser) {
       setForm({
         fullName: selectedUser.name   || '',
         email:    selectedUser.email  || '',
@@ -51,7 +50,7 @@ const CreateUserModal = ({
 
     setErrors({});
     setShowPwd(false);
-  }, [isOpen, initialMode, selectedUser]);
+  }, [isOpen, selectedUser]);
 
   if (!isOpen) return null;
 
@@ -68,10 +67,11 @@ const CreateUserModal = ({
     if (!form.email.trim())    errs.email    = 'Email address is required.';
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email address.';
 
-    if (!isEditMode && !form.password) {
-      errs.password = 'Password is required.';
-    } else if (form.password && !PASSWORD_RULES.every((r) => r.test(form.password))) {
-      errs.password = 'Password does not meet all requirements.';
+    if (
+      form.password &&
+      !PASSWORD_RULES.every((r) => r.test(form.password))
+    ) {
+      errs.password = "Password does not meet all requirements.";
     }
     return errs;
   };
@@ -81,10 +81,7 @@ const CreateUserModal = ({
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
-    const msg = isEditMode
-      ? `User "${form.fullName}" updated successfully!`
-      : `User "${form.fullName}" created successfully!`;
-
+    const msg = `User "${form.fullName}" updated successfully!`;
     onSaveSuccess?.(msg);
     onClose();
   };
@@ -108,15 +105,9 @@ const CreateUserModal = ({
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-4 border-b border-gray-100">
           <div>
-            <h2 className="text-[22px]  font-medium text-gray-900 leading-tight">
-              {isEditMode ? 'Edit User' : 'Create User'}
+            <h2 className="text-[22px] font-medium text-gray-900 leading-tight">
+              Edit User
             </h2>
-            {isEditMode && (
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Editing profile for{' '}
-                <span className="font-semibold text-gray-600">{form.fullName || 'this user'}</span>
-              </p>
-            )}
           </div>
           <button
             onClick={onClose}
@@ -139,8 +130,9 @@ const CreateUserModal = ({
               type="text"
               placeholder="Enter full name"
               value={form.fullName}
+              readOnly
               onChange={handleChange('fullName')}
-              className={`w-full h-10 px-4 rounded-md border text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#5e4db2]/30 focus:border-[#5e4db2] ${
+              className={`w-full bg-gray-200 text-gray-700 h-10 px-4 rounded-md border text-sm text-gray-800 placeholder-gray-400 outline-none transition ${
                 errors.fullName ? 'border-red-400 bg-red-50/30' : 'border-gray-200 bg-white'
               }`}
             />
@@ -154,8 +146,9 @@ const CreateUserModal = ({
               type="email"
               placeholder="Enter email address"
               value={form.email}
+              readOnly
               onChange={handleChange('email')}
-              className={`w-full h-10 px-4 rounded-md border text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#5e4db2]/30 focus:border-[#5e4db2] ${
+              className={`w-full bg-gray-200 text-gray-700 h-10 px-4 rounded-md border text-sm text-gray-800 placeholder-gray-400 outline-none transition ${
                 errors.email ? 'border-red-400 bg-red-50/30' : 'border-gray-200 bg-white'
               }`}
             />
@@ -188,74 +181,6 @@ const CreateUserModal = ({
             ))}
           </div>
 
-          {/* Password */}
-          <div>
-            <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">
-              Password
-              {isEditMode && (
-                <span className="ml-2 text-[11px] text-gray-400 font-normal">(leave blank to keep current)</span>
-              )}
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder={isEditMode ? 'Enter new password to change' : '••••••••'}
-                value={form.password}
-                onChange={handleChange('password')}
-                className={`w-full h-10 px-4 pr-11 rounded-md border text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#5e4db2]/30 focus:border-[#5e4db2] ${
-                  errors.password ? 'border-red-400 bg-red-50/30' : 'border-gray-200 bg-white'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd((v) => !v)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute inset-y-0 right-0 px-3.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                {showPassword ? (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px]">
-                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
-                    <line x1="1" y1="1" x2="23" y2="23" strokeLinecap="round"/>
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px]">
-                    <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                )}
-              </button>
-            </div>
-            {errors.password && <p className="text-[11px] text-red-500 mt-1">{errors.password}</p>}
-
-            {/* Requirements checklist */}
-            <div className="mt-3 bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
-              <p className="text-[13px] font-bold text-gray-500 tracking-wider mb-3">
-                Password Requirements
-              </p>
-              <div className="space-y-2">
-                {PASSWORD_RULES.map((rule) => {
-                  const met = form.password ? rule.test(form.password) : false;
-                  return (
-                    <div key={rule.id} className="flex items-center gap-2.5">
-                      <span className={`w-4 h-4 rounded-full flex-shrink-0 border-2 flex items-center justify-center transition-all duration-200 ${
-                        met ? 'border-[#5e4db2] bg-[#5e4db2]' : 'border-gray-300 bg-white'
-                      }`}>
-                        {met && (
-                          <svg viewBox="0 0 10 8" fill="none" className="w-2.5 h-2">
-                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </span>
-                      <span className={`text-[12px] transition-colors ${met ? 'text-[#5e4db2] font-semibold' : 'text-gray-500'}`}>
-                        {rule.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
         </div>
 
         {/* Footer */}
@@ -270,7 +195,7 @@ const CreateUserModal = ({
             onClick={handleSubmit}
             className="px-5 py-2 text-[16px] font-medium bg-[#4C1D95] hover:bg-[#3B1578] active:scale-95 text-white rounded-md shadow-md shadow-purple-900/20 transition-all"
           >
-            {isEditMode ? 'Save Changes' : 'Create'}
+            Save Changes
           </button>
         </div>
       </div>

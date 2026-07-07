@@ -1,13 +1,8 @@
 import React, { useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 
-const NotificationDropdown = ({ notifications = [], onMarkAllRead, onClose }) => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Nhóm thông báo tối ưu bằng useMemo
+const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose }) => {
   const groupedNotifications = useMemo(() => {
     const groups = { Today: [], Yesterday: [], Earlier: [] };
     notifications.forEach(n => {
@@ -22,10 +17,10 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onClose }) =>
 
   const hasNotifications = notifications.length > 0;
 
-  // Điều hướng chuẩn tới trang Notifications nằm trong Dashboard
+  // Open the full notifications modal from the header dropdown.
   const handleNavigateToAll = () => {
-    navigate(`/dashboard/notifications${location.search}`);
-    onClose();
+    onViewAll?.();
+    onClose?.();
   };
 
   return (
