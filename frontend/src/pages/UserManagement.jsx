@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import UserModal from '../components/tasks/CreateUserModal';
+import React, { useState, useEffect, useRef } from 'react';
+import UserModal from '../components/tasks/EditUserModal';
 
 // ── Static user data (replace with API data later) ──────────────────────────
 const USERS = [
@@ -32,7 +32,16 @@ export default function UserManagement() {
   const [modalMode, setModalMode] = useState('create');
   // The user being edited (null in create mode)
   const [selectedUser, setSelectedUser] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
+  const [showRoleFilter, setShowRoleFilter] = useState(false);
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
+
+  const [selectedRole, setSelectedRole] = useState("All Roles");
+  const [selectedStatus, setSelectedStatus] = useState("All Status");
+
+  const roleRef = useRef(null);
+  const statusRef = useRef(null);
   // Toast notification
   const [toast, setToast] = useState({ show: false, message: '' });
 
@@ -54,6 +63,45 @@ export default function UserManagement() {
     setModalMode('edit');
     setModalOpen(true);
   };
+  useEffect(() => {
+  const handleClickOutside = (event) => {
+    if (
+      roleRef.current &&
+      !roleRef.current.contains(event.target)
+    ) {
+      setShowRoleFilter(false);
+    }
+
+    if (
+      statusRef.current &&
+      !statusRef.current.contains(event.target)
+    ) {
+      setShowStatusFilter(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handleClickOutside);
+
+  return () =>
+    document.removeEventListener(
+      "mousedown",
+      handleClickOutside
+    );
+}, []);
+  const filteredUsers = USERS.filter((user) => {
+  const searchMatch =
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase());
+
+  const roleMatch =
+    selectedRole === "All Roles" ||
+    user.role === selectedRole;
+
+  const statusMatch =
+    selectedStatus === "All Status" ||
+    user.status === selectedStatus;
+
+  return searchMatch && roleMatch && statusMatch;});
 
   return (
     <div className="mt-4 mb-4 px-6 pt-6 pb-6 space-y-6 max-w-[1400px] w-full mx-auto font-sans relative">
@@ -61,14 +109,14 @@ export default function UserManagement() {
       {/* Tiêu đề trang */}
       <div>
         <h2 className="text-2xl font-bold text-[#4C2B74]">User Management</h2>
-        <p className="text-gray-500 text-sm">Manage users, roles, account status, and permissions.</p>
+        <p className="text-sm text-gray-500">Manage users, roles, account status, and permissions.</p>
       </div>
 
       {/* Thanh công cụ tìm kiếm & bộ lọc */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
         <div className="space-y-1.5">
           <label className="block text-[11px] font-bold text-[#6B7280] tracking-wider uppercase">
-            Search Spaces
+            Search User
           </label>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -78,29 +126,94 @@ export default function UserManagement() {
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <i data-lucide="search" className="text-gray-400 w-4 h-4"></i>
                 </div>
-                <input 
-                  type="text" 
-                  placeholder="Search by name or email..." 
-                  className="w-full pl-10 h-10 px-3 pr-4 py-3 bg-white border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-sm"
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name or email..."
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded text-[11px] outline-none focus:ring-1 focus:ring-[#4C2B74] focus:border-[#4C2B74] transition-all"
                 />
               </div>
               
               {/* Bộ lọc Roles & Status */}
-              <button className="h-10 px-3 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 flex items-center space-x-2.5 transition shadow-sm">
-                <span>All Roles</span> <i data-lucide="chevron-down" className="w-3.5 h-3.5 text-gray-400"></i>
+              <div className="relative" ref={roleRef}>
+              <button
+                onClick={() => {
+                  setShowRoleFilter(!showRoleFilter);
+                  setShowStatusFilter(false);
+                }}
+                className="h-9 px-3 bg-white border border-outline-variant rounded text-xs font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-2 shadow-sm"
+              >
+                <span>{selectedRole}</span>
+                <i
+                  data-lucide="chevron-down"
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    showRoleFilter ? "rotate-180" : ""
+                  }`}
+                ></i>
               </button>
-              <button className="h-10 px-3 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 flex items-center space-x-2.5 transition shadow-sm">
-                <span>All Status</span> <i data-lucide="chevron-down" className="w-3.5 h-3.5 text-gray-400"></i>
-              </button>
-            </div>
 
-            {/* + Create User button */}
-            <button 
-              onClick={openCreateModal}
-              className="h-10 px-5 bg-[#4C1D95] hover:bg-[#3B1578] text-white rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 shadow-md transition flex-shrink-0 active:scale-95"
-            >
-              <i data-lucide="plus" className="w-4 h-4 stroke-[3]"></i> <span>Create User</span>
-            </button>
+              {showRoleFilter && (
+                <div className="absolute left-0 mt-2 w-44 bg-white border border-gray-200 rounded shadow-lg z-50 overflow-hidden">
+                  {["All Roles", "Administrator", "User"].map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => {
+                        setSelectedRole(role);
+                        setShowRoleFilter(false);
+                      }}
+                      className={`w-44 text-left px-4 py-2 text-sm hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface ${
+                        selectedRole === role
+                          ? "font-semibold"
+                          : ""
+                      }`}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+              <div className="relative" ref={statusRef}>
+              <button
+                onClick={() => {
+                  setShowStatusFilter(!showStatusFilter);
+                  setShowRoleFilter(false);
+                }}
+                className="h-9 px-3 bg-white border border-gray-300 rounded text-xs font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-2 shadow-sm"
+              >
+                <span>{selectedStatus}</span>
+
+                <i
+                  data-lucide="chevron-down"
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    showStatusFilter ? "rotate-180" : ""
+                  }`}
+                ></i>
+              </button>
+
+              {showStatusFilter && (
+                <div className="absolute left-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                  {["All Status", "Active", "Inactive"].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setSelectedStatus(status);
+                        setShowStatusFilter(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface ${
+                        selectedStatus === status
+                          ? "font-semibold"
+                          : ""
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            </div>
           </div>
         </div>
       </div>
@@ -121,7 +234,7 @@ export default function UserManagement() {
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-600">
               
-              {USERS.map((user) => {
+              {filteredUsers.map((user) => {
                 const isAdmin = user.role === 'Administrator';
                 return (
                   <tr
@@ -170,11 +283,10 @@ export default function UserManagement() {
 
       {/* User Modal – create or edit */}
       <UserModal
-        isOpen={modalOpen}
-        initialMode={modalMode}
-        selectedUser={selectedUser}
-        onClose={() => setModalOpen(false)}
-        onSaveSuccess={(msg) => triggerToast(msg)}
+          isOpen={modalOpen}
+          selectedUser={selectedUser}
+          onClose={() => setModalOpen(false)}
+          onSaveSuccess={triggerToast}
       />
 
       {/* Thông báo Toast Popup */}

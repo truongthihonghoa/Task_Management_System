@@ -20,38 +20,12 @@ export default function ForgotPassword() {
       {/* Khối nội dung chính */}
       <main className="flex-grow flex items-center justify-center p-6">
         <section className="bg-white w-full max-w-[440px] rounded-2xl border border-slate-100 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] flex flex-col">
-          
-          {/* KHU VỰC LOGO - ĐfontSỬA: Xóa đường line (bỏ border-b) và giữ cụm nằm giữa dọc tuyệt đối */}
-          <div className="w-full flex items-center justify-center h-16 px-8">
-            <div className="flex items-center justify-center gap-2">
-              <div className="bg-blue-600 rounded-full p-1.5 flex items-center justify-center flex-shrink-0 w-7 h-7">
-                <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"></path>
-                </svg>
-              </div>
-              <span className="text-2xl font-bold text-slate-800 tracking-tight select-none leading-none">
-                TaskFlow
-              </span>
-            </div>
-          </div>
-
           {/* Phần nội dung dưới Logo */}
           <div className="px-8 pb-8 md:px-12 md:pb-10 pt-4 flex flex-col">
-            
-            {/* HÌNH ẢNH MINH HỌA - Đã căn giữa và tăng kích thước */}
-            <div className="mb-5 flex justify-center items-center w-full">
-              <div className="rounded-xl overflow-hidden bg-[#E0E0FF] aspect-[1.6/1] w-full flex items-center justify-center shadow-sm">
-                <img 
-                  alt="Forgot Password Illustration" 
-                  className="w-full h-full object-cover object-center" 
-                  src={forgotPasswordImg}
-                />
-              </div>
-            </div>
 
             {/* Khu vực Form */}
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-slate-900 mb-2">Forgot Password?</h1>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2 mt-10">Forgot Password?</h1>
               <p className="text-sm text-slate-500 mb-5 leading-relaxed">
                 Enter your registered email address to receive a verification code.
               </p>
