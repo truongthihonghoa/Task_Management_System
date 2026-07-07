@@ -11,7 +11,7 @@ const SupportSidebar = () => (
       <span className="material-symbols-outlined text-gray-500 mt-0.5">support_agent</span>
       <div>
         <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Administrator Email</p>
-        <p className="text-sm font-semibold text-gray-900">admin@taskflow.inc</p>
+        <p className="text-sm font-semibold text-gray-900">alex.morgan@taskcore.com</p>
       </div>
     </div>
 

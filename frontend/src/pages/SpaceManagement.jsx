@@ -314,6 +314,26 @@ const SpaceManagement = () => {
         </div>
       </div>
  
+      {/* Empty State */}
+      {filteredAndSortedSpaces.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-100">
+          <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+            <i data-lucide="folder-open" className="w-10 h-10 text-gray-300"></i>
+          </div>
+          <h3 className="text-xl font-bold text-gray-700 mb-2">You don't have any spaces yet</h3>
+          <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
+            Create your first space to start organizing your projects and collaborating with your team.
+          </p>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+          >
+            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+            Create Space
+          </button>
+        </div>
+      )}
+
       {/* Grid of Space Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAndSortedSpaces.map(space => {
@@ -370,13 +390,17 @@ const SpaceManagement = () => {
           );
         })}
       </div>
+      )}
  
       <CreateSpaceModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        currentUser={currentUser}
         onCreate={(data) => {
           console.log('New Space Data:', data);
-          // Handle space creation logic here
+          // In a real app, this would call an API to create the space
+          // The space will have the current user as Owner
+          // For now, just log the data
         }}
       />
     </div>
