@@ -1,20 +1,43 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import ChangePasswordSection from "./ChangePasswordSection";
 
 export default function ProfileTab() {
+  const { currentRole, currentUser } = useOutletContext();
+  
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef(null); // Ref để trigger chọn file
 
   const [profileData, setProfileData] = useState({
-    fullName: 'Alex Morgan',
-    username: 'jsmith_admin',
-    role: 'Organization Administrator',
+    fullName: currentUser?.name || 'Alex Morgan',
+    username: currentUser?.name?.toLowerCase().replace(/\s/g, '_') || 'jsmith_admin',
+    role: currentRole === 'ADMIN' ? 'Super Admin' : 'User',
     accountStatus: 'Active',
-    email: 'alex.morgan@example.com',
+    email: currentRole === 'ADMIN' ? 'alex.morgan@taskcore.com' : 'trang.nguyen@taskcore.com',
     avatar: 'https://via.placeholder.com/150' // Thêm trường avatar
   });
 
   const [editData, setEditData] = useState({ ...profileData });
+
+  // Sync profileData when currentRole or currentUser changes
+  useEffect(() => {
+    setProfileData({
+      fullName: currentUser?.name || 'Alex Morgan',
+      username: currentUser?.name?.toLowerCase().replace(/\s/g, '_') || 'jsmith_admin',
+      role: currentRole === 'ADMIN' ? 'Super Admin' : 'User',
+      accountStatus: 'Active',
+      email: currentRole === 'ADMIN' ? 'alex.morgan@taskcore.com' : 'trang.nguyen@taskcore.com',
+      avatar: profileData.avatar
+    });
+    setEditData({
+      fullName: currentUser?.name || 'Alex Morgan',
+      username: currentUser?.name?.toLowerCase().replace(/\s/g, '_') || 'jsmith_admin',
+      role: currentRole === 'ADMIN' ? 'Super Admin' : 'User',
+      accountStatus: 'Active',
+      email: currentRole === 'ADMIN' ? 'alex.morgan@taskcore.com' : 'trang.nguyen@taskcore.com',
+      avatar: profileData.avatar
+    });
+  }, [currentRole, currentUser]);
 
   // Tính toán % hoàn thành profile
   const profileCompletion = useMemo(() => {

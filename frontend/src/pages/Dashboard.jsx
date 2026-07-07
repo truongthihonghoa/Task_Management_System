@@ -672,7 +672,16 @@ const Dashboard = () => {
   const [hoveredAccount, setHoveredAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Role-based access control: Redirect regular users to Space Management
+  const roleParam = searchParams.get('role')?.toUpperCase();
+  const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
 
+  useEffect(() => {
+    if (!isAdmin) {
+      // Regular user trying to access Admin Dashboard - redirect to Space Management
+      navigate('/dashboard/spaces?role=USER', { replace: true });
+    }
+  }, [isAdmin, navigate]);
 
   const [activeFilter, setActiveFilter] = useState("All");
 
@@ -694,10 +703,6 @@ const Dashboard = () => {
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-
-  // Define tabs based on role
-  const roleParam = searchParams.get('role')?.toUpperCase();
-  const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
   const user = { role: isAdmin ? "ADMIN" : "USER" };
 
   const priorityBreakdownData = isAdmin
