@@ -92,7 +92,7 @@ const SpaceManagement = () => {
       <div className="flex justify-between items-center mb-6">
           <div>
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
-          <p className="text-gray-500 text-sm">Manage and organize your team's project ecosystems.</p>
+          <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
         {isAdmin && (
           <button
