@@ -3,7 +3,8 @@ import {
     BrowserRouter,
     Routes,
     Route,
-    Navigate
+    Navigate,
+    useLocation
 } from "react-router-dom";
 
 import LoginPage from "./pages/LoginPage";
@@ -19,11 +20,17 @@ import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
-
-// Import thêm 2 trang thông báo đúng theo cấu trúc thư mục của bạn
 import NotificationsPage from "./pages/NotificationsPage";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
+/**
+ * Redirect /dashboard → /dashboard/ while preserving the query string
+ * (e.g. ?role=ADMIN is kept intact so the Dashboard can read the role param).
+ */
+function DashboardRedirect() {
+    const location = useLocation();
+    return <Navigate to={`/dashboard/${location.search}`} replace />;
+}
 
 export default function App() {
     return (
@@ -37,29 +44,26 @@ export default function App() {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
-                {/* Dashboard - Thêm dấu /* vào path để React Router nhận diện chính xác các route con khi click */}
+                {/* Protected layout — role guard is handled inside each page */}
                 <Route path="/dashboard/*" element={<MainLayout />}>
                     <Route index element={<Dashboard />} />
                     <Route path="spaces" element={<SpaceManagement />} />
                     <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                     <Route path="tasks" element={<TaskManagement />} />
-
-                    {/* Nối link trang danh sách thông báo */}
                     <Route path="notifications" element={<NotificationsPage />} />
-                    <Route path ="users" element={<UserManagement />} />
+                    <Route path="users" element={<UserManagement />} />
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="help" element={<HelpCenter />} />
-                    {/* Nối link trang cài đặt thông báo (nếu cần dùng sau này) */}
                     <Route path="notification-settings" element={<NotificationSettingsPage />} />
                 </Route>
 
-                {/* Dự phòng trường hợp user vào thẳng /dashboard không có dấu gạch chéo */}
-                <Route path="/dashboard" element={<Navigate to="/dashboard/" replace />} />
+                {/* /dashboard (no trailing slash) → /dashboard/ preserving ?role= param */}
+                <Route path="/dashboard" element={<DashboardRedirect />} />
 
-                {/* Redirect */}
+                {/* Catch-all → back to login */}
                 <Route path="*" element={<Navigate to="/" replace />} />
 
             </Routes>
         </BrowserRouter>
     );
-}
+}

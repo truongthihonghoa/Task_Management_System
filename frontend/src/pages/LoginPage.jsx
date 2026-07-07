@@ -56,10 +56,10 @@ export default function LoginPage() {
 
                 // Redirect based on role
                 if (isAdminEmail) {
-                    // Super Admin → Super Admin Dashboard
-                    navigate('/dashboard?role=SUPERADMIN');
+                    // Super Admin → Admin Dashboard
+                    navigate('/dashboard?role=ADMIN');
                 } else {
-                    // Regular User → Task Management (via Space Management)
+                    // Regular User → Space Management (landing page for users)
                     navigate('/dashboard/spaces?role=USER');
                 }
             }, 1000);

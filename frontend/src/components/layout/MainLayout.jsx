@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-// import { useNavigate } from "react-router-dom";
 import { Outlet, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
-import HelpCenter from '../../pages/HelpCenter';
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
 
@@ -185,60 +183,20 @@ export default function MainLayout() {
   const isHelpActive = location.pathname === '/dashboard/help';
   const isAdmin = currentRole === 'ADMIN';
 
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
     if (!isAdmin) {
-      // If on Dashboard (index) redirect to Tasks (spaces)
+      // If on Dashboard (index) redirect to Space Management
       if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
         navigate('/dashboard/spaces' + location.search);
       }
-      // If trying to access Users page, redirect to Tasks
+      // If trying to access Users page, redirect to Space Management
       if (location.pathname.startsWith('/dashboard/users')) {
         navigate('/dashboard/spaces' + location.search);
       }
     }
   }, [isAdmin, location.pathname, location.search, navigate]);
 
-  const visibleTasks = useMemo(() => {
-    if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
-    return SEARCH_TASKS.filter(task =>
-      task.id.toLowerCase().includes(normalizedSearchQuery) ||
-      task.title.toLowerCase().includes(normalizedSearchQuery) ||
-      task.status.toLowerCase().includes(normalizedSearchQuery) ||
-      task.assignee.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 6);
-  }, [normalizedSearchQuery]);
-
-  const visibleUsers = useMemo(() => {
-    if (!isAdmin || !normalizedSearchQuery) return [];
-    return SEARCH_USERS.filter(user =>
-      user.name.toLowerCase().includes(normalizedSearchQuery) ||
-      user.email.toLowerCase().includes(normalizedSearchQuery) ||
-      user.role.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 4);
-  }, [isAdmin, normalizedSearchQuery]);
-
-  const hasSearchResults = visibleTasks.length > 0 || visibleUsers.length > 0;
-
-  const handleSearchTaskClick = (taskId) => {
-    navigate(`/dashboard/tasks/${taskId}${location.search}`);
-    setSearchQuery('');
-    setShowSearchDropdown(false);
-  };
-
-  const handleSearchUserClick = () => {
-    // Only allow admins to navigate to users page
-    if (isAdmin) {
-      navigate(`/dashboard/users${location.search}`);
-    } else {
-      // Regular users should not access users page
-      console.warn('Regular users cannot access User Management');
-      return;
-    }
-    setSearchQuery('');
-    setShowSearchDropdown(false);
-  };
   // Handlers for AvatarDropdown actions
   const handleProfileClick = () => {
     navigate(`/dashboard/profile${location.search}`);
@@ -357,31 +315,6 @@ export default function MainLayout() {
                 </Link>
               )}
             </>
-          )}
-          {/* Notifications Item */}
-          {isNotificationsActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={`/dashboard/notifications${location.search}`}>
-                <div className="flex items-center">
-                  <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="bell"></i>
-                  <span className="text-sm font-bold">Notifications</span>
-                </div>
-                {unreadCount > 0 && (
-                  <span className="bg-[#EF4444] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>
-                )}
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={`/dashboard/notifications${location.search}`}>
-              <div className="flex items-center">
-                <i className="w-5 h-5 mr-3" data-lucide="bell"></i>
-                <span className="text-sm font-medium">Notifications</span>
-              </div>
-              {unreadCount > 0 && (
-                <span className="bg-[#EF4444] text-white text-[10px] font-bold px-3 py-0.5 rounded-full scale-[0.9]">{unreadCount}</span>
-              )}
-            </Link>
           )}
         </nav>
 
