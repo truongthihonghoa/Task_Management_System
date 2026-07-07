@@ -59,10 +59,11 @@ const formatTaskDate = (dateValue) => {
 export default function TaskManagement() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, currentRole = 'ADMIN', currentUser } = useOutletContext() || {};
+  const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole = 'ADMIN', currentUser } = useOutletContext() || {};
   const isAdmin = currentRole === 'ADMIN';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
+  const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
   const [isSprintExpanded, setIsSprintExpanded] = useState(true);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState(null);
 
@@ -128,6 +129,7 @@ export default function TaskManagement() {
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
+  const [sortOption, setSortOption] = useState('created-newest');
 
   // Sync tasks with MainLayout context for the CreateTaskModal's RichTextEditor
   useEffect(() => {
@@ -136,21 +138,40 @@ export default function TaskManagement() {
     }
   }, [tasks, setTasksForModal]);
 
+  // Sync sprints with MainLayout for CreateTaskModal
+  useEffect(() => {
+    if (setSprintsForModal) {
+      setSprintsForModal([
+        { id: sprint1Data.id, name: sprint1Data.name },
+        ...extraSprints.map(s => ({ id: s.id, name: s.name }))
+      ]);
+    }
+  }, [sprint1Data, extraSprints, setSprintsForModal]);
+
   const handleCreateTask = useCallback((taskData) => {
-    setTasks(prev => [
-      ...prev,
-      {
-        id: getNextTaskId(prev),
-        title: taskData.summary,
-        assignee: taskData.assignee === 'Unassigned' ? '' : taskData.assignee,
-        pts: Number(taskData.storyPoints) || 0,
-        status: taskData.status,
-        priority: taskData.priority,
-        date: formatTaskDate(taskData.createdAt),
-        description: taskData.description || ""
-      }
-    ]);
-  }, []);
+    const isSprint1 = !taskData.sprint || taskData.sprint === sprint1Data.name;
+    const newTask = {
+      title: taskData.summary,
+      assignee: taskData.assignee === 'Unassigned' ? '' : taskData.assignee,
+      pts: Number(taskData.storyPoints) || 0,
+      status: taskData.status,
+      priority: taskData.priority,
+      date: formatTaskDate(taskData.createdAt),
+      description: taskData.description || ""
+    };
+
+    if (isSprint1) {
+      setTasks(prev => [...prev, { ...newTask, id: getNextTaskId(prev) }]);
+    } else {
+      setExtraSprints(prevExtras => prevExtras.map(s => {
+        if (s.name === taskData.sprint) {
+          const extraId = `TM-${Math.floor(Math.random() * 1000) + 100}`;
+          return { ...s, tasks: [...(s.tasks || []), { ...newTask, id: extraId }] };
+        }
+        return s;
+      }));
+    }
+  }, [sprint1Data.name]);
 
   useEffect(() => {
     if (!setCreateTaskHandler) return undefined;
@@ -175,6 +196,37 @@ export default function TaskManagement() {
     } else {
       setSelectedTasks(tasks.map(t => t.id));
     }
+  };
+
+  const handleDeleteSelectedTasks = () => {
+    if (selectedTasks.length === 0) return;
+    if (!isAdmin) {
+      alert('You do not have permission to delete selected tasks.');
+      return;
+    }
+    setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+    setExtraSprints(prev => prev.map(s => ({
+      ...s,
+      tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
+    })));
+    if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
+      setSelectedTaskDetail(null);
+    }
+    setSelectedTasks([]);
+  };
+
+  const toolbarStatuses = isAdmin
+    ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
+    : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
+
+  const changeStatusForSelected = (newStatus) => {
+    if (!newStatus) return;
+    setTasks(prev => prev.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t));
+    setExtraSprints(prev => prev.map(s => ({
+      ...s,
+      tasks: s.tasks.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t)
+    })));
+    setShowToolbarStatusMenu(false);
   };
 
   const toggleTask = (id) => {
@@ -294,6 +346,19 @@ export default function TaskManagement() {
       }
     }
     return true;
+  }).sort((a, b) => {
+    switch (sortOption) {
+      case 'created-newest':
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      case 'created-oldest':
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      case 'name-az':
+        return (a.title || '').localeCompare(b.title || '');
+      case 'name-za':
+        return (b.title || '').localeCompare(a.title || '');
+      default:
+        return 0;
+    }
   });
 
   const handleUpdateTask = (updatedTask) => {
@@ -447,12 +512,64 @@ export default function TaskManagement() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Sort Dropdown */}
+          <div className="relative group">
+            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+              <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">sort</span>
+              <span className="text-xs font-bold text-[#5e4db2]">
+                {sortOption === 'created-newest' ? 'Newest First'
+                  : sortOption === 'created-oldest' ? 'Oldest First'
+                  : sortOption === 'name-az' ? 'Name A→Z'
+                  : 'Name Z→A'}
+              </span>
+              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+            </button>
+            <div className="absolute top-[100%] right-0 pt-1 w-52 hidden group-hover:block z-50">
+              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-outline-variant">Created Time</div>
+                <button
+                  type="button"
+                  onClick={() => setSortOption('created-newest')}
+                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-newest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                >
+                  <span>Newest First</span>
+                  {sortOption === 'created-newest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSortOption('created-oldest')}
+                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-oldest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                >
+                  <span>Oldest First</span>
+                  {sortOption === 'created-oldest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                </button>
+                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-t border-outline-variant mt-1">Task Name</div>
+                <button
+                  type="button"
+                  onClick={() => setSortOption('name-az')}
+                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-az' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                >
+                  <span>A → Z</span>
+                  {sortOption === 'name-az' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSortOption('name-za')}
+                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-za' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                >
+                  <span>Z → A</span>
+                  {sortOption === 'name-za' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                </button>
+              </div>
+            </div>
+          </div>
           {/* Sprint Actions */}
           {view === 'board' && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsCompleteSprintOpen(true)}
-                className="px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold hover:bg-[#e6e1ff] transition-colors"
+                disabled={filteredTasks.length === 0}
+                className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
               >
                 Complete sprint
               </button>
@@ -630,7 +747,8 @@ export default function TaskManagement() {
                 </div>
                 <button
                   onClick={() => setIsCompleteSprintOpen(true)}
-                  className="px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold hover:bg-[#e6e1ff] transition-colors shadow-sm"
+                  disabled={filteredTasks.length === 0}
+                  className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
                 >
                   Complete sprint
                 </button>
@@ -661,6 +779,7 @@ export default function TaskManagement() {
                 </div>
               </div>
             </div>
+              {/* selection toolbar moved to bottom-fixed container */}
             {isSprintExpanded && (
               <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full text-left border-collapse">
@@ -697,11 +816,14 @@ export default function TaskManagement() {
             {isSprintExpanded && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
-                  onClick={() => setShowCreateModal && setShowCreateModal(true)}
+                  onClick={() => {
+                    if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint1Data.name);
+                    setShowCreateModal && setShowCreateModal(true);
+                  }}
                   className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
                 >
                   <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
-                  <span className="text-[12px] font-medium">Create</span>
+                  <span className="text-[12px] font-medium">Create task</span>
                 </button>
               </div>
             )}
@@ -736,7 +858,8 @@ export default function TaskManagement() {
                   </div>
                   <button
                     onClick={() => setIsCompleteSprintOpen(true)}
-                    className="px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold hover:bg-[#e6e1ff] transition-colors shadow-sm"
+                    disabled={sprint.tasks.length === 0}
+                    className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprint.tasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
                   >
                     Complete sprint
                   </button>
@@ -768,8 +891,53 @@ export default function TaskManagement() {
                 </div>
               </div>
 
+              {/* Sprint Body */}
+              {expandedSprints[sprint.id] && sprint.tasks.length > 0 && (
+                <div className="max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
+                      <tr className="text-[11px] text-outline uppercase tracking-wider">
+                        <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                        <th className="px-6 py-3 font-bold">Title</th>
+                        <th className="px-6 py-3 font-bold">Assignee</th>
+                        <th className="px-6 py-3 font-bold text-center">Priority</th>
+                        <th className="px-6 py-3 font-bold">Status</th>
+                        <th className="px-6 py-3 font-bold">Completed</th>
+                        {isAdmin && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant">
+                      {sprint.tasks.map(task => (
+                        <TaskRow
+                          key={task.id}
+                          {...task}
+                          isAdmin={isAdmin}
+                          isSelected={selectedTasks.includes(task.id)}
+                          isAnySelected={selectedTasks.length > 0}
+                          onToggle={() => toggleTask(task.id)}
+                          onOpenDetail={() => setSelectedTaskDetail(task)}
+                          onDelete={() => {
+                            setExtraSprints(prev => prev.map(s => ({
+                              ...s,
+                              tasks: s.tasks.filter(t => t.id !== task.id)
+                            })));
+                            setTaskToDelete(null);
+                          }}
+                          onUpdateAssignee={(newAssignee) => {
+                            setExtraSprints(prev => prev.map(s => ({
+                              ...s,
+                              tasks: s.tasks.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t)
+                            })));
+                          }}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {/* Sprint Body - Empty State */}
-              {expandedSprints[sprint.id] && (
+              {expandedSprints[sprint.id] && sprint.tasks.length === 0 && (
                 <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
                   <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
                   <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
@@ -780,61 +948,95 @@ export default function TaskManagement() {
               {expandedSprints[sprint.id] && (
                 <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                   <button
-                    onClick={() => setShowCreateModal && setShowCreateModal(true)}
+                    onClick={() => {
+                      if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint.name);
+                      setShowCreateModal && setShowCreateModal(true);
+                    }}
                     className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
                   >
                     <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
-                    <span className="text-[12px] font-medium">Create</span>
+                    <span className="text-[12px] font-medium">Create task</span>
                   </button>
                 </div>
               )}
             </div>
           ))}
 
-          {/* TASK LIST / BACKLOG SECTION */}
-          <div className="mt-4 flex flex-col gap-2" id="backlog-section">
-            <div className="flex items-center justify-between bg-surface-container-low/30 p-2 rounded-t-lg border-x border-t border-outline-variant">
-              <div className="flex items-center gap-3">
-                <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant" />
-                <span className="material-symbols-outlined text-[18px] text-outline cursor-pointer">expand_more</span>
-                <span className="text-[12px] font-bold text-on-surface">Task list</span>
-                <span className="text-[11px] text-outline">(0 work items)</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-1">
-                  <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">0</span>
-                  <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">0</span>
-                  <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">0</span>
-                </div>
-                <button
-                  onClick={handleCreateSprint}
-                  className="px-3 py-1 bg-white border border-outline-variant rounded text-[11px] font-bold hover:bg-[#f0edff] hover:text-[#5e4db2] hover:border-[#e6e1ff] transition-colors shadow-sm"
-                >
-                  Create sprint
-                </button>
-              </div>
-            </div>
-
-            <div className="border border-dashed border-outline-variant rounded-b-lg p-6 flex flex-col items-center justify-center bg-surface-container-lowest">
-              <span className="text-[11px] text-outline italic">Your task list is empty.</span>
-            </div>
-
+          {/* CREATE SPRINT BUTTON */}
+          <div className="mt-4 flex justify-end" id="backlog-section">
             <button
-              onClick={() => setShowCreateModal && setShowCreateModal(true)}
-              className="flex items-center gap-2 mt-1 px-1 text-outline hover:text-primary transition-colors group w-fit"
+              onClick={handleCreateSprint}
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded-lg text-[12px] font-bold hover:bg-[#e6e1ff] hover:shadow-md transition-all shadow-sm"
             >
-              <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">
-                add
-              </span>
-              <span className="text-[12px] font-medium">
-                Create
-              </span>
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              Create Sprint
             </button>
           </div>
         </div>
       )}
 
       {/* Popovers & Modals */}
+      {/* Bottom-fixed selection toolbar */}
+      {selectedTasks.length > 0 && (
+        <div className="fixed left-6 right-6 bottom-4 z-50 flex justify-center pointer-events-none">
+          <div className="w-full max-w-[620px] pointer-events-auto rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 text-slate-700 shadow-sm ring-1 ring-gray-400/80 relative">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-medium text-slate-700">{selectedTasks.length} selected</span>
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="px-2 py-1 text-[12px] font-medium rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                >
+                  {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
+                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
+                    className="px-2 py-1 text-[12px] rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                  >
+                    Change status
+                  </button>
+                  {showToolbarStatusMenu && (
+                    <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                      {toolbarStatuses.map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => changeStatusForSelected(s)}
+                          className="w-full px-4 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedTasks}
+                  disabled={!isAdmin}
+                  title={!isAdmin ? 'Only ADMIN can delete tasks' : ''}
+                  className={`px-3 py-1 text-[12px] font-semibold rounded-md ${isAdmin ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'} shadow-sm transition`}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedTasks([]); }}
+                  aria-label="Close selection toolbar"
+                  className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-slate-500 hover:bg-gray-100 transition"
+                >
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <SprintInfoPopover
         isOpen={isSprintInfoOpen}
         onClose={() => setIsSprintInfoOpen(false)}
@@ -1240,7 +1442,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
               {priority === 'High' ? (
                 <span className="material-symbols-outlined text-[#BA1A1A] text-[20px] font-bold">keyboard_arrow_up</span>
               ) : priority === 'Medium' ? (
-                <span className="material-symbols-outlined text-orange-500 text-[20px] font-bold">keyboard_double_arrow_up</span>
+                <span style={{ fontSize: '20px', color: '#F97316', fontWeight: 700 }}>=</span>
               ) : (
                 <span className="material-symbols-outlined text-[#4C2B74] text-[20px] font-bold">keyboard_arrow_down</span>
               )}
@@ -1318,14 +1520,14 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
 
   return (
     <tr
-      className={`hover:bg-surface-container-low/50 transition-colors cursor-pointer ${isSelected ? 'bg-[#e6f0ff]' : ''}`}
+      className={`group hover:bg-surface-container-low/50 transition-colors cursor-pointer ${isSelected ? 'bg-[#e6f0ff]' : ''}`}
       onClick={() => onOpenDetail && onOpenDetail()}
     >
       <td className="px-2 py-2">
         <div className="flex items-center justify-center gap-3">
           <input
             type="checkbox"
-            className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity ${isAnySelected ? 'visible' : 'invisible'}`}
+            className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
             checked={isSelected}
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => {
@@ -1333,7 +1535,7 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
               onToggle();
             }}
           />
-          <span className="text-[11px] font-medium text-outline">{id}</span>
+          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{id}</span>
           <span className="px-1 py-0.5 bg-surface-container rounded text-[9px] font-bold text-outline">{pts}</span>
         </div>
       </td>
@@ -1397,7 +1599,7 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
         {priority === 'High' ? (
           <span className="material-symbols-outlined text-[#BA1A1A] font-bold text-[16px]">keyboard_arrow_up</span>
         ) : priority === 'Medium' ? (
-          <span className="material-symbols-outlined text-orange-500 font-bold text-[16px]">keyboard_double_arrow_up</span>
+          <span style={{ fontSize: '16px', color: '#F97316', fontWeight: 700 }}>=</span>
         ) : (
           <span className="material-symbols-outlined text-[#4C2B74] font-bold text-[16px]">keyboard_arrow_down</span>
         )}

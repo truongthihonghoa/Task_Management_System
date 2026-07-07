@@ -14,8 +14,7 @@ const userActivities = [
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
     target: "SCRUM-13: Design Base Layout",
     time: "2026-06-25 10:45:00",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -28,8 +27,7 @@ const userActivities = [
     statusColor: "bg-gray-100 text-gray-700 border-gray-200",
     target: "SCRUM-12: Design Attachment Section",
     time: "2 hours ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.15",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -42,8 +40,7 @@ const userActivities = [
     statusColor: "bg-amber-50 text-amber-700 border-amber-100",
     target: "SCRUM-5: Product Detail Page",
     time: "5 hours ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.22",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -56,8 +53,7 @@ const userActivities = [
     statusColor: "bg-green-50 text-green-700 border-green-100",
     target: "SCRUM-1: Design Login Page",
     time: "1 day ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Yesterday"
   },
   {
@@ -70,8 +66,7 @@ const userActivities = [
     statusColor: "bg-red-50 text-red-700 border-red-100",
     target: "SCRUM-7: Task Detail Screen",
     time: "1 day ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.15",
+    labelTitle: "Task",
     group: "Yesterday"
   }
 ];
@@ -85,10 +80,8 @@ const adminActivities = [
     action: "created user",
     status: "USER",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "UID-9902",
     time: "2026-06-25 09:15:00",
-    entityType: "User",
-    ipAddress: "192.168.1.45",
+    labelTitle: "User",
     group: "Today"
   },
   {
@@ -99,10 +92,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-5541",
     time: "2026-06-25 09:10:00",
-    entityType: "Task",
-    ipAddress: "10.0.4.12",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -113,10 +104,8 @@ const adminActivities = [
     action: "refreshed token",
     status: "TOKEN",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "TOK-REF-8",
     time: "2026-06-25 09:02:00",
-    entityType: "Token",
-    ipAddress: "Internal",
+    labelTitle: "Token",
     group: "Today"
   },
   {
@@ -127,10 +116,8 @@ const adminActivities = [
     action: "uploaded file",
     status: "ATTACHMENT",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "invoice_q1_final.pdf",
     time: "2026-06-25 08:58:00",
-    entityType: "Attachment",
-    ipAddress: "45.78.90.12",
+    labelTitle: "Attachment",
     group: "Yesterday"
   },
   {
@@ -141,10 +128,8 @@ const adminActivities = [
     action: "performed session login",
     status: "SESSION",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "Chrome / MacOS",
     time: "2026-06-25 08:45:00",
-    entityType: "Session",
-    ipAddress: "172.16.0.8",
+    labelTitle: "Session",
     group: "Yesterday"
   },
   {
@@ -155,10 +140,8 @@ const adminActivities = [
     action: "created user",
     status: "USER",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "UID-9903",
     time: "2026-06-24 16:30:00",
-    entityType: "User",
-    ipAddress: "192.168.1.45",
+    labelTitle: "User",
     group: "Yesterday"
   },
   {
@@ -169,10 +152,8 @@ const adminActivities = [
     action: "deleted comment",
     status: "COMMENT",
     statusColor: "bg-red-50 text-red-700 border-red-100",
-    target: "COM-104",
     time: "2026-06-23 11:24:00",
-    entityType: "Comment",
-    ipAddress: "10.0.4.12",
+    labelTitle: "Comment",
     group: "Yesterday"
   },
   {
@@ -183,10 +164,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-2291",
     time: "2026-06-20 14:15:00",
-    entityType: "Task",
-    ipAddress: "45.78.90.12",
+    labelTitle: "Task",
     group: "Yesterday"
   },
   {
@@ -197,10 +176,8 @@ const adminActivities = [
     action: "performed session login",
     status: "SESSION",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "Safari / iOS",
     time: "2026-06-18 07:12:00",
-    entityType: "Session",
-    ipAddress: "172.16.0.8",
+    labelTitle: "Session",
     group: "Yesterday"
   },
   {
@@ -211,10 +188,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-3382",
     time: "2026-06-15 10:00:00",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Yesterday"
   }
 ];
@@ -227,22 +202,19 @@ const auditLogsData = [
     avatarBg: "#3525cd",
     role: "Admin",
     event: "Created User",
-    entityType: "User",
-    object: "UID-9902",
+    labelTitle: "User",
     createdAt: "2026-06-25 09:15:00",
-    ipAddress: "192.168.1.45",
     payload: {
       log_id: "AL-02340",
       user_id: "USR-102",
       action: "CREATE_USER",
-      entity_type: "USER",
+      labelTitle: "USER",
       entity_id: "UID-9902",
       payload: {
         email: "new.user@example.com",
         role: "Admin",
         status: "active"
       },
-      ip_address: "192.168.1.45",
       created_at: "2026-06-25 09:15:00"
     }
   },
@@ -253,22 +225,19 @@ const auditLogsData = [
     avatarBg: "#ff0080",
     role: "User",
     event: "Updated Task",
-    entityType: "Task",
-    object: "TSK-5541",
+    labelTitle: "Task",
     createdAt: "2026-06-25 09:10:00",
-    ipAddress: "10.0.4.12",
     payload: {
       log_id: "AL-02341",
       user_id: "USR-105",
       action: "UPDATE_TASK",
-      entity_type: "TASK",
+      labelTitle: "TASK",
       entity_id: "TSK-5541",
       payload: {
         title: "API Documentation",
         status: "in_progress",
         priority: "High"
       },
-      ip_address: "10.0.4.12",
       created_at: "2026-06-25 09:10:00"
     }
   },
@@ -279,21 +248,18 @@ const auditLogsData = [
     avatarBg: "#4648d4",
     role: "User",
     event: "Refreshed Token",
-    entityType: "Token",
-    object: "TOK-REF-8",
+    labelTitle: "Token",
     createdAt: "2026-06-25 09:02:00",
-    ipAddress: "Internal",
     payload: {
       log_id: "AL-02342",
       user_id: "SYS-BOT",
       action: "REFRESH_TOKEN",
-      entity_type: "TOKEN",
+      labelTitle: "TOKEN",
       entity_id: "TOK-REF-8",
       payload: {
         token_type: "refresh",
         status: "success"
       },
-      ip_address: "Internal",
       created_at: "2026-06-25 09:02:00"
     }
   },
@@ -304,22 +270,19 @@ const auditLogsData = [
     avatarBg: "#a44100",
     role: "User",
     event: "Uploaded File",
-    entityType: "Attachment",
-    object: "invoice_q1_final.pdf",
+    labelTitle: "Attachment",
     createdAt: "2026-06-25 08:58:00",
-    ipAddress: "45.78.90.12",
     payload: {
       log_id: "AL-02343",
       user_id: "USR-108",
       action: "UPLOAD_FILE",
-      entity_type: "ATTACHMENT",
+      labelTitle: "ATTACHMENT",
       entity_id: "ATT-992",
       payload: {
         file_name: "invoice_q1_final.pdf",
         size: "2.4 MB",
         mime_type: "application/pdf"
       },
-      ip_address: "45.78.90.12",
       created_at: "2026-06-25 08:58:00"
     }
   },
@@ -330,22 +293,19 @@ const auditLogsData = [
     avatarBg: "#777587",
     role: "User",
     event: "Session Login",
-    entityType: "Session",
-    object: "Chrome / MacOS",
+    labelTitle: "Session",
     createdAt: "2026-06-25 08:45:00",
-    ipAddress: "172.16.0.8",
     payload: {
       log_id: "AL-02344",
       user_id: "USR-112",
       action: "SESSION_LOGIN",
-      entity_type: "SESSION",
+      labelTitle: "SESSION",
       entity_id: "SES-883",
       payload: {
         browser: "Chrome",
         os: "MacOS",
         device: "Desktop"
       },
-      ip_address: "172.16.0.8",
       created_at: "2026-06-25 08:45:00"
     }
   },
@@ -356,22 +316,19 @@ const auditLogsData = [
     avatarBg: "#3525cd",
     role: "Admin",
     event: "Create User",
-    entityType: "User",
-    object: "UID-9903",
+    labelTitle: "User",
     createdAt: "2026-06-24 16:30:00",
-    ipAddress: "192.168.1.45",
     payload: {
       log_id: "AL-02345",
       user_id: "USR-102",
       action: "CREATE_USER",
-      entity_type: "USER",
+      labelTitle: "USER",
       entity_id: "UID-9903",
       payload: {
         email: "another.user@example.com",
         role: "User",
         status: "active"
       },
-      ip_address: "192.168.1.45",
       created_at: "2026-06-24 16:30:00"
     }
   },
@@ -382,22 +339,19 @@ const auditLogsData = [
     avatarBg: "#ff0080",
     role: "User",
     event: "Delete Comment",
-    entityType: "Comment",
-    object: "COM-104",
+    labelTitle: "Comment",
     createdAt: "2026-06-23 11:24:00",
-    ipAddress: "10.0.4.12",
     payload: {
       log_id: "AL-02346",
       user_id: "USR-105",
       action: "DELETE_COMMENT",
-      entity_type: "COMMENT",
+      labelTitle: "COMMENT",
       entity_id: "COM-104",
       payload: {
         comment_id: "COM-104",
         task_id: "TSK-5541",
         author: "Sarah Lee"
       },
-      ip_address: "10.0.4.12",
       created_at: "2026-06-23 11:24:00"
     }
   },
@@ -408,48 +362,19 @@ const auditLogsData = [
     avatarBg: "#a44100",
     role: "User",
     event: "Update Task",
-    entityType: "Task",
-    object: "TSK-2291",
+    labelTitle: "Task",
     createdAt: "2026-06-20 14:15:00",
-    ipAddress: "45.78.90.12",
     payload: {
       log_id: "AL-02347",
       user_id: "USR-108",
       action: "UPDATE_TASK",
-      entity_type: "TASK",
+      labelTitle: "TASK",
       entity_id: "TSK-2291",
       payload: {
         title: "Database Migration",
         status: "done"
       },
-      ip_address: "45.78.90.12",
       created_at: "2026-06-20 14:15:00"
-    }
-  },
-  {
-    id: "AL-02348",
-    user: "Michael Chen",
-    initials: "MC",
-    avatarBg: "#777587",
-    role: "User",
-    event: "Session Login",
-    entityType: "Session",
-    object: "Safari / iOS",
-    createdAt: "2026-06-18 07:12:00",
-    ipAddress: "172.16.0.8",
-    payload: {
-      log_id: "AL-02348",
-      user_id: "USR-112",
-      action: "SESSION_LOGIN",
-      entity_type: "SESSION",
-      entity_id: "SES-884",
-      payload: {
-        browser: "Safari",
-        os: "iOS",
-        device: "Mobile"
-      },
-      ip_address: "172.16.0.8",
-      created_at: "2026-06-18 07:12:00"
     }
   },
   {
@@ -459,22 +384,42 @@ const auditLogsData = [
     avatarBg: "#3525cd",
     role: "Admin",
     event: "Update Task",
-    entityType: "Task",
-    object: "TSK-3382",
+    labelTitle: "Task",
     createdAt: "2026-06-15 10:00:00",
-    ipAddress: "192.168.1.45",
     payload: {
       log_id: "AL-02349",
       user_id: "USR-102",
       action: "UPDATE_TASK",
-      entity_type: "TASK",
+      labelTitle: "TASK",
       entity_id: "TSK-3382",
       payload: {
         title: "Refactor Auth Middleware",
         status: "in_review"
       },
-      ip_address: "192.168.1.45",
       created_at: "2026-06-15 10:00:00"
+    }
+  },
+  {
+    id: "AL-02348",
+    user: "Michael Chen",
+    initials: "MC",
+    avatarBg: "#777587",
+    role: "User",
+    event: "Session Login",
+    labelTitle: "Session",
+    createdAt: "2026-06-18 07:12:00",
+    payload: {
+      log_id: "AL-02348",
+      user_id: "USR-112",
+      action: "SESSION_LOGIN",
+      labelTitle: "SESSION",
+      entity_id: "SES-884",
+      payload: {
+        browser: "Safari",
+        os: "iOS",
+        device: "Mobile"
+      },
+      created_at: "2026-06-18 07:12:00"
     }
   }
 ];
@@ -695,15 +640,19 @@ const ActivityItem = ({ activity, isCompact = true }) => (
         <span className={`status-pill px-2 py-0.5 rounded ${isCompact ? 'rounded-full text-[9px]' : 'text-[10px]'} ${activity.statusColor} font-bold uppercase border whitespace-nowrap`}>
           {activity.status}
         </span>
-        <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
-        {!isCompact ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
-          </span>
-        ) : (
-          <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
-            {activity.target}
-          </span>
+        {activity.target && (
+          <>
+            <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
+            {!isCompact ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
+                <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
+              </span>
+            ) : (
+              <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
+                {activity.target}
+              </span>
+            )}
+          </>
         )}
       </div>
       <p className="text-[11px] text-[#5e636e] mt-0.5">{activity.time}</p>
@@ -739,7 +688,7 @@ const Dashboard = () => {
   const [selectedDate, setSelectedDate] = useState("All Dates");
 
   // Custom Audit Logs specific states
-  const [modalEntityType, setModalEntityType] = useState("All Entities");
+  const [modalLabelTitle, setModalLabelTitle] = useState("All Labels");
   const [modalRowsPerPage, setModalRowsPerPage] = useState(25);
   const [modalPage, setModalPage] = useState(1);
   const [expandedLogId, setExpandedLogId] = useState(null);
@@ -750,6 +699,23 @@ const Dashboard = () => {
   const roleParam = searchParams.get('role')?.toUpperCase();
   const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
   const user = { role: isAdmin ? "ADMIN" : "USER" };
+
+  const priorityBreakdownData = isAdmin
+    ? [
+      { label: 'High', value: 245, color: '#FF8B00', icon: 'keyboard_arrow_up' },
+      { label: 'Medium', value: 412, color: '#DE350B', icon: 'drag_handle' },
+      { label: 'Low', value: 225, color: '#4C2B74', icon: 'keyboard_arrow_down' }
+    ]
+    : [
+      { label: 'High', value: 12, color: '#FF8B00', icon: 'keyboard_arrow_up' },
+      { label: 'Medium', value: 25, color: '#DE350B', icon: 'drag_handle' },
+      { label: 'Low', value: 10, color: '#4C2B74', icon: 'keyboard_arrow_down' }
+    ];
+
+  const maxPriorityValue = isAdmin ? 500 : 30;
+  const yAxisTicks = isAdmin
+    ? [500, 400, 300, 200, 100, 0]
+    : [30, 24, 18, 12, 6, 0];
 
   const taskTabs = isAdmin
     ? ['Worked on', 'Viewed', 'Assign History']
@@ -799,7 +765,7 @@ const Dashboard = () => {
     const matchSearch = log.user.toLowerCase().includes(modalSearch.toLowerCase()) ||
       log.target.toLowerCase().includes(modalSearch.toLowerCase()) ||
       log.action.toLowerCase().includes(modalSearch.toLowerCase());
-    const matchType = modalEventType === "All Events" || log.entityType.toLowerCase() === modalEventType.toLowerCase();
+    const matchType = modalEventType === "All Events" || log.labelTitle.toLowerCase() === modalEventType.toLowerCase();
 
     // Time range filtering (simplified for mock)
     const matchTime = modalTimeRange === "All Time" ||
@@ -844,10 +810,10 @@ const Dashboard = () => {
       matchEvent = ev === opt || log.event.toLowerCase() === modalEventType.toLowerCase();
     }
 
-    // 4. Entity Type filter
+    // 4. Label Title filter
     let matchEntity = true;
-    if (modalEntityType !== "All Entities") {
-      matchEntity = log.entityType.toLowerCase() === modalEntityType.toLowerCase();
+    if (modalLabelTitle !== "All Labels") {
+      matchEntity = log.labelTitle.toLowerCase() === modalLabelTitle.toLowerCase();
     }
 
     return matchSearch && matchDate && matchEvent && matchEntity;
@@ -1058,7 +1024,7 @@ const Dashboard = () => {
                         setModalEventType("All Events");
                         setModalTimeRange("Last 7 days");
                         setModalSortOrder("Newest First");
-                        setModalEntityType("All Entities");
+                        setModalLabelTitle("All Labels");
                         setModalPage(1);
                         setTimeout(() => setIsRefreshing(false), 500);
                       }}
@@ -1110,14 +1076,14 @@ const Dashboard = () => {
                     </div>
                     {/* Entity Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Entity Type</label>
+                      <label className="font-label-sm px-1 text-black font-bold">Label Title</label>
                       <div className="relative">
                         <select
-                          value={modalEntityType}
-                          onChange={(e) => { setModalEntityType(e.target.value); setModalPage(1); }}
+                          value={modalLabelTitle}
+                          onChange={(e) => { setModalLabelTitle(e.target.value); setModalPage(1); }}
                           className="w-full appearance-none bg-white border border-outline-variant rounded-lg py-2 pl-4 pr-10 font-body-md focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100"
                         >
-                          <option value="All Entities">All Entities</option>
+                          <option value="All Labels">All Labels</option>
                           <option value="User">User</option>
                           <option value="Task">Task</option>
                           <option value="Comment">Comment</option>
@@ -1151,17 +1117,15 @@ const Dashboard = () => {
                 {/* Audit Table Section */}
                 <section className="border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col bg-white flex-1 min-h-0">
                   <div className="flex-1 overflow-auto relative custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
                       <thead className="border-b border-outline-variant sticky top-0 z-20 bg-slate-200">
                         <tr>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">ID</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">User</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Role</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Event</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Entity Type</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Object</th>
+                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Label Title</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">CREATED AT</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">IP Address</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold text-center">Details</th>
                         </tr>
                       </thead>
@@ -1185,20 +1149,16 @@ const Dashboard = () => {
                                   <span className="text-[#3525cd] font-semibold">{log.event}</span>
                                 </td>
                                 <td className="px-6 whitespace-nowrap py-2 border-r">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${log.entityType === 'User' ? 'bg-blue-100 text-blue-700' :
-                                    log.entityType === 'Task' ? 'bg-teal-100 text-teal-700' :
-                                      log.entityType === 'Token' ? 'bg-slate-200 text-slate-700' :
-                                        log.entityType === 'Attachment' ? 'bg-blue-100 text-blue-700' :
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${log.labelTitle === 'User' ? 'bg-blue-100 text-blue-700' :
+                                    log.labelTitle === 'Task' ? 'bg-teal-100 text-teal-700' :
+                                      log.labelTitle === 'Token' ? 'bg-slate-200 text-slate-700' :
+                                        log.labelTitle === 'Attachment' ? 'bg-blue-100 text-blue-700' :
                                           'bg-slate-200 text-slate-700'
                                     }`}>
-                                    {log.entityType}
+                                    {log.labelTitle}
                                   </span>
                                 </td>
-                                <td className="px-6 font-body-sm whitespace-nowrap py-2 border-r text-black truncate max-w-[200px]" title={log.object}>
-                                  {log.object}
-                                </td>
                                 <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.createdAt}</td>
-                                <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.ipAddress}</td>
                                 <td className="px-6 text-center whitespace-nowrap py-2">
                                   <button
                                     type="button"
@@ -1214,7 +1174,7 @@ const Dashboard = () => {
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-surface-container-lowest">
-                                  <td className="px-6 py-4" colSpan={9}>
+                                  <td className="px-6 py-4" colSpan={7}>
                                     <div className="rounded-lg border border-outline-variant bg-slate-100 p-4">
                                       <div className="flex items-center justify-between mb-3">
                                         <h4 className="font-label-md text-black font-semibold">Log Payload</h4>
@@ -1246,7 +1206,7 @@ const Dashboard = () => {
                               setModalRowsPerPage(parseInt(e.target.value));
                               setModalPage(1);
                             }}
-                            className="bg-surface-container-lowest border border-[#c7c4d8] rounded-lg py-1 pl-2 pr-6 font-body-sm text-on-surface focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100 text-sm"
+                            className="bg-surface-container-lowest border border-[#c7c4d8] rounded-lg py-1 pl-2 pr-4 font-body-sm text-on-surface focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100 text-sm"
                           >
                             <option value={10}>10</option>
                             <option value={25}>25</option>
@@ -1326,7 +1286,7 @@ const Dashboard = () => {
         <div className="space-y-4">
           <div>
             <h2 className="text-2xl font-bold text-[#4C2B74]">Dashboard</h2>
-            <p className="text-sm text-[#5e636e] font-medium">Track task progress, monitor task status, and stay updated with recent activities.</p>
+            <p className="text-sm text-gray-500">Track task progress, monitor task status, and stay updated with recent activities.</p>
           </div>
 
           {/* KPI Cards */}
@@ -1458,12 +1418,9 @@ const Dashboard = () => {
             <div className="flex h-64 relative">
               {/* Y-Axis */}
               <div className="flex flex-col justify-between text-[11px] font-bold text-[#5e636e]/60 pr-6 pb-8 border-r border-[#170338]/10 h-full">
-                <span>10</span>
-                <span>8</span>
-                <span>6</span>
-                <span>4</span>
-                <span>2</span>
-                <span className="mb-[-2px]">0</span>
+                {yAxisTicks.map((tick, i) => (
+                  <span key={i} className={i === yAxisTicks.length - 1 ? "mb-[-2px]" : ""}>{tick}</span>
+                ))}
               </div>
 
               <div className="flex-1 relative ml-1 h-full">
@@ -1476,16 +1433,9 @@ const Dashboard = () => {
                     ))}
                   </div>
 
-                  {/* 2. Container chứa các cột */}
+                  {/* 2. Container chứa các cột ('HIGH','MEDIUM','LOW')*/}
                   <div className="absolute inset-x-0 bottom-0 h-full flex items-end justify-around px-2">
-                    {[
-                      { label: 'Highest', value: 0, color: '#ff4d4d' },
-                      { label: 'High', value: 7, color: '#ff5c5c' },
-                      { label: 'Medium', value: 9, color: '#888995' },
-                      { label: 'Low', value: 0, color: '#3b82f6' },
-                      { label: 'Lowest', value: 0, color: '#4466ff' },
-                      { label: 'None', value: 1, color: '#d1d5db' },
-                    ].map((item, idx) => (
+                    {priorityBreakdownData.map((item, idx) => (
                       <div
                         key={idx}
                         className="group relative flex flex-col items-center w-full h-full justify-end"
@@ -1494,10 +1444,10 @@ const Dashboard = () => {
                       >
                         {/* Cột dữ liệu - Bây giờ chứa Tooltip để căn chỉnh chuẩn xác */}
                         <div
-                          className={`w-10 sm:w-12 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
+                          className={`w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
                             }`}
                           style={{
-                            height: `${(item.value / 10) * 100}%`,
+                            height: `${(item.value / maxPriorityValue) * 100}%`,
                           }}
                         >
                           {/* Popover khi hover - Gắn trực tiếp vào đầu cột */}
@@ -1519,22 +1469,14 @@ const Dashboard = () => {
                         <div className="absolute top-full mt-2 w-0.5 h-3 bg-[#170338]/10"></div>
                       </div>
                     ))}
-
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Legend / X-Axis Labels */}
+            {/* Legend / X-Axis Labels ('HIGH','MEDIUM','LOW')*/}
             <div className="flex justify-around pl-14 mt-6">
-              {[
-                { label: 'Highest', color: '#ff4d4d', icon: 'keyboard_double_arrow_up' },
-                { label: 'High', color: '#ff5c5c', icon: 'keyboard_arrow_up' },
-                { label: 'Medium', color: '#888995', icon: 'drag_handle' },
-                { label: 'Low', color: '#3b82f6', icon: 'keyboard_arrow_down' },
-                { label: 'Lowest', color: '#4466ff', icon: 'keyboard_double_arrow_down' },
-                { label: 'None', color: '#9ca3af', icon: 'remove' }
-              ].map((item, idx) => (
+              {priorityBreakdownData.map((item, idx) => (
                 <div key={idx} className="flex items-center gap-1.5 text-[#5e636e] group cursor-pointer hover:text-[#170338] transition-colors">
                   <span className="material-symbols-outlined text-[16px] font-bold" style={{ color: item.color }}>{item.icon}</span>
                   <span className="text-[11px] font-bold">{item.label}</span>
@@ -1544,145 +1486,75 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Conditionally render Team Workload or User Account Overview */}
-        <div className="glass-card p-8 rounded-2xl flex flex-col w-full">
-          {isAdmin ? (
-            <>
-              {/* User Account Overview (ADMIN ONLY) */}
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-[#1a1c1e]">User Account Overview</h4>
-                <p className="text-sm text-[#5e636e] mt-1 font-medium">
-                  Monitor the current status and health of user accounts across the system.
-                </p>
+        {/* Conditionally render User Account Overview */}
+        {isAdmin && (
+          <div className="glass-card p-8 rounded-2xl flex flex-col w-full">
+            {/* User Account Overview (ADMIN ONLY) */}
+            <div className="mb-8">
+              <h4 className="text-lg font-bold text-[#1a1c1e]">User Account Overview</h4>
+              <p className="text-sm text-[#5e636e] mt-1 font-medium">
+                Monitor the current status and health of user accounts across the system.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
+                <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Account Status</span>
+                <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">User Distribution</span>
               </div>
 
-              <div className="space-y-6">
-                <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Account Status</span>
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">User Distribution</span>
-                </div>
-
-                <div className="space-y-4">
-                  {userAccountData.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
-                      onMouseEnter={() => setHoveredAccount(idx)}
-                      onMouseLeave={() => setHoveredAccount(null)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                          style={{ backgroundColor: item.color }}
-                        >
-                          <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                        </div>
-                        <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
-                          {item.label}
-                        </span>
+              <div className="space-y-4">
+                {userAccountData.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
+                    onMouseEnter={() => setHoveredAccount(idx)}
+                    onMouseLeave={() => setHoveredAccount(null)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
+                        style={{ backgroundColor: item.color }}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
                       </div>
-                      <div className="flex items-center gap-4 relative">
-                        <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
-                          <div
-                            className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
-                            style={{
-                              width: `${item.percentage}%`,
-                              background: item.gradient,
-                              boxShadow: `4px 0 12px ${item.glow}`
-                            }}
-                          >
-                            <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>
-                          </div>
-                        </div>
-
-
-                        {/* Account Tooltip */}
-                        {hoveredAccount === idx && (
-                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
-                            <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
-                              <span className="text-white/70">{item.percentage}%</span>
-                              <span className="w-1 h-1 rounded-full bg-white/30"></span>
-                              <span>({item.count}/{item.total} users)</span>
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
-                          </div>
-                        )}
-                      </div>
+                      <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
+                        {item.label}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Team Workload (USER ONLY) */}
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-[#1a1c1e]">Team workload</h4>
-                <p className="text-sm text-[#5e636e] mt-1 font-medium">
-                  Monitor the capacity of your team.
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Assignee</span>
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Work distribution</span>
-                </div>
-
-                <div className="space-y-4">
-                  {teamWorkloadData.map((member, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
-                      onMouseEnter={() => setHoveredWorkload(idx)}
-                      onMouseLeave={() => setHoveredWorkload(null)}
-                    >
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4 relative">
+                      <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
                         <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                          style={{ backgroundColor: member.color }}
+                          className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
+                          style={{
+                            width: `${item.percentage}%`,
+                            background: item.gradient,
+                            boxShadow: `4px 0 12px ${item.glow}`
+                          }}
                         >
-                          {member.avatar ? (
-                            <span className="material-symbols-outlined text-[18px]">{member.avatar}</span>
-                          ) : (
-                            member.initials
-                          )}
+                          <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>
                         </div>
-                        <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
-                          {member.name}
-                        </span>
                       </div>
-                      <div className="flex items-center gap-4 relative">
-                        <div className="flex-1 h-8 bg-gray-100 rounded-md overflow-hidden relative shadow-inner">
-                          <div
-                            className="absolute h-full transition-all duration-1000 ease-out bg-[#888995] flex items-center px-3"
-                            style={{ width: `${member.percentage}%` }}
-                          >
-                            {member.percentage > 5 && member.name !== "Unassigned" && (
-                              <span className="text-[10px] font-black text-white/90">{member.percentage}%</span>
-                            )}
-                          </div>
-                        </div>
 
-                        {/* Workload Tooltip */}
-                        {hoveredWorkload === idx && (
-                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
-                            <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
-                              <span className="text-white/70">{member.percentage}%</span>
-                              <span className="w-1 h-1 rounded-full bg-white/30"></span>
-                              <span>({member.tasks}/{member.total} work items)</span>
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
+
+                      {/* Account Tooltip */}
+                      {hoveredAccount === idx && (
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+                          <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
+                            <span className="text-white/70">{item.percentage}%</span>
+                            <span className="w-1 h-1 rounded-full bg-white/30"></span>
+                            <span>({item.count}/{item.total} users)</span>
                           </div>
-                        )}
-                      </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
 
 
@@ -1715,11 +1587,10 @@ const Dashboard = () => {
                             setShowStatusFilter(!showStatusFilter);
                             setShowDateFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedStatus !== "All Status" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
-                              : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedStatus !== "All Status"
+                            ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
+                            : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
+                            }`}
                         >
                           <span className="truncate">{selectedStatus}</span>
                           <span className={`material-symbols-outlined text-gray-400 transition-transform ${showStatusFilter ? 'rotate-180' : ''}`}>expand_more</span>
@@ -1746,11 +1617,10 @@ const Dashboard = () => {
                             setShowDateFilter(!showDateFilter);
                             setShowStatusFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedDate !== "All Dates" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
-                              : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedDate !== "All Dates"
+                            ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
+                            : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
+                            }`}
                         >
                           <div className="flex items-center gap-2 truncate">
                             <span className="material-symbols-outlined text-gray-400 text-lg">calendar_today</span>
@@ -1798,7 +1668,6 @@ const Dashboard = () => {
 
                     ))}
                   </div>
-
 
                 </div>
               </div>
