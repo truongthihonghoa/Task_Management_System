@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import UserModal from '../components/tasks/EditUserModal';
 
 // ── Static user data (replace with API data later) ──────────────────────────
 const USERS = [
   {
     id: 1,
-    name:      'Trang Nguyen',
-    email:     'ntttrang241205@gmail.com',
-    role:      'Administrator',
+    name:      'Alex Morgan',
+    email:     'alex.morgan@taskcore.com',
+    role:      'Super Admin',
     status:    'Active',
     lastLogin: '2 mins ago',
     createdAt: 'Jan 12, 2024',
@@ -15,6 +16,16 @@ const USERS = [
   },
   {
     id: 2,
+    name:      'Trang Nguyen',
+    email:     'trang.nguyen@taskcore.com',
+    role:      'User',
+    status:    'Active',
+    lastLogin: '1 hour ago',
+    createdAt: 'Feb 05, 2024',
+    avatar:    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+  },
+  {
+    id: 3,
     name:      'Tien Phham',
     email:     'tienthicamphamqn20@gmail.com',
     role:      'User',
@@ -26,6 +37,20 @@ const USERS = [
 ];
 
 export default function UserManagement() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Role-based access control
+  const roleParam = searchParams.get('role')?.toUpperCase();
+  const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
+
+  useEffect(() => {
+    if (!isAdmin) {
+      // Regular user trying to access User Management - redirect to Space Management
+      navigate('/dashboard/spaces?role=USER', { replace: true });
+    }
+  }, [isAdmin, navigate]);
+  
   // Modal visibility
   const [modalOpen, setModalOpen] = useState(false);
   // 'create' | 'edit'
@@ -155,7 +180,7 @@ export default function UserManagement() {
 
               {showRoleFilter && (
                 <div className="absolute left-0 mt-2 w-44 bg-white border border-gray-200 rounded shadow-lg z-50 overflow-hidden">
-                  {["All Roles", "Administrator", "User"].map((role) => (
+                  {["All Roles", "Super Admin", "User"].map((role) => (
                     <button
                       key={role}
                       onClick={() => {

@@ -183,7 +183,62 @@ export default function MainLayout() {
   const isNotificationsActive = location.pathname === '/dashboard/notifications';
   const isSettingsActive = location.pathname === '/dashboard/notification-settings';
   const isHelpActive = location.pathname === '/dashboard/help';
+  const isAdmin = currentRole === 'ADMIN';
 
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  // Redirect non-admin users away from admin-only routes
+  useEffect(() => {
+    if (!isAdmin) {
+      // If on Dashboard (index) redirect to Tasks (spaces)
+      if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
+        navigate('/dashboard/spaces' + location.search);
+      }
+      // If trying to access Users page, redirect to Tasks
+      if (location.pathname.startsWith('/dashboard/users')) {
+        navigate('/dashboard/spaces' + location.search);
+      }
+    }
+  }, [isAdmin, location.pathname, location.search, navigate]);
+
+  const visibleTasks = useMemo(() => {
+    if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
+    return SEARCH_TASKS.filter(task =>
+      task.id.toLowerCase().includes(normalizedSearchQuery) ||
+      task.title.toLowerCase().includes(normalizedSearchQuery) ||
+      task.status.toLowerCase().includes(normalizedSearchQuery) ||
+      task.assignee.toLowerCase().includes(normalizedSearchQuery)
+    ).slice(0, 6);
+  }, [normalizedSearchQuery]);
+
+  const visibleUsers = useMemo(() => {
+    if (!isAdmin || !normalizedSearchQuery) return [];
+    return SEARCH_USERS.filter(user =>
+      user.name.toLowerCase().includes(normalizedSearchQuery) ||
+      user.email.toLowerCase().includes(normalizedSearchQuery) ||
+      user.role.toLowerCase().includes(normalizedSearchQuery)
+    ).slice(0, 4);
+  }, [isAdmin, normalizedSearchQuery]);
+
+  const hasSearchResults = visibleTasks.length > 0 || visibleUsers.length > 0;
+
+  const handleSearchTaskClick = (taskId) => {
+    navigate(`/dashboard/tasks/${taskId}${location.search}`);
+    setSearchQuery('');
+    setShowSearchDropdown(false);
+  };
+
+  const handleSearchUserClick = () => {
+    // Only allow admins to navigate to users page
+    if (isAdmin) {
+      navigate(`/dashboard/users${location.search}`);
+    } else {
+      // Regular users should not access users page
+      console.warn('Regular users cannot access User Management');
+      return;
+    }
+    setSearchQuery('');
+    setShowSearchDropdown(false);
+  };
   // Handlers for AvatarDropdown actions
   const handleProfileClick = () => {
     navigate(`/dashboard/profile${location.search}`);
@@ -242,20 +297,24 @@ export default function MainLayout() {
 
         {/* Navigation Links */}
         <nav className="flex-1 px-3 space-y-1 mt-4">
-          {/* Dashboard Item */}
-          {isDashboardActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard${location.search}`}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
-                <span className="text-sm font-bold">Dashboard</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={`/dashboard${location.search}`}>
-              <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
-              <span className="text-sm font-medium">Dashboard</span>
-            </Link>
+          {/* Dashboard Item - Only visible to Super Admin */}
+          {isAdmin && (
+            <>
+              {isDashboardActive ? (
+                <div className="relative flex items-center">
+                  <div className="sidebar-active-indicator"></div>
+                  <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard${location.search}`}>
+                    <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
+                    <span className="text-sm font-bold">Dashboard</span>
+                  </Link>
+                </div>
+              ) : (
+                <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={`/dashboard${location.search}`}>
+                  <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
+                  <span className="text-sm font-medium">Dashboard</span>
+                </Link>
+              )}
+            </>
           )}
 
           {/* Tasks Item */}
@@ -280,20 +339,24 @@ export default function MainLayout() {
             </Link>
           )}
 
-          {/* Users Item */}
-          {isUsersActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/users${location.search}`}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
-                <span className="text-sm font-bold">Users</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/users${location.search}`}>
-              <i className="w-5 h-5 mr-3" data-lucide="users"></i>
-              <span className="text-sm font-medium">Users</span>
-            </Link>
+          {/* Users Item - Only visible to Super Admin */}
+          {isAdmin && (
+            <>
+              {isUsersActive ? (
+                <div className="relative flex items-center">
+                  <div className="sidebar-active-indicator"></div>
+                  <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/users${location.search}`}>
+                    <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
+                    <span className="text-sm font-bold">Users</span>
+                  </Link>
+                </div>
+              ) : (
+                <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/users${location.search}`}>
+                  <i className="w-5 h-5 mr-3" data-lucide="users"></i>
+                  <span className="text-sm font-medium">Users</span>
+                </Link>
+              )}
+            </>
           )}
           {/* Notifications Item */}
           {isNotificationsActive ? (
@@ -328,20 +391,20 @@ export default function MainLayout() {
           {isHelpActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to="/dashboard/help">
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/help${location.search}`}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
                 <span className="text-sm font-bold">Help</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to="/dashboard/help">
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/help${location.search}`}>
               <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
               <span className="text-sm font-medium">Help</span>
             </Link>
           )}
           <div className="relative" ref={settingsRef}>
             <button
-              onClick={() => navigate("/dashboard/notification-settings")}
+              onClick={() => navigate(`/dashboard/notification-settings${location.search}`)}
               className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
                 isSettingsActive
                   ? "bg-[#E0E8FF] text-[#2D1B4E]"

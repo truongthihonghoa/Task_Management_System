@@ -25,7 +25,7 @@ const SpaceManagement = () => {
  
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
  
-  // Sample data based on image
+  // Sample data based on image with owner and members structure
   const spaces = [
     {
       id: 'SP-001',
@@ -34,7 +34,11 @@ const SpaceManagement = () => {
       tasksCount: 25,
       date: '2026-06-01',
       status: 'Active',
-      assignedUsers: ['admin-demo-user', '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5']
+      owner: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', // Trang Nguyen (Owner)
+      members: [
+        { userId: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', role: 'Owner', name: 'Trang Nguyen' },
+        { userId: 'admin-demo-user', role: 'Member', name: 'Alex Morgan' }
+      ]
     },
     {
       id: 'SP-002',
@@ -43,7 +47,11 @@ const SpaceManagement = () => {
       tasksCount: 18,
       date: '2026-05-15',
       status: 'Active',
-      assignedUsers: ['admin-demo-user', '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5']
+      owner: 'admin-demo-user', // Alex Morgan (Owner)
+      members: [
+        { userId: 'admin-demo-user', role: 'Owner', name: 'Alex Morgan' },
+        { userId: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', role: 'Member', name: 'Trang Nguyen' }
+      ]
     },
     {
       id: 'SP-003',
@@ -52,12 +60,20 @@ const SpaceManagement = () => {
       tasksCount: 12,
       date: '2026-04-20',
       status: 'Archived',
-      assignedUsers: ['admin-demo-user']
+      owner: 'admin-demo-user', // Alex Morgan (Owner)
+      members: [
+        { userId: 'admin-demo-user', role: 'Owner', name: 'Alex Morgan' }
+      ]
     }
   ];
  
   const filteredAndSortedSpaces = spaces
     .filter(space => {
+      // Filter: Only show spaces where user is Owner or Member
+      const isOwner = space.owner === currentUser?.id;
+      const isMember = space.members?.some(member => member.userId === currentUser?.id);
+      if (!isOwner && !isMember) return false;
+
       const matchesSearch = space.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         space.description.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
@@ -94,15 +110,13 @@ const SpaceManagement = () => {
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
           <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
-        {isAdmin && (
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
-          >
-            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
-            Create Space
-          </button>
-        )}
+        <button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+        >
+          <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+          Create Space
+        </button>
         </div>
  
       {/* Search and Filter Section */}
@@ -219,11 +233,32 @@ const SpaceManagement = () => {
         </div>
       </div>
  
+      {/* Empty State */}
+      {filteredAndSortedSpaces.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-100">
+          <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+            <i data-lucide="folder-open" className="w-10 h-10 text-gray-300"></i>
+          </div>
+          <h3 className="text-xl font-bold text-gray-700 mb-2">You don't have any spaces yet</h3>
+          <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
+            Create your first space to start organizing your projects and collaborating with your team.
+          </p>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+          >
+            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+            Create Space
+          </button>
+        </div>
+      )}
+
       {/* Grid of Space Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredAndSortedSpaces.map(space => {
-          const isAssigned = isAdmin || (space.assignedUsers && space.assignedUsers.includes(currentUser?.id));
-          return (
+      {filteredAndSortedSpaces.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredAndSortedSpaces.map(space => {
+            const isAssigned = space.owner === currentUser?.id || space.members?.some(member => member.userId === currentUser?.id);
+            return (
             <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
               <div className="p-6 flex-1">
                 <h3 className="text-[15px] font-bold text-[#5e4db2] mb-2">{space.title}</h3>
@@ -264,13 +299,17 @@ const SpaceManagement = () => {
           );
         })}
       </div>
+      )}
  
       <CreateSpaceModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        currentUser={currentUser}
         onCreate={(data) => {
           console.log('New Space Data:', data);
-          // Handle space creation logic here
+          // In a real app, this would call an API to create the space
+          // The space will have the current user as Owner
+          // For now, just log the data
         }}
       />
     </div>
