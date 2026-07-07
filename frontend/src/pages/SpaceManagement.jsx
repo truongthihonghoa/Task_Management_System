@@ -113,7 +113,8 @@ const SpaceManagement = () => {
  
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
  
-  const spaces = DEMO_SPACES;
+  // Sample data based on image. Owner is scoped per space, not a global role.
+  const [spaces, setSpaces] = useState(DEMO_SPACES);
   
   const getUserRole = (userId) => {
     if (userId === 'alex-morgan') return 'SUPER_ADMIN';
@@ -124,22 +125,20 @@ const SpaceManagement = () => {
   
   const canAccessSpace = (space, userId) => {
     // Super admin can see all spaces
-    if (userId === 'alex-morgan') return true;
+    if (isSuperAdmin || userId === 'alex-morgan') return true;
     
     // If no user ID provided, deny access
     if (!userId) return false;
     
-    const userRole = getUserRole(userId);
-    
     // Both Owner and User can see spaces they own or are a member of
     // The difference in roles is for management permissions, not visibility
-    return space.ownerId === userId || space.memberIds.includes(userId);
+    return space.ownerId === userId || (space.memberIds || []).includes(userId);
   };
   
   const getUserRoleInSpace = (space, userId) => {
     if (!userId) return null;
     if (space.ownerId === userId) return 'OWNER';
-    if (space.memberIds.includes(userId)) return 'MEMBER';
+    if ((space.memberIds || []).includes(userId)) return 'MEMBER';
     return null;
   };
  
@@ -182,7 +181,7 @@ const SpaceManagement = () => {
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
           <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
-        {currentUserId && (
+        {(isSuperAdmin || currentRole === 'USER') && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
@@ -332,18 +331,20 @@ const SpaceManagement = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAndSortedSpaces.map(space => {
           const isAssigned = canAccessSpace(space, selectedDemoUser);
+          const userSpaceRole = getUserRoleInSpace(space, selectedDemoUser);
+          const isOwner = userSpaceRole === 'OWNER';
           return (
             <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
               <div className="p-6 flex-1">
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="text-[15px] font-bold text-[#5e4db2] flex-1">{space.title}</h3>
-                  {getUserRoleInSpace(space, selectedDemoUser) && (
+                  {userSpaceRole && (
                     <span className={`text-[10px] font-bold px-2 py-1 rounded ml-2 whitespace-nowrap ${
-                      getUserRoleInSpace(space, selectedDemoUser) === 'OWNER'
+                      userSpaceRole === 'OWNER'
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {getUserRoleInSpace(space, selectedDemoUser)}
+                      {userSpaceRole}
                     </span>
                   )}
                 </div>
@@ -366,7 +367,13 @@ const SpaceManagement = () => {
                   disabled={!isAssigned}
                   onClick={() => {
                     if (isAssigned) {
-                      navigate(`/dashboard/tasks/${space.id}${location.search}`);
+                      const params = new URLSearchParams(location.search);
+                      if (!isSuperAdmin) {
+                        params.set('role', 'USER');
+                        params.set('spaceRole', isOwner ? 'OWNER' : 'USER');
+                      }
+                      const query = params.toString();
+                      navigate(`/dashboard/tasks/${space.id}${query ? `?${query}` : ''}`);
                     }
                   }}
                   className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
@@ -391,10 +398,18 @@ const SpaceManagement = () => {
         onClose={() => setIsCreateModalOpen(false)}
         currentUser={currentUser}
         onCreate={(data) => {
-          console.log('New Space Data:', data);
-          // In a real app, this would call an API to create the space
-          // The space will have the current user as Owner
-          // For now, just log the data
+          const createdSpace = {
+            id: `SP-${String(spaces.length + 1).padStart(3, '0')}`,
+            title: data?.name || data?.title || 'New Space',
+            description: data?.description || 'Newly created space.',
+            tasksCount: 0,
+            date: new Date().toISOString().slice(0, 10),
+            status: 'Active',
+            ownerId: selectedDemoUser || currentUserId || 'alex-morgan',
+            memberIds: [],
+          };
+          setSpaces(prev => [createdSpace, ...prev]);
+          setIsCreateModalOpen(false);
         }}
       />
     </div>
