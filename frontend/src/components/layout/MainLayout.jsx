@@ -318,8 +318,21 @@ export default function MainLayout() {
   const isSettingsActive = location.pathname === '/dashboard/notification-settings';
   const isHelpActive = location.pathname === '/dashboard/help';
 
+  // Redirect non-admin users away from admin-only routes
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      // If on Dashboard (index) redirect to Space Management
+      if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
+        navigate('/dashboard/spaces' + location.search);
+      }
+      // If trying to access Users page, redirect to Space Management
+      if (location.pathname.startsWith('/dashboard/users')) {
+        navigate('/dashboard/spaces' + location.search);
+      }
+    }
+  }, [isSuperAdmin, location.pathname, location.search, navigate]);
+
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const isAdmin = currentRole === 'ADMIN';
   const visibleSpaces = useMemo(() => {
     const searchableSpaces = isSuperAdmin ? SEARCH_SPACES : SEARCH_SPACES.filter(space => space.memberAccess);
     if (!normalizedSearchQuery) return searchableSpaces.slice(0, 3);
@@ -342,7 +355,7 @@ export default function MainLayout() {
   }, [normalizedSearchQuery]);
 
   const visibleUsers = useMemo(() => {
-    if (!isAdmin) return [];
+    if (!isSuperAdmin) return [];
     if (!normalizedSearchQuery) return SEARCH_USERS.slice(0, 4);
     return SEARCH_USERS.filter(user =>
       user.name.toLowerCase().includes(normalizedSearchQuery) ||
@@ -350,7 +363,7 @@ export default function MainLayout() {
       user.role.toLowerCase().includes(normalizedSearchQuery) ||
       user.space.toLowerCase().includes(normalizedSearchQuery)
     ).slice(0, 5);
-  }, [isAdmin, normalizedSearchQuery]);
+  }, [isSuperAdmin, normalizedSearchQuery]);
 
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
@@ -490,13 +503,13 @@ export default function MainLayout() {
           {isHelpActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to="/dashboard/help">
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/help${location.search}`}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
                 <span className="text-sm font-bold">Help</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to="/dashboard/help">
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/help${location.search}`}>
               <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
               <span className="text-sm font-medium">Help</span>
             </Link>
@@ -552,7 +565,7 @@ export default function MainLayout() {
               </div>
               <input
                 className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-200 focus:border-gray-300"
-                placeholder={isAdmin ? "Search spaces, users, or tasks..." : "Search spaces or tasks..."}
+                placeholder={isSuperAdmin ? "Search spaces, users, or tasks..." : "Search spaces or tasks..."}
                 type="text"
                 value={searchQuery}
                 onFocus={() => setShowSearchDropdown(true)}
@@ -579,7 +592,7 @@ export default function MainLayout() {
                         {normalizedSearchQuery ? 'Search results' : 'Recently viewed'}
                       </p>
                       <p className="text-[11px] text-gray-400 mt-0.5">
-                        {isAdmin ? 'Quickly open spaces, users, or tasks.' : 'Quickly open spaces or tasks.'}
+                        {isSuperAdmin ? 'Quickly open spaces, users, or tasks.' : 'Quickly open spaces or tasks.'}
                       </p>
                     </div>
                     {searchQuery && (
@@ -696,7 +709,7 @@ export default function MainLayout() {
                         </div>
                         <p className="text-sm font-bold text-gray-700">No results found</p>
                         <p className="text-xs text-gray-400 mt-1">
-                          {isAdmin ? 'Try a space name, user name, or task title.' : 'Try a space name, task ID, or task title.'}
+                          {isSuperAdmin ? 'Try a space name, user name, or task title.' : 'Try a space name, task ID, or task title.'}
                         </p>
                       </div>
                     )}

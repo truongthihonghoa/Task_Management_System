@@ -747,8 +747,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   const [hoveredWorkload, setHoveredWorkload] = useState(null);
   const [hoveredAccount, setHoveredAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-
-
+  const roleParam = (forcedRole || searchParams.get('role') || 'ADMIN').toUpperCase();
+  const isAdmin = !embedded;
 
   const [activeFilter, setActiveFilter] = useState("All");
 
@@ -770,8 +770,6 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-
-  const roleParam = forcedRole || searchParams.get('role')?.toUpperCase();
   useEffect(() => {
     if (!embedded && roleParam === 'USER') {
       navigate(`/dashboard/tasks${location.search}`, { replace: true });
@@ -788,7 +786,6 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   }, [isActivityModalOpen]);
 
   // Dashboard route is Super Admin. Embedded Summary can render User or Owner/Super Admin space views.
-  const isAdmin = !embedded;
   const isEmbeddedSummary = embedded;
   const isPrivilegedSpaceSummary = embedded && (roleParam === "OWNER" || roleParam === "SUPER_ADMIN");
   const summaryStats = isPrivilegedSpaceSummary
