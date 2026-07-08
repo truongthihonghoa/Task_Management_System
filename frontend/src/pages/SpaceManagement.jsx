@@ -1,18 +1,106 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import CreateSpaceModal from '../components/tasks/CreateSpaceModal';
- 
+
+export const DEMO_SPACES = [
+  {
+    id: 'SP-001',
+    title: 'Task Management System',
+    description: 'Final project for task management system integration with enterprise...',
+    tasksCount: 25,
+    date: '2026-06-01',
+    status: 'Active',
+    ownerId: 'pham-tien',
+    memberIds: ['trang-nguyen']
+  },
+  {
+    id: 'SP-002',
+    title: 'E-Commerce Platform',
+    description: 'Headless commerce rebuild with Next.js and high-performance API...',
+    tasksCount: 18,
+    date: '2026-05-15',
+    status: 'Active',
+    ownerId: 'pham-tien',
+    memberIds: ['trang-nguyen']
+  },
+  {
+    id: 'SP-003',
+    title: 'CRM System',
+    description: 'Legacy customer relationship management maintenance and data...',
+    tasksCount: 12,
+    date: '2026-04-20',
+    status: 'Archived',
+    ownerId: 'trang-nguyen',
+    memberIds: ['pham-tien']
+  },
+  {
+    id: 'SP-004',
+    title: 'Mobile App Development',
+    description: 'Cross-platform mobile application development with React Native...',
+    tasksCount: 32,
+    date: '2026-06-10',
+    status: 'Active',
+    ownerId: 'pham-tien',
+    memberIds: ['trang-nguyen']
+  }
+];
+
 const SpaceManagement = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentRole = 'ADMIN', currentUser = null } = useOutletContext() || {};
-  const isAdmin = currentRole === 'ADMIN';
+  
+  // Normalize name by removing accents and lowercasing
+  const normalizeName = (value = '') => {
+    if (!value) return '';
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
+  
+  // Determine user ID and role based on the logged-in user's name or role
+  const currentUserName = currentUser?.name ? normalizeName(currentUser.name) : '';
+  
+  let currentUserId = null;
+  let resolvedUserRole = 'USER';
+  
+  // Match user by normalized name to demo users
+  if (currentUserName.includes('alex') || currentUserName.includes('morgan')) {
+    currentUserId = 'alex-morgan';
+    resolvedUserRole = 'SUPER_ADMIN';
+  } else if (currentUserName.includes('pham') || currentUserName.includes('tien')) {
+    currentUserId = 'pham-tien';
+    resolvedUserRole = 'OWNER';
+  } else if (currentUserName.includes('trang') || currentUserName.includes('nguyen')) {
+    currentUserId = 'trang-nguyen';
+    resolvedUserRole = 'USER';
+  }
+  
+  // Override role if explicitly set in context
+  if (currentUser?.role === 'SUPER_ADMIN' || currentRole === 'ADMIN') {
+    resolvedUserRole = 'SUPER_ADMIN';
+  }
+  
+  const isSuperAdmin = resolvedUserRole === 'SUPER_ADMIN';
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('Recently Created');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDemoUser, setSelectedDemoUser] = useState(currentUserId);
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
+  
+  // Read demo user from URL query parameter
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const demoUserParam = searchParams.get('user');
+    
+    if (demoUserParam && ['alex-morgan', 'pham-tien', 'trang-nguyen'].includes(demoUserParam)) {
+      setSelectedDemoUser(demoUserParam);
+    }
+  }, [location.search]);
  
   const getDaysInMonth = (year, month) => {
     const days = [];
@@ -25,55 +113,38 @@ const SpaceManagement = () => {
  
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
  
-  // Sample data based on image with owner and members structure
-  const spaces = [
-    {
-      id: 'SP-001',
-      title: 'Task Management System',
-      description: 'Final project for task management system integration with enterprise...',
-      tasksCount: 25,
-      date: '2026-06-01',
-      status: 'Active',
-      owner: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', // Trang Nguyen (Owner)
-      members: [
-        { userId: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', role: 'Owner', name: 'Trang Nguyen' },
-        { userId: 'admin-demo-user', role: 'Member', name: 'Alex Morgan' }
-      ]
-    },
-    {
-      id: 'SP-002',
-      title: 'E-Commerce Platform',
-      description: 'Headless commerce rebuild with Next.js and high-performance API...',
-      tasksCount: 18,
-      date: '2026-05-15',
-      status: 'Active',
-      owner: 'admin-demo-user', // Alex Morgan (Owner)
-      members: [
-        { userId: 'admin-demo-user', role: 'Owner', name: 'Alex Morgan' },
-        { userId: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', role: 'Member', name: 'Trang Nguyen' }
-      ]
-    },
-    {
-      id: 'SP-003',
-      title: 'CRM System',
-      description: 'Legacy customer relationship management maintenance and data...',
-      tasksCount: 12,
-      date: '2026-04-20',
-      status: 'Archived',
-      owner: 'admin-demo-user', // Alex Morgan (Owner)
-      members: [
-        { userId: 'admin-demo-user', role: 'Owner', name: 'Alex Morgan' }
-      ]
-    }
-  ];
+  // Sample data based on image. Owner is scoped per space, not a global role.
+  const [spaces, setSpaces] = useState(DEMO_SPACES);
+  
+  const getUserRole = (userId) => {
+    if (userId === 'alex-morgan') return 'SUPER_ADMIN';
+    if (userId === 'pham-tien') return 'OWNER';
+    if (userId === 'trang-nguyen') return 'USER';
+    return 'USER';
+  };
+  
+  const canAccessSpace = (space, userId) => {
+    // Super admin can see all spaces
+    if (isSuperAdmin || userId === 'alex-morgan') return true;
+    
+    // If no user ID provided, deny access
+    if (!userId) return false;
+    
+    // Both Owner and User can see spaces they own or are a member of
+    // The difference in roles is for management permissions, not visibility
+    return space.ownerId === userId || (space.memberIds || []).includes(userId);
+  };
+  
+  const getUserRoleInSpace = (space, userId) => {
+    if (!userId) return null;
+    if (space.ownerId === userId) return 'OWNER';
+    if ((space.memberIds || []).includes(userId)) return 'MEMBER';
+    return null;
+  };
  
   const filteredAndSortedSpaces = spaces
     .filter(space => {
-      // Filter: Only show spaces where user is Owner or Member
-      const isOwner = space.owner === currentUser?.id;
-      const isMember = space.members?.some(member => member.userId === currentUser?.id);
-      if (!isOwner && !isMember) return false;
-
+      if (!canAccessSpace(space, selectedDemoUser)) return false;
       const matchesSearch = space.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         space.description.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
@@ -110,13 +181,15 @@ const SpaceManagement = () => {
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
           <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
-        >
-          <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
-          Create Space
-        </button>
+        {(isSuperAdmin || currentRole === 'USER') && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+          >
+            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+            Create Space
+          </button>
+        )}
         </div>
  
       {/* Search and Filter Section */}
@@ -134,6 +207,7 @@ const SpaceManagement = () => {
             />
           </div>
         </div>
+
         <div className="w-43">
           <div className="relative group">
             <button className="w-full flex items-center justify-between px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer hover:border-[#5e4db2] group-hover:border-[#5e4db2]">
@@ -254,14 +328,26 @@ const SpaceManagement = () => {
       )}
 
       {/* Grid of Space Cards */}
-      {filteredAndSortedSpaces.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAndSortedSpaces.map(space => {
-            const isAssigned = space.owner === currentUser?.id || space.members?.some(member => member.userId === currentUser?.id);
-            return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredAndSortedSpaces.map(space => {
+          const isAssigned = canAccessSpace(space, selectedDemoUser);
+          const userSpaceRole = getUserRoleInSpace(space, selectedDemoUser);
+          const isOwner = userSpaceRole === 'OWNER';
+          return (
             <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
               <div className="p-6 flex-1">
-                <h3 className="text-[15px] font-bold text-[#5e4db2] mb-2">{space.title}</h3>
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="text-[15px] font-bold text-[#5e4db2] flex-1">{space.title}</h3>
+                  {userSpaceRole && (
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded ml-2 whitespace-nowrap ${
+                      userSpaceRole === 'OWNER'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {userSpaceRole}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[12px] text-gray-500 leading-relaxed mb-6">{space.description}</p>
    
                 <div className="flex items-center gap-6 text-gray-500">
@@ -281,7 +367,13 @@ const SpaceManagement = () => {
                   disabled={!isAssigned}
                   onClick={() => {
                     if (isAssigned) {
-                      navigate(`/dashboard/tasks/${space.id}${location.search}`);
+                      const params = new URLSearchParams(location.search);
+                      if (!isSuperAdmin) {
+                        params.set('role', 'USER');
+                        params.set('spaceRole', isOwner ? 'OWNER' : 'USER');
+                      }
+                      const query = params.toString();
+                      navigate(`/dashboard/tasks/${space.id}${query ? `?${query}` : ''}`);
                     }
                   }}
                   className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
@@ -299,17 +391,25 @@ const SpaceManagement = () => {
           );
         })}
       </div>
-      )}
+  
  
       <CreateSpaceModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         currentUser={currentUser}
         onCreate={(data) => {
-          console.log('New Space Data:', data);
-          // In a real app, this would call an API to create the space
-          // The space will have the current user as Owner
-          // For now, just log the data
+          const createdSpace = {
+            id: `SP-${String(spaces.length + 1).padStart(3, '0')}`,
+            title: data?.name || data?.title || 'New Space',
+            description: data?.description || 'Newly created space.',
+            tasksCount: 0,
+            date: new Date().toISOString().slice(0, 10),
+            status: 'Active',
+            ownerId: selectedDemoUser || currentUserId || 'alex-morgan',
+            memberIds: [],
+          };
+          setSpaces(prev => [createdSpace, ...prev]);
+          setIsCreateModalOpen(false);
         }}
       />
     </div>

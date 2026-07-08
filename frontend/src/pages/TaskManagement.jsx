@@ -1,24 +1,35 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
+import { useNavigate, useOutletContext, useLocation, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import SprintInfoPopover from '../components/tasks/SprintInfoPopover';
 import CompleteSprintModal from '../components/tasks/CompleteSprintModal';
 import EditSprintModal from '../components/tasks/EditSprintModal';
 import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
+import Dashboard from './Dashboard';
+import { DEMO_SPACES } from './SpaceManagement';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
   { name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
   { name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  { name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' }
+  { name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
+  { name: 'Trang Nguyen', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
+];
+
+const projectPeopleDirectory = [
+  { id: 'pham-tien', name: 'Pham Tien', email: 'pham.tien@example.com', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
+  { id: 'hoang-hoa', name: 'Hoang Hoa', email: 'hoanghoa@example.com', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
+  { id: 'trong-nghia', name: 'Trong Nghia', email: 'trongnghia@example.com', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
+  { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
 
 const assigneeProfiles = {
   'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
   'Hoang Hoa': { initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
   'Trong Nghia': { initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
+  'Trang Nguyen': { initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' },
   'Unassigned': { initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF' }
 };
 
@@ -36,6 +47,24 @@ const getAssigneeProfile = (assignee) => {
     color: '#9CA3AF',
     textColor: '#FFFFFF'
   };
+};
+
+const getInitialProjectPeople = (space) => {
+  const assignedPeople = availableAssignees
+    .slice(1)
+    .map(assignee => projectPeopleDirectory.find(person => person.name === assignee.name))
+    .filter(Boolean);
+
+  if (!space) return assignedPeople;
+
+  const spacePeopleIds = [space.ownerId, ...(space.memberIds || [])].filter(Boolean);
+  const spacePeople = spacePeopleIds
+    .map(id => projectPeopleDirectory.find(person => person.id === id))
+    .filter(Boolean);
+
+  return [...spacePeople, ...assignedPeople].filter((person, index, people) =>
+    people.findIndex(item => item.id === person.id) === index
+  );
 };
 
 const getNextTaskId = (tasks) => {
@@ -59,8 +88,13 @@ const formatTaskDate = (dateValue) => {
 export default function TaskManagement() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole = 'ADMIN', currentUser } = useOutletContext() || {};
+  const { spaceId } = useParams();
+  const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole = 'ADMIN', currentUser, currentSpaceRole = 'USER' } = useOutletContext() || {};
+ 
   const isAdmin = currentRole === 'ADMIN';
+  const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
+  const projectOwnerId = selectedSpace?.ownerId;
+  const pageTitle = selectedSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
@@ -130,6 +164,74 @@ export default function TaskManagement() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
+  const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [isAddPeopleOpen, setIsAddPeopleOpen] = useState(false);
+  const [peopleSearch, setPeopleSearch] = useState('');
+  const addPeopleButtonRef = useRef(null);
+  const addPeoplePanelRef = useRef(null);
+
+  const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
+    const normalizedSearch = peopleSearch.trim().toLowerCase();
+    if (!normalizedSearch) return true;
+    return person.name.toLowerCase().includes(normalizedSearch) ||
+      person.email.toLowerCase().includes(normalizedSearch);
+  });
+  const trimmedPeopleSearch = peopleSearch.trim();
+  const canAddEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedPeopleSearch);
+
+  const handleAddProjectPerson = (person) => {
+    setProjectPeople(prev => {
+      if (prev.some(member => member.id === person.id)) return prev;
+      return [...prev, person];
+    });
+  };
+
+  const handleAddEmailPerson = () => {
+    if (!canAddEmail) return;
+
+    const email = trimmedPeopleSearch.toLowerCase();
+    const nameFromEmail = email.split('@')[0]
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ') || email;
+    const person = {
+      id: `email-${email.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
+      name: nameFromEmail,
+      email,
+      initials: getInitials(nameFromEmail),
+      color: '#5E4DB2',
+      textColor: '#FFFFFF'
+    };
+
+    setProjectPeople(prev => {
+      if (prev.some(member => member.email?.toLowerCase() === email)) return prev;
+      return [...prev, person];
+    });
+    setPeopleSearch('');
+  };
+
+  useEffect(() => {
+    setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setSelectedAssigneeFilter('All');
+  }, [selectedSpace?.id]);
+
+  useEffect(() => {
+    if (!isAddPeopleOpen) return;
+    const handleClickOutside = (event) => {
+      if (
+        addPeoplePanelRef.current &&
+        !addPeoplePanelRef.current.contains(event.target) &&
+        addPeopleButtonRef.current &&
+        !addPeopleButtonRef.current.contains(event.target)
+      ) {
+        setIsAddPeopleOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAddPeopleOpen]);
 
   // Sync tasks with MainLayout context for the CreateTaskModal's RichTextEditor
   useEffect(() => {
@@ -365,38 +467,213 @@ export default function TaskManagement() {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     setSelectedTaskDetail(updatedTask);
   };
+  const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
+  const spaceMemberCount = new Set(tasks.map(task => task.assignee).filter(Boolean)).size;
+  const viewTabClass = (targetView) =>
+    `flex items-center gap-2 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === targetView ? 'bg-[#cdddff] text-[#003d9b] shadow-sm' : 'text-gray-500 hover:bg-[#EBF0FF]'}`;
+  const summaryMemberFilter = (
+    <div className="relative group">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
+      >
+        <div className="flex -space-x-1">
+          {(selectedAssigneeFilter === 'All' ? availableAssignees.slice(1, 4) : availableAssignees.filter(user => user.name === selectedAssigneeFilter)).map(user => (
+            <div
+              key={user.name}
+              className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-[9px] font-bold"
+              style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+            >
+              {user.initials || <span className="material-symbols-outlined text-[12px]">{user.icon}</span>}
+            </div>
+          ))}
+        </div>
+        <span className="text-[11px] font-bold text-[#5e4db2]">
+          {selectedAssigneeFilter === 'All' ? 'All members' : selectedAssigneeFilter}
+        </span>
+        <span className="material-symbols-outlined text-[#5e4db2] text-[13px]">expand_more</span>
+      </button>
+      <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+        <div className="py-1">
+          <button
+            type="button"
+            onClick={() => setSelectedAssigneeFilter('All')}
+            className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+          >
+            All members
+          </button>
+          {availableAssignees.slice(1).map(user => (
+            <button
+              key={user.name}
+              type="button"
+              onClick={() => setSelectedAssigneeFilter(user.name)}
+              className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+            >
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+                style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+              >
+                {user.initials}
+              </div>
+              <span>{user.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="px-6 pb-6 pt-10 flex flex-col bg-[#F4F6F8] text-on-surface" style={{ height: '100%', overflow: 'hidden', position: 'relative' }} id="app-canvas">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${view === 'summary' ? 'mb-4' : 'mb-8'}`}>
         <div>
           <div className="flex items-center text-[10px] font-bold uppercase tracking-wider mb-1">
             <span className="cursor-pointer text-gray-500 transition-colors hover:text-[#5e4db2] active:text-[#5e4db2]" onClick={() => navigate(`/dashboard/spaces${location.search}`)}>Tasks</span>
             <i className="w-3 h-3 mx-2 text-gray-400 material-symbols-outlined text-[12px]">chevron_right</i>
             <span className="cursor-pointer text-gray-500 transition-colors hover:text-[#5e4db2] active:text-[#5e4db2]" onClick={() => navigate(`/dashboard/spaces${location.search}`)}>Space Management</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#4C2B74]">Task Management</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-[#4C2B74]">{pageTitle}</h1>
+            <div className="relative">
+              <button
+                ref={addPeopleButtonRef}
+                type="button"
+                onClick={() => setIsAddPeopleOpen(prev => !prev)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[18px]">person_add</span>
+                Add people
+              </button>
+              {isAddPeopleOpen && (
+                <div
+                  ref={addPeoplePanelRef}
+                  className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                >
+                  <div className="p-3 border-b border-outline-variant">
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                      <input
+                        type="text"
+                        value={peopleSearch}
+                        onChange={(event) => setPeopleSearch(event.target.value)}
+                        placeholder="Search name or email..."
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto py-1">
+                    {filteredPeopleDirectory.map(person => {
+                      const isAdded = projectPeople.some(member => member.id === person.id);
+                      const isOwner = projectOwnerId === person.id;
+                      return (
+                        <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                              style={{ backgroundColor: person.color, color: person.textColor || '#111' }}
+                            >
+                              {person.initials}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
+                              <div className="text-[10px] text-outline truncate">{person.email}</div>
+                            </div>
+                          </div>
+                          {isOwner ? (
+                            <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
+                              Owner
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isAdded}
+                              onClick={() => handleAddProjectPerson(person)}
+                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${
+                                isAdded
+                                  ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
+                                  : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                              }`}
+                            >
+                              {isAdded ? 'Added' : 'Add'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {filteredPeopleDirectory.length === 0 && trimmedPeopleSearch && (
+                      <div className="px-3 py-3">
+                        <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
+                          <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
+                          <div className="text-[10px] text-outline">
+                            {canAddEmail ? 'Add this email to the project' : 'Enter a valid email address'}
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPeopleSearch('')}
+                            className="px-3 py-1.5 rounded border border-outline-variant bg-white text-[11px] font-bold text-[#4B5563] hover:bg-[#F3F4F6] transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!canAddEmail}
+                            onClick={handleAddEmailPerson}
+                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${
+                              canAddEmail
+                                ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {filteredPeopleDirectory.length === 0 && !trimmedPeopleSearch && (
+                      <div className="px-4 py-5 text-center text-[12px] text-outline">Start typing a name or email</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-3 bg-surface-container-low p-1 rounded-lg border border-outline-variant">
-          <button
-            className={`flex items-center gap-2 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === 'list' ? 'bg-[#cdddff] text-[#003d9b]' : 'text-gray-500'}`}
-            onClick={() => switchView('list')}
-          >
-            List
-          </button>
-          <button
-            className={`flex items-center gap-2 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === 'board' ? 'bg-[#cdddff] text-[#003d9b]' : 'text-gray-500'}`}
-            onClick={() => switchView('board')}
-          >
-            <span className="material-symbols-outlined text-[16px]">grid_view</span>
-            Board
-          </button>
-
+        <div className="flex items-center gap-3">
+          {view === 'summary' && summaryMemberFilter}
+          <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-outline-variant">
+            <button
+              className={viewTabClass('summary')}
+              onClick={() => switchView('summary')}
+            >
+              <span className="material-symbols-outlined text-[16px]">space_dashboard</span>
+              Summary
+            </button>
+            <button
+              className={viewTabClass('list')}
+              onClick={() => switchView('list')}
+            >
+              List
+            </button>
+            <button
+              className={viewTabClass('board')}
+              onClick={() => switchView('board')}
+            >
+              <span className="material-symbols-outlined text-[16px]">grid_view</span>
+              Board
+            </button>
+          </div>
         </div>
       </div>
 
+      {view === 'summary' && (
+        <Dashboard embedded forcedRole={summaryRole} spaceMemberCount={spaceMemberCount} />
+      )}
+
       {/* Filters Section */}
+      {view !== 'summary' && (
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
           {/* Search Input */}
@@ -680,6 +957,7 @@ export default function TaskManagement() {
           </div>
         </div>
       </div>
+      )}
 
       {/* BOARD VIEW */}
       {view === 'board' && (
@@ -1019,7 +1297,7 @@ export default function TaskManagement() {
                   type="button"
                   onClick={handleDeleteSelectedTasks}
                   disabled={!isAdmin}
-                  title={!isAdmin ? 'Only ADMIN can delete tasks' : ''}
+                  title={!isAdmin ? 'Only Super Admin can delete tasks' : ''}
                   className={`px-3 py-1 text-[12px] font-semibold rounded-md ${isAdmin ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'} shadow-sm transition`}
                 >
                   Delete
