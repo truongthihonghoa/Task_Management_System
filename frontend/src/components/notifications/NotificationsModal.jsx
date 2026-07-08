@@ -3,12 +3,17 @@ import { createPortal } from 'react-dom';
 import { Search, BellOff, X } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 
-const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], onUpdateNotifications }) => {
+const NotificationsModal = ({ isOpen, onClose, currentRole, currentSpaceRole = 'USER', isSuperAdmin = false, notifications = [], onUpdateNotifications }) => {
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   if (!isOpen) return null;
 
-  const roleFiltered = notifications.filter(n => n.role === currentRole);
+  const roleFiltered = notifications.filter(n => {
+    if (isSuperAdmin || currentRole === 'ADMIN') {
+      return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
+    }
+    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+  });
 
   const filteredNotifications = roleFiltered.filter(n => {
     const matchesFilter =
@@ -30,7 +35,7 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], 
 
   const markAllAsRead = () => {
     const updated = notifications.map(n =>
-      n.role === currentRole ? { ...n, is_read: true } : n
+      roleFiltered.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
     );
     onUpdateNotifications?.(updated);
   };
@@ -68,8 +73,8 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], 
               )}
             </div>
             <p className="text-xs text-gray-500 mt-1 font-medium">
-              {currentRole.toLowerCase() === "admin"
-                ? "View and manage important system notifications."
+              {isSuperAdmin || currentRole === "ADMIN"
+                ? "View and manage important Super Admin system notifications."
                 : "View and manage your notifications."}
             </p>
           </div>
@@ -113,7 +118,7 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], 
             <input
               type="text"
               placeholder={
-                currentRole === "ADMIN"
+                isSuperAdmin || currentRole === "ADMIN"
                   ? "Search system notifications..."
                   : "Search your notifications..."
               }
@@ -139,10 +144,10 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, notifications = [], 
               <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
                 <BellOff className="w-10 h-10 text-gray-300" />
               </div>
-              <h3 className="font-bold text-gray-700">No {currentRole.toLowerCase()} notifications</h3>
+              <h3 className="font-bold text-gray-700">No {(isSuperAdmin || currentRole === 'ADMIN') ? 'super admin' : 'account'} notifications</h3>
               <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
                 {currentRole === 'USER'
-                  ? "You'll only see updates here from other users on your tasks."
+                  ? "You'll see task, space, and owner-level updates that are relevant to your account."
                   : "Only important system management events will appear here."}
               </p>
             </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick}) => {
+const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick }) => {
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
+  const isSuperAdmin = currentRole === "ADMIN";
 
   // Re-initialize Lucide icons when submenu expands
   useEffect(() => {
@@ -15,17 +16,14 @@ const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick,
       {/* User Info Section */}
       <div className="p-4 flex items-center gap-3">
         <div className="w-12 h-12 rounded-full bg-indigo-100 text-[#2D1B4E] flex items-center justify-center font-bold text-lg border border-indigo-200">
-          {currentRole === "ADMIN" ? "AM" : "TN"}
+          {isSuperAdmin ? "AM" : "TN"}
         </div>
         <div className="flex-1 overflow-hidden">
           <p className="text-sm font-bold truncate text-gray-900">
-            {currentRole === "ADMIN" ? "Alex Morgan" : "Trang Nguyễn"}
+            {isSuperAdmin ? "Alex Morgan" : "Trang Nguyen"}
           </p>
           <p className="text-xs text-gray-500 truncate">
-            {currentRole === "ADMIN" ? "alex.morgan@taskcore.com" : "trang.nguyen@taskcore.com"}
-          </p>
-          <p className="text-[10px] font-semibold text-[#4C2B74] mt-0.5">
-            {currentRole === "ADMIN" ? "Super Admin" : "User"}
+            {isSuperAdmin ? "alex.morgan@taskcore.com" : "trang.nguyen@taskcore.com"}
           </p>
         </div>
       </div>

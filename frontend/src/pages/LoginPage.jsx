@@ -53,15 +53,9 @@ export default function LoginPage() {
                 setIsRedirecting(false);
                 setEmail('');
                 setPassword('');
-
-                // Redirect based on role
-                if (isAdminEmail) {
-                    // Super Admin → Admin Dashboard
-                    navigate('/dashboard?role=ADMIN');
-                } else {
-                    // Regular User → Space Management (landing page for users)
-                    navigate('/dashboard/spaces?role=USER');
-                }
+                const normalizedEmail = email.trim().toLowerCase();
+                const isSuperAdminLogin = normalizedEmail.includes('admin') || normalizedEmail.includes('alex') || normalizedEmail.includes('super');
+                navigate(isSuperAdminLogin ? '/dashboard' : '/dashboard/spaces?role=USER');
             }, 1000);
         }, 2000);
     };
