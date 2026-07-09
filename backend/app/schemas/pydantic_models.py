@@ -33,6 +33,8 @@ class UserSummaryResponse(BaseModel):
     full_name: str
     email: str
     status_user: str
+
+    model_config = {"from_attributes": True}
 import re
 from datetime import datetime
 

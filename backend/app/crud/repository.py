@@ -1,14 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.audit_log import AuditLog
 from app.models.space_member import SpaceMember
 from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
 from app.models.task_assignment_history import TaskAssignmentHistory
 from app.models.user import User
 from app.models.user_token import UserToken
+from app.models.verification_token import VerificationToken
+
+
+EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+PASSWORD_RESET = "PASSWORD_RESET"
 
 
 def get_user_by_id(db: Session, user_id: str) -> User | None:
@@ -28,20 +35,8 @@ def get_task_assignee(db: Session, task_id: str, assignee_id: str) -> TaskAssign
         select(TaskAssignee).where(
             TaskAssignee.task_id == task_id,
             TaskAssignee.assignee_id == assignee_id,
-from datetime import datetime, timedelta
-from typing import Any
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.models.audit_log import AuditLog
-from app.models.user import User
-from app.models.user_token import UserToken
-from app.models.verification_token import VerificationToken
-
-
-EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
-PASSWORD_RESET = "PASSWORD_RESET"
+        )
+    ).scalar_one_or_none()
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
