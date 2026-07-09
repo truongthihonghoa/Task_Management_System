@@ -88,13 +88,31 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> 
     verification_token = get_verification_token(db, email)
 
     if verification_token is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Verification record not found."})
-    if verification_token.used_at is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "OTP has already been used."})
-    if verification_token.expires_at < now:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"message": "OTP expired."})
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Verification record not found."}
+        )
+
+    # Kiểm tra OTP trước
     if verification_token.otp_code != payload.otp_code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"message": "Invalid OTP."})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The verification code is incorrect."}
+        )
+
+    # Kiểm tra hết hạn
+    if verification_token.expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The verification code has expired."}
+        )
+
+    # Kiểm tra đã sử dụng
+    if verification_token.used_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The verification code is no longer valid."}
+        )
 
     try:
         verification_token.used_at = now
