@@ -85,6 +85,21 @@ const formatTaskDate = (dateValue) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 
+const SPRINT_NAME_PREFIX = 'SCRUM Sprint';
+
+const getSprintNumber = (sprintName) => {
+  const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
+  return match ? Number(match[1]) : 0;
+};
+
+const getNextSprintNumber = (sprints) => {
+  const maxSprintNumber = sprints.reduce((max, sprint) => {
+    return Math.max(max, getSprintNumber(sprint.name));
+  }, 0);
+
+  return maxSprintNumber + 1;
+};
+
 export default function TaskManagement() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,8 +136,17 @@ export default function TaskManagement() {
 
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-  // Dynamic sprints (Sprint 2, 3, ...) created via "Create sprint" button
-  const [extraSprints, setExtraSprints] = useState([]);
+  // Dynamic sprints are scoped by space so each space starts from SCRUM Sprint 1.
+  const sprintSpaceKey = spaceId || 'default-space';
+  const [extraSprintsBySpace, setExtraSprintsBySpace] = useState({});
+  const extraSprints = extraSprintsBySpace[sprintSpaceKey] || [];
+  const setExtraSprints = useCallback((updater) => {
+    setExtraSprintsBySpace(prev => {
+      const currentSprints = prev[sprintSpaceKey] || [];
+      const nextSprints = typeof updater === 'function' ? updater(currentSprints) : updater;
+      return { ...prev, [sprintSpaceKey]: nextSprints };
+    });
+  }, [sprintSpaceKey]);
   const [expandedSprints, setExpandedSprints] = useState({});
   // Which sprint's ... menu is open (null = none, 'sprint-1' = Sprint 1, sprint.id = extra sprint)
   const [openSprintMenuId, setOpenSprintMenuId] = useState(null);
@@ -364,17 +388,16 @@ export default function TaskManagement() {
   };
 
   const handleCreateSprint = () => {
-    // Calculate next sprint number (Sprint 1 is fixed + existing extra sprints)
-    const nextNum = extraSprints.length + 2;
+    const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
     // Start date = 2 weeks after previous sprint starts (rough estimate)
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() + (extraSprints.length + 1) * 14);
+    startDate.setDate(startDate.getDate() + (nextNum - 1) * 14);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 13);
     const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const newSprint = {
       id: `sprint-${nextNum}`,
-      name: `SCRUM Sprint ${nextNum}`,
+      name: `${SPRINT_NAME_PREFIX} ${nextNum}`,
       dateRange: `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
       tasks: [],
       isCompleted: false,
