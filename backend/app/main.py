@@ -1,3 +1,5 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from fastapi import FastAPI
@@ -10,6 +12,10 @@ from app.api.router import api_router
 
 app = FastAPI(title="Task Management System API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
 frontend_url = os.getenv("FRONTEND_URL")
 allowed_origins = [frontend_url] if frontend_url else ["*"]
 
