@@ -11,6 +11,7 @@ from app.models.verification_token import VerificationToken
 
 
 EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+PASSWORD_RESET = "PASSWORD_RESET"
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
@@ -36,7 +37,7 @@ def upsert_email_verification_token(
     used_at: datetime | None = None,
     created_at: datetime | None = None,
 ) -> VerificationToken:
-    verification_token = get_verification_token(db, email)
+    verification_token = get_verification_token(db, email, EMAIL_VERIFICATION)
     now = created_at or datetime.utcnow()
 
     if verification_token is None:
@@ -44,6 +45,41 @@ def upsert_email_verification_token(
             email=email,
             otp_code=otp_code,
             token_type=EMAIL_VERIFICATION,
+            expires_at=expires_at,
+            used_at=used_at,
+            resend_count=resend_count,
+            created_at=now,
+        )
+        db.add(verification_token)
+        return verification_token
+
+    verification_token.otp_code = otp_code
+    verification_token.expires_at = expires_at
+    verification_token.used_at = used_at
+    verification_token.resend_count = resend_count
+    verification_token.created_at = now
+    return verification_token
+
+
+def upsert_verification_token(
+    db: Session,
+    *,
+    email: str,
+    otp_code: str,
+    token_type: str,
+    expires_at: datetime,
+    resend_count: int = 0,
+    used_at: datetime | None = None,
+    created_at: datetime | None = None,
+) -> VerificationToken:
+    verification_token = get_verification_token(db, email, token_type)
+    now = created_at or datetime.utcnow()
+
+    if verification_token is None:
+        verification_token = VerificationToken(
+            email=email,
+            otp_code=otp_code,
+            token_type=token_type,
             expires_at=expires_at,
             used_at=used_at,
             resend_count=resend_count,

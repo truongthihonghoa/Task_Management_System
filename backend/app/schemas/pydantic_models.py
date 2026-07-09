@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -10,6 +10,20 @@ PASSWORD_SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
 
 def normalize_email(value: str) -> str:
     return value.strip().lower()
+
+
+def validate_password_strength(value: str, *, field_name: str = "Password") -> str:
+    if len(value) < 8:
+        raise ValueError(f"{field_name} must be at least 8 characters.")
+    if not any(char.isupper() for char in value):
+        raise ValueError(f"{field_name} must contain at least one uppercase letter.")
+    if not any(char.islower() for char in value):
+        raise ValueError(f"{field_name} must contain at least one lowercase letter.")
+    if not any(char.isdigit() for char in value):
+        raise ValueError(f"{field_name} must contain at least one number.")
+    if not PASSWORD_SPECIAL_PATTERN.search(value):
+        raise ValueError(f"{field_name} must contain at least one special character.")
+    return value
 
 
 class EmailRequest(BaseModel):
@@ -51,17 +65,7 @@ class RegisterRequest(EmailRequest):
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
-        if len(value) < 8:
-            raise ValueError("Password must be at least 8 characters.")
-        if not any(char.isupper() for char in value):
-            raise ValueError("Password must contain at least one uppercase letter.")
-        if not any(char.islower() for char in value):
-            raise ValueError("Password must contain at least one lowercase letter.")
-        if not any(char.isdigit() for char in value):
-            raise ValueError("Password must contain at least one number.")
-        if not PASSWORD_SPECIAL_PATTERN.search(value):
-            raise ValueError("Password must contain at least one special character.")
-        return value
+        return validate_password_strength(value)
 
     @field_validator("confirm_password")
     @classmethod
@@ -77,6 +81,53 @@ class MessageResponse(BaseModel):
 
 class VerifyEmailResponse(MessageResponse):
     verified: bool
+
+
+class LoginRequest(EmailRequest):
+    password: str = Field(..., min_length=1)
+
+
+class LoginUserResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "Bearer"
+    user: LoginUserResponse
+
+
+class VerifyResetCodeRequest(EmailRequest):
+    code: str = Field(..., min_length=6, max_length=6)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        if not value.isdigit() or len(value) != 6:
+            raise ValueError("Code must be exactly 6 digits.")
+        return value
+
+
+class ResetPasswordRequest(EmailRequest):
+    password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+    @model_validator(mode="after")
+    def validate_password_match(self) -> "ResetPasswordRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("Confirm password mismatch.")
+        return self
 
 
 class UserResponse(BaseModel):
