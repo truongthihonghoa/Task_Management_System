@@ -1,8 +1,13 @@
-import os
-from datetime import datetime, timedelta
+"""
+auth.py — Authentication router.
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
+Responsibilities: receive requests, validate input (via Pydantic), call
+auth_service, return responses. No business logic here.
+"""
+
+import os
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.email import send_verification_email
@@ -38,205 +43,23 @@ from app.services.notification_service import NotificationService
 router = APIRouter(prefix="/auth", tags=["auth"])
 notification_service = NotificationService()
 
-OTP_EXPIRE_MINUTES = 15
-MAX_RESENDS_PER_HOUR = 5
-MAX_FAILED_LOGIN_ATTEMPTS = int(os.getenv("MAX_FAILED_LOGIN_ATTEMPTS", "5"))
-ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "15"))
 
-
-def _otp_expires_at(now: datetime) -> datetime:
-    return now + timedelta(minutes=OTP_EXPIRE_MINUTES)
-
-
-def _account_locked_until(now: datetime) -> datetime:
-    return now + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
-
-
-def _get_valid_verification_token(
-    db: Session,
-    *,
-    email: str,
-    code: str,
-    token_type: str,
-    now: datetime,
-):
-    verification_token = get_verification_token(db, email, token_type)
-
-    if verification_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Verification record not found."},
-        )
-    if verification_token.otp_code != code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is incorrect."},
-        )
-    if verification_token.expires_at < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code has expired."},
-        )
-    if verification_token.used_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is no longer valid."},
-        )
-
-    return verification_token
-
-
-def _get_verified_password_reset_token(db: Session, *, email: str, now: datetime):
-    verification_token = get_verification_token(db, email, PASSWORD_RESET)
-
-    if verification_token is None or verification_token.used_at is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "Password reset code must be verified before resetting password."},
-        )
-    if verification_token.expires_at < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code has expired."},
-        )
-
-    return verification_token
-
-
-@router.post("/check-email", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@router.post("/check-email", response_model=MessageResponse, status_code=200)
 def check_email(payload: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
-    email = payload.email
-    now = datetime.utcnow()
-
-    if get_user_by_email(db, email):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"message": "Email already exists."},
-        )
-
-    otp_code = generate_otp()
-
-    try:
-        upsert_email_verification_token(
-            db,
-            email=email,
-            otp_code=otp_code,
-            expires_at=_otp_expires_at(now),
-            resend_count=0,
-            used_at=None,
-            created_at=now,
-        )
-        create_audit_log(
-            db,
-            action="CHECK_EMAIL",
-            label_title="Check email",
-            payload={"email": email},
-        )
-        create_audit_log(
-            db,
-            action="SEND_VERIFICATION_CODE",
-            label_title="Send verification code",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
-        send_verification_email(email, otp_code)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return MessageResponse(message="Verification code has been sent.")
+    return auth_service.check_email(db, payload.email)
 
 
-@router.post("/verify-email", response_model=VerifyEmailResponse, status_code=status.HTTP_200_OK)
+@router.post("/verify-email", response_model=VerifyEmailResponse, status_code=200)
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)) -> VerifyEmailResponse:
-    email = payload.email
-    now = datetime.utcnow()
-    verification_token = get_verification_token(db, email)
-
-    if verification_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Verification record not found."}
-        )
-
-    # Kiểm tra OTP trước
-    if verification_token.otp_code != payload.otp_code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is incorrect."}
-        )
-
-    # Kiểm tra hết hạn
-    if verification_token.expires_at < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code has expired."}
-        )
-
-    # Kiểm tra đã sử dụng
-    if verification_token.used_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is no longer valid."}
-        )
-
-    try:
-        verification_token.used_at = now
-        create_audit_log(
-            db,
-            action="VERIFY_EMAIL",
-            label_title="Verify email",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return VerifyEmailResponse(verified=True, message="Email verified successfully.")
+    return auth_service.verify_email(db, payload.email, payload.otp_code)
 
 
-@router.post("/resend-verification", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@router.post("/resend-verification", response_model=MessageResponse, status_code=200)
 def resend_verification(payload: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
-    email = payload.email
-    now = datetime.utcnow()
-    verification_token = get_verification_token(db, email)
-
-    if verification_token is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Verification record not found."})
-    if get_user_by_email(db, email):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Email already exists."})
-
-    reset_resend_window_if_needed(verification_token, now)
-    if verification_token.resend_count >= MAX_RESENDS_PER_HOUR:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"message": "Too many resend attempts. Please try again later."},
-        )
-
-    otp_code = generate_otp()
-
-    try:
-        verification_token.otp_code = otp_code
-        verification_token.expires_at = _otp_expires_at(now)
-        verification_token.used_at = None
-        verification_token.resend_count += 1
-        create_audit_log(
-            db,
-            action="SEND_VERIFICATION_CODE",
-            label_title="Resend verification code",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
-        send_verification_email(email, otp_code)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return MessageResponse(message="Verification code has been resent.")
+    return auth_service.resend_verification(db, payload.email)
 
 
-@router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
+@router.post("/login", response_model=LoginResponse, status_code=200)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     email = payload.email
     now = datetime.utcnow()
@@ -336,125 +159,22 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     )
 
 
-@router.post("/forgot-password", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@router.post("/forgot-password", response_model=MessageResponse, status_code=200)
 def forgot_password(payload: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
-    email = payload.email
-    now = datetime.utcnow()
-    user = get_user_by_email(db, email)
-
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Email does not exist."})
-
-    otp_code = generate_otp()
-
-    try:
-        upsert_verification_token(
-            db,
-            email=email,
-            otp_code=otp_code,
-            token_type=PASSWORD_RESET,
-            expires_at=_otp_expires_at(now),
-            resend_count=0,
-            used_at=None,
-            created_at=now,
-        )
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_CODE",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
-        send_verification_email(email, otp_code)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return MessageResponse(message="Verification code sent successfully.")
+    return auth_service.forgot_password(db, payload.email)
 
 
-@router.post("/verify-reset-code", response_model=VerifyEmailResponse, status_code=status.HTTP_200_OK)
+@router.post("/verify-reset-code", response_model=VerifyEmailResponse, status_code=200)
 def verify_reset_code(payload: VerifyResetCodeRequest, db: Session = Depends(get_db)) -> VerifyEmailResponse:
-    email = payload.email
-    now = datetime.utcnow()
-    user = get_user_by_email(db, email)
-
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Email does not exist."})
-
-    verification_token = _get_valid_verification_token(
-        db,
-        email=email,
-        code=payload.code,
-        token_type=PASSWORD_RESET,
-        now=now,
-    )
-
-    try:
-        verification_token.used_at = now
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="VERIFY_PASSWORD_RESET_CODE",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return VerifyEmailResponse(verified=True, message="Password reset code verified successfully.")
+    return auth_service.verify_reset_code(db, payload.email, payload.code)
 
 
-@router.post("/resend-reset-code", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@router.post("/resend-reset-code", response_model=MessageResponse, status_code=200)
 def resend_reset_code(payload: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
-    email = payload.email
-    now = datetime.utcnow()
-    user = get_user_by_email(db, email)
-
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Email does not exist."})
-
-    verification_token = get_verification_token(db, email, PASSWORD_RESET)
-    if verification_token is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Verification record not found."})
-
-    reset_resend_window_if_needed(verification_token, now)
-    if verification_token.resend_count >= MAX_RESENDS_PER_HOUR:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"message": "Too many resend attempts. Please try again later."},
-        )
-
-    otp_code = generate_otp()
-
-    try:
-        verification_token.otp_code = otp_code
-        verification_token.expires_at = _otp_expires_at(now)
-        verification_token.used_at = None
-        verification_token.resend_count += 1
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_CODE",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
-        send_verification_email(email, otp_code)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-    return MessageResponse(message="Verification code has been resent.")
+    return auth_service.resend_reset_code(db, payload.email)
 
 
-@router.post("/reset-password", response_model=MessageResponse, status_code=status.HTTP_200_OK)
+@router.post("/reset-password", response_model=MessageResponse, status_code=200)
 def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
     email = payload.email
     now = datetime.utcnow()
@@ -498,7 +218,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     return MessageResponse(message="Password reset successfully.")
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     email = payload.email
     now = datetime.utcnow()

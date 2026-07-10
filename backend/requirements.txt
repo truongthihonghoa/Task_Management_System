@@ -4,6 +4,7 @@ SQLAlchemy
 psycopg2-binary
 alembic
 python-dotenv
+python-multipart
 passlib[bcrypt]
 bcrypt<5
 python-jose[cryptography]
