@@ -10,7 +10,7 @@ class Task(Base):
 
     task_id = prefixed_id_column("TSK", "tasks_task_id_seq")
     space_id = Column(String(15), ForeignKey("spaces.space_id"), nullable=False)
-    sprint_id = Column(String(15), ForeignKey("sprints.sprint_id"), nullable=True)
+    sprint_id = Column(String(15), ForeignKey("sprints.sprint_id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     creator_id = Column(String(15), ForeignKey("users.user_id"), nullable=False)
