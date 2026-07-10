@@ -131,9 +131,15 @@ def test_login_wrong_password_increments_failed_attempts(monkeypatch):
 def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     db = FakeDb()
     user = make_user(failed_login_attempts=auth.MAX_FAILED_LOGIN_ATTEMPTS - 1)
+    notifications = []
 
     monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: False)
+    monkeypatch.setattr(
+        auth.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         auth.login(LoginRequest(email=user.email, password="Wrong@123"), db)
@@ -141,6 +147,8 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     assert_http_error(exc_info, 401, "Invalid email or password.")
     assert user.status_user == "Locked"
     assert user.locked_until is not None
+    assert notifications[0]["notification_type"] == "account_locked"
+    assert notifications[0]["metadata"]["user_id"] == user.user_id
     assert db.commits == 1
 
 
@@ -257,11 +265,17 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=datetime.utcnow())
     token = make_token(used_at=datetime.utcnow())
     audits = []
+    notifications = []
 
     monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth, "hash_password", lambda password: f"hashed::{password}")
     monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(
+        auth.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
     response = auth.reset_password(
         ResetPasswordRequest(
@@ -278,6 +292,8 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     assert user.locked_until is None
     assert user.status_user == "Active"
     assert audits[0]["action"] == "RESET_PASSWORD"
+    assert notifications[0]["notification_type"] == "user_verified"
+    assert notifications[0]["metadata"]["user_id"] == user.user_id
     assert db.commits == 1
 
 

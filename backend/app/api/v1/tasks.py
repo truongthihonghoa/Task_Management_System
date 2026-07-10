@@ -26,9 +26,11 @@ from app.schemas.pydantic_models import (
     RemoveTaskAssigneeRequest,
     TaskAssigneesResponse,
 )
+from app.services.notification_service import NotificationService
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+notification_service = NotificationService()
 
 
 def _get_active_task_or_404(db: Session, task_id: str) -> Task:
@@ -119,6 +121,21 @@ def assign_task_assignees(
                 change_status=task.task_status,
                 changed_at=now,
             )
+            notification_service.create_notification(
+                db,
+                user_id=assignee_id,
+                actor_id=current_user.user_id,
+                task_id=task.task_id,
+                space_id=task.space_id,
+                notification_type="task_assigned",
+                title="New task assigned",
+                message=f"{current_user.full_name} assigned you to {task.title}.",
+                audience="USER",
+                metadata={
+                    "task_title": task.title,
+                    "space_name": task.space.name_space if task.space else None,
+                },
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -170,8 +187,56 @@ def reassign_task_assignee(
     try:
         if payload.new_assignee_id is None:
             delete_task_assignee(db, current_assignment)
+            notification_service.create_notification(
+                db,
+                user_id=payload.previous_assignee_id,
+                actor_id=current_user.user_id,
+                task_id=task.task_id,
+                space_id=task.space_id,
+                notification_type="task_updated",
+                title="Task assignment updated",
+                message=f"{current_user.full_name} removed you from {task.title}.",
+                audience="USER",
+                metadata={
+                    "event": "assignee_removed",
+                    "task_title": task.title,
+                    "space_name": task.space.name_space if task.space else None,
+                },
+            )
         else:
             current_assignment.assignee_id = payload.new_assignee_id
+            notification_service.create_notification(
+                db,
+                user_id=payload.new_assignee_id,
+                actor_id=current_user.user_id,
+                task_id=task.task_id,
+                space_id=task.space_id,
+                notification_type="task_assigned",
+                title="New task assigned",
+                message=f"{current_user.full_name} assigned you to {task.title}.",
+                audience="USER",
+                metadata={
+                    "task_title": task.title,
+                    "space_name": task.space.name_space if task.space else None,
+                    "previous_assignee_id": payload.previous_assignee_id,
+                },
+            )
+            notification_service.create_notification(
+                db,
+                user_id=payload.previous_assignee_id,
+                actor_id=current_user.user_id,
+                task_id=task.task_id,
+                space_id=task.space_id,
+                notification_type="task_updated",
+                title="Task assignment updated",
+                message=f"{current_user.full_name} reassigned {task.title}.",
+                audience="USER",
+                metadata={
+                    "event": "assignee_replaced",
+                    "task_title": task.title,
+                    "new_assignee_id": payload.new_assignee_id,
+                },
+            )
 
         create_assignment_history(
             db,
@@ -218,6 +283,22 @@ def remove_task_assignee(
             reason=payload.reason if payload else None,
             change_status=task.task_status,
             changed_at=now,
+        )
+        notification_service.create_notification(
+            db,
+            user_id=assignee_id,
+            actor_id=current_user.user_id,
+            task_id=task.task_id,
+            space_id=task.space_id,
+            notification_type="task_updated",
+            title="Task assignment updated",
+            message=f"{current_user.full_name} removed you from {task.title}.",
+            audience="USER",
+            metadata={
+                "event": "assignee_removed",
+                "task_title": task.title,
+                "space_name": task.space.name_space if task.space else None,
+            },
         )
         db.commit()
     except Exception:

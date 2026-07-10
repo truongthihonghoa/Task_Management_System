@@ -14,9 +14,11 @@ from app.schemas.pydantic_models import (
     SpaceResponse,
     SpaceUpdate,
 )
+from app.services.notification_service import NotificationService
 
 
 TRASH_RETENTION_DAYS = 14
+notification_service = NotificationService()
 
 
 def _trash_expires_at(space: Space) -> datetime | None:
@@ -141,6 +143,17 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
             status="Active",
         )
     )
+    notification_service.create_notification(
+        db,
+        user_id=payload.owner_id,
+        notification_type="space_created",
+        title="Space created",
+        message=f"Space {space.name_space} was created.",
+        space_id=space.space_id,
+        audience="USER",
+        metadata={"space_name": space.name_space},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -206,6 +219,17 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceRespo
         setattr(space, field, value)
 
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="space_updated",
+        title="Space updated",
+        message=f"Space {space.name_space} was updated.",
+        space_id=space.space_id,
+        audience="USER",
+        metadata={"space_name": space.name_space, "updated_fields": sorted(update_data)},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -221,6 +245,17 @@ def archive_space(db: Session, space_id: str) -> SpaceResponse:
 
     space.status_space = "Archived"
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space archived",
+        message=f"Space {space.name_space} was archived.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_archived"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -255,6 +290,17 @@ def restore_space(db: Session, space_id: str) -> SpaceResponse:
     space.status_space = "Active"
     space.deleted_at = None
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space restored",
+        message=f"Space {space.name_space} was restored.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_restored"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -266,6 +312,17 @@ def delete_space(db: Session, space_id: str) -> SpaceResponse:
     space.status_space = "Deleted"
     space.deleted_at = now
     space.updated_at = now
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space deleted",
+        message=f"Space {space.name_space} was moved to trash.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_deleted"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
