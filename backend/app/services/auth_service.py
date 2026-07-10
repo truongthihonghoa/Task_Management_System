@@ -155,8 +155,19 @@ def check_email(db: Session, email: str) -> MessageResponse:
             label_title="Send verification code",
             payload={"email": email, "token_type": EMAIL_VERIFICATION},
         )
-        send_verification_email(email, otp_code)
+        
+        # Send email and check if successful
+        email_sent = send_verification_email(email, otp_code)
+        if not email_sent:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"message": "Failed to send verification email. Please try again later."},
+            )
+        
         db.commit()
+    except HTTPException:
+        raise
     except Exception:
         db.rollback()
         raise
@@ -242,8 +253,19 @@ def resend_verification(db: Session, email: str) -> MessageResponse:
             label_title="Resend verification code",
             payload={"email": email, "token_type": EMAIL_VERIFICATION},
         )
-        send_verification_email(email, otp_code)
+        
+        # Send email and check if successful
+        email_sent = send_verification_email(email, otp_code)
+        if not email_sent:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"message": "Failed to send verification email. Please try again later."},
+            )
+        
         db.commit()
+    except HTTPException:
+        raise
     except Exception:
         db.rollback()
         raise
@@ -373,8 +395,19 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
-        send_verification_email(email, otp_code)
+        
+        # Send email and check if successful
+        email_sent = send_verification_email(email, otp_code)
+        if not email_sent:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"message": "Failed to send verification email. Please try again later."},
+            )
+        
         db.commit()
+    except HTTPException:
+        raise
     except Exception:
         db.rollback()
         raise
@@ -455,8 +488,19 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
-        send_verification_email(email, otp_code)
+        
+        # Send email and check if successful
+        email_sent = send_verification_email(email, otp_code)
+        if not email_sent:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"message": "Failed to send verification email. Please try again later."},
+            )
+        
         db.commit()
+    except HTTPException:
+        raise
     except Exception:
         db.rollback()
         raise
