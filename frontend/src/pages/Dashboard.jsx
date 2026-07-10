@@ -14,8 +14,7 @@ const userActivities = [
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
     target: "SCRUM-13: Design Base Layout",
     time: "2026-06-25 10:45:00",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -28,8 +27,7 @@ const userActivities = [
     statusColor: "bg-gray-100 text-gray-700 border-gray-200",
     target: "SCRUM-12: Design Attachment Section",
     time: "2 hours ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.15",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -42,8 +40,7 @@ const userActivities = [
     statusColor: "bg-amber-50 text-amber-700 border-amber-100",
     target: "SCRUM-5: Product Detail Page",
     time: "5 hours ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.22",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -56,8 +53,7 @@ const userActivities = [
     statusColor: "bg-green-50 text-green-700 border-green-100",
     target: "SCRUM-1: Design Login Page",
     time: "1 day ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Yesterday"
   },
   {
@@ -70,8 +66,7 @@ const userActivities = [
     statusColor: "bg-red-50 text-red-700 border-red-100",
     target: "SCRUM-7: Task Detail Screen",
     time: "1 day ago",
-    entityType: "Task",
-    ipAddress: "192.168.1.15",
+    labelTitle: "Task",
     group: "Yesterday"
   }
 ];
@@ -85,10 +80,8 @@ const adminActivities = [
     action: "created user",
     status: "USER",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "UID-9902",
     time: "2026-06-25 09:15:00",
-    entityType: "User",
-    ipAddress: "192.168.1.45",
+    labelTitle: "User",
     group: "Today"
   },
   {
@@ -99,10 +92,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-5541",
     time: "2026-06-25 09:10:00",
-    entityType: "Task",
-    ipAddress: "10.0.4.12",
+    labelTitle: "Task",
     group: "Today"
   },
   {
@@ -113,10 +104,8 @@ const adminActivities = [
     action: "refreshed token",
     status: "TOKEN",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "TOK-REF-8",
     time: "2026-06-25 09:02:00",
-    entityType: "Token",
-    ipAddress: "Internal",
+    labelTitle: "Token",
     group: "Today"
   },
   {
@@ -127,10 +116,8 @@ const adminActivities = [
     action: "uploaded file",
     status: "ATTACHMENT",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "invoice_q1_final.pdf",
     time: "2026-06-25 08:58:00",
-    entityType: "Attachment",
-    ipAddress: "45.78.90.12",
+    labelTitle: "Attachment",
     group: "Yesterday"
   },
   {
@@ -141,10 +128,8 @@ const adminActivities = [
     action: "performed session login",
     status: "SESSION",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "Chrome / MacOS",
     time: "2026-06-25 08:45:00",
-    entityType: "Session",
-    ipAddress: "172.16.0.8",
+    labelTitle: "Session",
     group: "Yesterday"
   },
   {
@@ -155,10 +140,8 @@ const adminActivities = [
     action: "created user",
     status: "USER",
     statusColor: "bg-blue-50 text-blue-700 border-blue-100",
-    target: "UID-9903",
     time: "2026-06-24 16:30:00",
-    entityType: "User",
-    ipAddress: "192.168.1.45",
+    labelTitle: "User",
     group: "Yesterday"
   },
   {
@@ -169,10 +152,8 @@ const adminActivities = [
     action: "deleted comment",
     status: "COMMENT",
     statusColor: "bg-red-50 text-red-700 border-red-100",
-    target: "COM-104",
     time: "2026-06-23 11:24:00",
-    entityType: "Comment",
-    ipAddress: "10.0.4.12",
+    labelTitle: "Comment",
     group: "Yesterday"
   },
   {
@@ -183,10 +164,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-2291",
     time: "2026-06-20 14:15:00",
-    entityType: "Task",
-    ipAddress: "45.78.90.12",
+    labelTitle: "Task",
     group: "Yesterday"
   },
   {
@@ -197,10 +176,8 @@ const adminActivities = [
     action: "performed session login",
     status: "SESSION",
     statusColor: "bg-slate-100 text-slate-700 border-slate-200",
-    target: "Safari / iOS",
     time: "2026-06-18 07:12:00",
-    entityType: "Session",
-    ipAddress: "172.16.0.8",
+    labelTitle: "Session",
     group: "Yesterday"
   },
   {
@@ -211,10 +188,8 @@ const adminActivities = [
     action: "updated task",
     status: "TASK",
     statusColor: "bg-teal-50 text-teal-700 border-teal-100",
-    target: "TSK-3382",
     time: "2026-06-15 10:00:00",
-    entityType: "Task",
-    ipAddress: "192.168.1.45",
+    labelTitle: "Task",
     group: "Yesterday"
   }
 ];
@@ -225,24 +200,21 @@ const auditLogsData = [
     user: "John Doe",
     initials: "JD",
     avatarBg: "#3525cd",
-    role: "Admin",
+    role: "Super Admin",
     event: "Created User",
-    entityType: "User",
-    object: "UID-9902",
+    labelTitle: "User",
     createdAt: "2026-06-25 09:15:00",
-    ipAddress: "192.168.1.45",
     payload: {
       log_id: "AL-02340",
       user_id: "USR-102",
       action: "CREATE_USER",
-      entity_type: "USER",
+      labelTitle: "USER",
       entity_id: "UID-9902",
       payload: {
         email: "new.user@example.com",
-        role: "Admin",
+        role: "Super Admin",
         status: "active"
       },
-      ip_address: "192.168.1.45",
       created_at: "2026-06-25 09:15:00"
     }
   },
@@ -253,22 +225,19 @@ const auditLogsData = [
     avatarBg: "#ff0080",
     role: "User",
     event: "Updated Task",
-    entityType: "Task",
-    object: "TSK-5541",
+    labelTitle: "Task",
     createdAt: "2026-06-25 09:10:00",
-    ipAddress: "10.0.4.12",
     payload: {
       log_id: "AL-02341",
       user_id: "USR-105",
       action: "UPDATE_TASK",
-      entity_type: "TASK",
+      labelTitle: "TASK",
       entity_id: "TSK-5541",
       payload: {
         title: "API Documentation",
         status: "in_progress",
         priority: "High"
       },
-      ip_address: "10.0.4.12",
       created_at: "2026-06-25 09:10:00"
     }
   },
@@ -279,21 +248,18 @@ const auditLogsData = [
     avatarBg: "#4648d4",
     role: "User",
     event: "Refreshed Token",
-    entityType: "Token",
-    object: "TOK-REF-8",
+    labelTitle: "Token",
     createdAt: "2026-06-25 09:02:00",
-    ipAddress: "Internal",
     payload: {
       log_id: "AL-02342",
       user_id: "SYS-BOT",
       action: "REFRESH_TOKEN",
-      entity_type: "TOKEN",
+      labelTitle: "TOKEN",
       entity_id: "TOK-REF-8",
       payload: {
         token_type: "refresh",
         status: "success"
       },
-      ip_address: "Internal",
       created_at: "2026-06-25 09:02:00"
     }
   },
@@ -304,22 +270,19 @@ const auditLogsData = [
     avatarBg: "#a44100",
     role: "User",
     event: "Uploaded File",
-    entityType: "Attachment",
-    object: "invoice_q1_final.pdf",
+    labelTitle: "Attachment",
     createdAt: "2026-06-25 08:58:00",
-    ipAddress: "45.78.90.12",
     payload: {
       log_id: "AL-02343",
       user_id: "USR-108",
       action: "UPLOAD_FILE",
-      entity_type: "ATTACHMENT",
+      labelTitle: "ATTACHMENT",
       entity_id: "ATT-992",
       payload: {
         file_name: "invoice_q1_final.pdf",
         size: "2.4 MB",
         mime_type: "application/pdf"
       },
-      ip_address: "45.78.90.12",
       created_at: "2026-06-25 08:58:00"
     }
   },
@@ -330,22 +293,19 @@ const auditLogsData = [
     avatarBg: "#777587",
     role: "User",
     event: "Session Login",
-    entityType: "Session",
-    object: "Chrome / MacOS",
+    labelTitle: "Session",
     createdAt: "2026-06-25 08:45:00",
-    ipAddress: "172.16.0.8",
     payload: {
       log_id: "AL-02344",
       user_id: "USR-112",
       action: "SESSION_LOGIN",
-      entity_type: "SESSION",
+      labelTitle: "SESSION",
       entity_id: "SES-883",
       payload: {
         browser: "Chrome",
         os: "MacOS",
         device: "Desktop"
       },
-      ip_address: "172.16.0.8",
       created_at: "2026-06-25 08:45:00"
     }
   },
@@ -354,24 +314,21 @@ const auditLogsData = [
     user: "John Doe",
     initials: "JD",
     avatarBg: "#3525cd",
-    role: "Admin",
+    role: "Super Admin",
     event: "Create User",
-    entityType: "User",
-    object: "UID-9903",
+    labelTitle: "User",
     createdAt: "2026-06-24 16:30:00",
-    ipAddress: "192.168.1.45",
     payload: {
       log_id: "AL-02345",
       user_id: "USR-102",
       action: "CREATE_USER",
-      entity_type: "USER",
+      labelTitle: "USER",
       entity_id: "UID-9903",
       payload: {
         email: "another.user@example.com",
         role: "User",
         status: "active"
       },
-      ip_address: "192.168.1.45",
       created_at: "2026-06-24 16:30:00"
     }
   },
@@ -382,22 +339,19 @@ const auditLogsData = [
     avatarBg: "#ff0080",
     role: "User",
     event: "Delete Comment",
-    entityType: "Comment",
-    object: "COM-104",
+    labelTitle: "Comment",
     createdAt: "2026-06-23 11:24:00",
-    ipAddress: "10.0.4.12",
     payload: {
       log_id: "AL-02346",
       user_id: "USR-105",
       action: "DELETE_COMMENT",
-      entity_type: "COMMENT",
+      labelTitle: "COMMENT",
       entity_id: "COM-104",
       payload: {
         comment_id: "COM-104",
         task_id: "TSK-5541",
         author: "Sarah Lee"
       },
-      ip_address: "10.0.4.12",
       created_at: "2026-06-23 11:24:00"
     }
   },
@@ -408,22 +362,41 @@ const auditLogsData = [
     avatarBg: "#a44100",
     role: "User",
     event: "Update Task",
-    entityType: "Task",
-    object: "TSK-2291",
+    labelTitle: "Task",
     createdAt: "2026-06-20 14:15:00",
-    ipAddress: "45.78.90.12",
     payload: {
       log_id: "AL-02347",
       user_id: "USR-108",
       action: "UPDATE_TASK",
-      entity_type: "TASK",
+      labelTitle: "TASK",
       entity_id: "TSK-2291",
       payload: {
         title: "Database Migration",
         status: "done"
       },
-      ip_address: "45.78.90.12",
       created_at: "2026-06-20 14:15:00"
+    }
+  },
+  {
+    id: "AL-02349",
+    user: "John Doe",
+    initials: "JD",
+    avatarBg: "#3525cd",
+    role: "Super Admin",
+    event: "Update Task",
+    labelTitle: "Task",
+    createdAt: "2026-06-15 10:00:00",
+    payload: {
+      log_id: "AL-02349",
+      user_id: "USR-102",
+      action: "UPDATE_TASK",
+      labelTitle: "TASK",
+      entity_id: "TSK-3382",
+      payload: {
+        title: "Refactor Auth Middleware",
+        status: "in_review"
+      },
+      created_at: "2026-06-15 10:00:00"
     }
   },
   {
@@ -433,48 +406,20 @@ const auditLogsData = [
     avatarBg: "#777587",
     role: "User",
     event: "Session Login",
-    entityType: "Session",
-    object: "Safari / iOS",
+    labelTitle: "Session",
     createdAt: "2026-06-18 07:12:00",
-    ipAddress: "172.16.0.8",
     payload: {
       log_id: "AL-02348",
       user_id: "USR-112",
       action: "SESSION_LOGIN",
-      entity_type: "SESSION",
+      labelTitle: "SESSION",
       entity_id: "SES-884",
       payload: {
         browser: "Safari",
         os: "iOS",
         device: "Mobile"
       },
-      ip_address: "172.16.0.8",
       created_at: "2026-06-18 07:12:00"
-    }
-  },
-  {
-    id: "AL-02349",
-    user: "John Doe",
-    initials: "JD",
-    avatarBg: "#3525cd",
-    role: "Admin",
-    event: "Update Task",
-    entityType: "Task",
-    object: "TSK-3382",
-    createdAt: "2026-06-15 10:00:00",
-    ipAddress: "192.168.1.45",
-    payload: {
-      log_id: "AL-02349",
-      user_id: "USR-102",
-      action: "UPDATE_TASK",
-      entity_type: "TASK",
-      entity_id: "TSK-3382",
-      payload: {
-        title: "Refactor Auth Middleware",
-        status: "in_review"
-      },
-      ip_address: "192.168.1.45",
-      created_at: "2026-06-15 10:00:00"
     }
   }
 ];
@@ -502,8 +447,8 @@ const userViewedTasks = [
 ];
 
 const userWorkedOnTasks = [
-  { title: "Design Dashboard Screen - Admin Dashboard and Design Global Search on Header (Main Layout)", subtitle: "SCRUM-14 · Task Management System", status: "in_progress", group: "TODAY", time: "2H AGO" },
-  { title: "Design Base Layout (Header & Navigation Menu) and User Dashboard", subtitle: "SCRUM-13 · Task Management System", status: "in_progress", group: "YESTERDAY", time: "1D AGO" },
+  { title: "Design Dashboard Screen - Super Admin Dashboard and Design Global Search on Header (Main Layout)", subtitle: "SCRUM-14 · Task Management System", status: "in_progress", group: "TODAY", time: "2H AGO" },
+  { title: "Design Base Layout (Header & Navigation Menu) and Task Summary", subtitle: "SCRUM-13 · Task Management System", status: "in_progress", group: "YESTERDAY", time: "1D AGO" },
   { title: "Design Notifications Screen", subtitle: "SCRUM-16 · Task Management System", status: "new", group: "IN THE LAST WEEK", time: "3D AGO" },
   { title: "Design Task Assignment History Screen and Audit Logs Screen", subtitle: "SCRUM-17 · Task Management System", status: "done", group: "IN THE LAST WEEK", time: "5D AGO" },
   { title: "Design Task Assignees Screen", subtitle: "SCRUM-15 · Task Management System", status: "in_testing", group: "IN THE LAST WEEK", time: "6D AGO" }
@@ -517,8 +462,8 @@ const adminViewedTasks = [
 ];
 
 const userAssignedTasks = [
-  { title: "Design Dashboard Screen - Admin Dashboard and Design Global Search on Header (Main Layout)", subtitle: "SCRUM-14 · Task Management System", status: "In Progress", group: "IN PROGRESS" },
-  { title: "Design Base Layout (Header & Navigation Menu) and User Dashboard", subtitle: "SCRUM-13 · Task Management System", status: "In Review", group: "IN REVIEW" },
+  { title: "Design Dashboard Screen - Super Admin Dashboard and Design Global Search on Header (Main Layout)", subtitle: "SCRUM-14 · Task Management System", status: "In Progress", group: "IN PROGRESS" },
+  { title: "Design Base Layout (Header & Navigation Menu) and Task Summary", subtitle: "SCRUM-13 · Task Management System", status: "In Review", group: "IN REVIEW" },
   { title: "Design Task Assignment History Screen and Audit Logs Screen", subtitle: "SCRUM-17 · Task Management System", status: "To Do", group: "TO DO" },
   { title: "Design Notifications Screen", subtitle: "SCRUM-16 · Task Management System", status: "To Do", group: "TO DO" },
   { title: "Design Task Assignees Screen", subtitle: "SCRUM-15 · Task Management System", status: "To Do", group: "TO DO" }
@@ -535,7 +480,7 @@ const adminWorkedOnTasks = [
     assignees: [
       { name: "Hoa Phan", initials: "HP", color: "#4C2B74" },
       { name: "Trang Nguyen", initials: "TN", color: "#10b981" },
-      { name: "Admin", initials: "AD", color: "#4f46e5" }
+      { name: "Super Admin", initials: "SA", color: "#4f46e5" }
     ]
   },
   {
@@ -558,7 +503,7 @@ const adminWorkedOnTasks = [
     operation: "User Management",
     time: "4H AGO",
     assignees: [
-      { name: "Admin", initials: "AD", color: "#4f46e5" },
+      { name: "Super Admin", initials: "SA", color: "#4f46e5" },
       { name: "Trang Nguyen", initials: "TN", color: "#10b981" }
     ]
   },
@@ -581,7 +526,7 @@ const adminWorkedOnTasks = [
     operation: "Permissions",
     time: "1D AGO",
     assignees: [
-      { name: "Admin", initials: "AD", color: "#4f46e5" }
+      { name: "Super Admin", initials: "SA", color: "#4f46e5" }
     ]
   },
   {
@@ -604,7 +549,7 @@ const adminWorkedOnTasks = [
     operation: "User Management",
     time: "2H AGO",
     assignees: [
-      { name: "Admin", initials: "AD", color: "#4f46e5" },
+      { name: "Super Admin", initials: "SA", color: "#4f46e5" },
       { name: "Hoa Phan", initials: "HP", color: "#4C2B74" },
       { name: "Trang Nguyen", initials: "TN", color: "#10b981" }
     ]
@@ -623,6 +568,66 @@ const adminWorkedOnTasks = [
       { name: "Charlie Green", initials: "CG", color: "#10b981" }
     ]
   }
+];
+
+const spaceSummaryWorkedOnTasks = [
+  {
+    title: "API Documentation update",
+    subtitle: "TM-2 · Task Management System",
+    status: "in_progress",
+    group: "TODAY",
+    time: "2H AGO",
+    assignees: [
+      { name: "Alex Morgan", initials: "AM", color: "#7c3aed" },
+      { name: "Hoang Hoa", initials: "HH", color: "#F97316" },
+      { name: "Trang Nguyen", initials: "TN", color: "#10b981" }
+    ]
+  },
+  {
+    title: "Dashboard Charts optimization",
+    subtitle: "TM-9 · Task Management System",
+    status: "in_testing",
+    group: "TODAY",
+    time: "4H AGO",
+    assignees: [
+      { name: "Alex Morgan", initials: "AM", color: "#7c3aed" },
+      { name: "Trong Nghia", initials: "TN", color: "#14B8A6" }
+    ]
+  },
+  {
+    title: "Push Notification Service",
+    subtitle: "TM-11 · Task Management System",
+    status: "new",
+    group: "YESTERDAY",
+    time: "1D AGO",
+    assignees: [
+      { name: "Hoang Hoa", initials: "HH", color: "#F97316" },
+      { name: "Trang Nguyen", initials: "TN", color: "#10b981" }
+    ]
+  },
+  {
+    title: "Security Protocols Audit",
+    subtitle: "TM-4 · Task Management System",
+    status: "done",
+    group: "IN THE LAST WEEK",
+    time: "3D AGO",
+    assignees: [
+      { name: "Pham Tien", initials: "PT", color: "#2f3650" },
+      { name: "Alex Morgan", initials: "AM", color: "#7c3aed" }
+    ]
+  }
+];
+
+const spaceSummaryViewedTasks = [
+  { title: "Task Management System", subtitle: "Space", icon: "folder", type: "space", group: "Today" },
+  { title: "SCRUM Sprint 1", subtitle: "Sprint", icon: "sprint", type: "sprint", group: "Today" },
+  { title: "Task List Screen", subtitle: "Board view", icon: "dashboard", type: "board", group: "Yesterday" }
+];
+
+const spaceSummaryAssignedTasks = [
+  { title: "Hoang Hoa assigned to TM-11", subtitle: "Task assignment", status: "done", group: "Assignment" },
+  { title: "Trong Nghia assigned to TM-9", subtitle: "Task assignment", status: "done", group: "Assignment" },
+  { title: "Pham Tien assigned to TM-4", subtitle: "Task assignment", status: "done", group: "Assignment" }
 ];
 
 
@@ -662,19 +667,35 @@ const userAccountData = [
   { label: "Inactive Users", count: 20, total: 156, percentage: 13, color: "#64748b", gradient: "linear-gradient(90deg, #64748b 0%, #94a3b8 100%)", glow: "rgba(100, 116, 139, 0.1)", icon: "person_off" }
 ];
 
+const buildSpaceUserAccountData = (memberCount) => {
+  const total = Math.max(memberCount, 1);
+  const pending = total > 3 ? 1 : 0;
+  const locked = 0;
+  const inactive = 0;
+  const active = Math.max(total - pending - locked - inactive, 0);
+  const toPercentage = (count) => Math.round((count / total) * 100);
+
+  return [
+    { label: "Active Users", count: active, total, percentage: toPercentage(active), color: "#10b981", gradient: "linear-gradient(90deg, #10b981 0%, #34d399 100%)", glow: "rgba(16, 185, 129, 0.2)", icon: "check_circle" },
+    { label: "Pending Verification", count: pending, total, percentage: toPercentage(pending), color: "#f59e0b", gradient: "linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)", glow: "rgba(245, 158, 11, 0.2)", icon: "pending" },
+    { label: "Locked Accounts", count: locked, total, percentage: toPercentage(locked), color: "#ef4444", gradient: "linear-gradient(90deg, #ef4444 0%, #f87171 100%)", glow: "rgba(239, 68, 68, 0.2)", icon: "lock" },
+    { label: "Inactive Users", count: inactive, total, percentage: toPercentage(inactive), color: "#64748b", gradient: "linear-gradient(90deg, #64748b 0%, #94a3b8 100%)", glow: "rgba(100, 116, 139, 0.1)", icon: "person_off" }
+  ];
+};
+
 
 
 
 
 // Reusable Sub-components for cleaner structure
-const StatCard = ({ icon, label, value, colorClass, gradientClass, delay }) => (
-  <div className={`${gradientClass} p-6 rounded-2xl border border-white shadow-sm flex items-center gap-4 interactive-card animate-card`} style={{ animationDelay: delay }}>
-    <div className={`w-12 h-12 rounded-xl bg-white/60 flex items-center justify-center ${colorClass} shadow-sm`}>
-      <span className="material-symbols-outlined text-[24px]">{icon}</span>
+const StatCard = ({ icon, label, value, colorClass, gradientClass, delay, compact = false }) => (
+  <div className={`${gradientClass} ${compact ? 'px-5 py-4 rounded-2xl gap-3.5 min-h-[86px]' : 'p-6 rounded-2xl gap-4'} border border-white shadow-sm flex items-center interactive-card animate-card min-w-0`} style={{ animationDelay: delay }}>
+    <div className={`${compact ? 'w-11 h-11 rounded-xl' : 'w-12 h-12 rounded-xl'} bg-white/70 flex items-center justify-center ${colorClass} shadow-sm ring-1 ring-white/70 shrink-0`}>
+      <span className={`material-symbols-outlined ${compact ? 'text-[23px]' : 'text-[24px]'}`}>{icon}</span>
     </div>
-    <div>
-      <p className="text-[10px] font-bold text-[#5e636e] uppercase tracking-widest">{label}</p>
-      <h3 className={`text-2xl font-black ${label === 'Total Tasks' ? 'text-[#2d1b4e]' : 'text-[#170338]'}`}>{value}</h3>
+    <div className="min-w-0">
+      <p className={`${compact ? 'text-[9px] tracking-[0.09em] whitespace-nowrap' : 'text-[10px] tracking-widest'} font-bold text-[#5e636e] uppercase`}>{label}</p>
+      <h3 className={`${compact ? 'text-xl leading-6' : 'text-2xl'} font-black ${label === 'Total Tasks' ? 'text-[#2d1b4e]' : 'text-[#170338]'}`}>{value}</h3>
     </div>
   </div>
 );
@@ -695,15 +716,19 @@ const ActivityItem = ({ activity, isCompact = true }) => (
         <span className={`status-pill px-2 py-0.5 rounded ${isCompact ? 'rounded-full text-[9px]' : 'text-[10px]'} ${activity.statusColor} font-bold uppercase border whitespace-nowrap`}>
           {activity.status}
         </span>
-        <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
-        {!isCompact ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
-          </span>
-        ) : (
-          <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
-            {activity.target}
-          </span>
+        {activity.target && (
+          <>
+            <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
+            {!isCompact ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
+                <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
+              </span>
+            ) : (
+              <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
+                {activity.target}
+              </span>
+            )}
+          </>
         )}
       </div>
       <p className="text-[11px] text-[#5e636e] mt-0.5">{activity.time}</p>
@@ -711,7 +736,7 @@ const ActivityItem = ({ activity, isCompact = true }) => (
   </div>
 );
 
-const Dashboard = () => {
+const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -722,8 +747,8 @@ const Dashboard = () => {
   const [hoveredWorkload, setHoveredWorkload] = useState(null);
   const [hoveredAccount, setHoveredAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-
-
+  const roleParam = (forcedRole || searchParams.get('role') || 'ADMIN').toUpperCase();
+  const isAdmin = !embedded;
 
   const [activeFilter, setActiveFilter] = useState("All");
 
@@ -739,19 +764,55 @@ const Dashboard = () => {
   const [selectedDate, setSelectedDate] = useState("All Dates");
 
   // Custom Audit Logs specific states
-  const [modalEntityType, setModalEntityType] = useState("All Entities");
+  const [modalLabelTitle, setModalLabelTitle] = useState("All Labels");
   const [modalRowsPerPage, setModalRowsPerPage] = useState(25);
   const [modalPage, setModalPage] = useState(1);
   const [expandedLogId, setExpandedLogId] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  useEffect(() => {
+    if (!embedded && roleParam === 'USER') {
+      navigate(`/dashboard/tasks${location.search}`, { replace: true });
+    }
+  }, [embedded, location.search, navigate, roleParam]);
 
-  // Define tabs based on role
-  const roleParam = searchParams.get('role')?.toUpperCase();
-  const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
-  const user = { role: isAdmin ? "ADMIN" : "USER" };
+  useEffect(() => {
+    if (!isActivityModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isActivityModalOpen]);
 
-  const taskTabs = isAdmin
+  // Dashboard route is Super Admin. Embedded Summary can render User or Owner/Super Admin space views.
+  const isEmbeddedSummary = embedded;
+  const isPrivilegedSpaceSummary = embedded && (roleParam === "OWNER" || roleParam === "SUPER_ADMIN");
+  const summaryStats = isPrivilegedSpaceSummary
+    ? [
+      { icon: 'group', label: 'Total Users', value: spaceMemberCount, colorClass: 'text-indigo-600', gradientClass: 'gradient-indigo', delay: '0.05s' },
+      ...userStats
+    ]
+    : userStats;
+
+  const priorityBreakdownData = isAdmin
+    ? [
+      { label: 'High', value: 245, color: '#FF8B00', icon: 'keyboard_arrow_up' },
+      { label: 'Medium', value: 412, color: '#DE350B', icon: 'drag_handle' },
+      { label: 'Low', value: 225, color: '#4C2B74', icon: 'keyboard_arrow_down' }
+    ]
+    : [
+      { label: 'High', value: 12, color: '#FF8B00', icon: 'keyboard_arrow_up' },
+      { label: 'Medium', value: 25, color: '#DE350B', icon: 'drag_handle' },
+      { label: 'Low', value: 10, color: '#4C2B74', icon: 'keyboard_arrow_down' }
+    ];
+
+  const maxPriorityValue = isAdmin ? 500 : 30;
+  const yAxisTicks = isAdmin
+    ? [500, 400, 300, 200, 100, 0]
+    : [30, 24, 18, 12, 6, 0];
+
+  const taskTabs = (isAdmin || isPrivilegedSpaceSummary)
     ? ['Worked on', 'Viewed', 'Assign History']
     : ['Worked on', 'Viewed', 'Assigned to me'];
 
@@ -762,13 +823,160 @@ const Dashboard = () => {
     setActiveTaskTab(taskTabs[0]);
   }, [isAdmin]);
 
-  const stats = isAdmin ? adminStats : userStats;
+  const stats = isAdmin ? adminStats : summaryStats;
   const currentActivities = isAdmin ? adminActivities : userActivities;
-  const currentWorkedOnTasks = isAdmin ? adminWorkedOnTasks : userWorkedOnTasks;
-  const currentViewedTasks = isAdmin ? adminViewedTasks : userViewedTasks;
-  const currentAssignedTasks = isAdmin ? adminAssignedTasks : userAssignedTasks;
+  const currentWorkedOnTasks = isAdmin ? adminWorkedOnTasks : (isPrivilegedSpaceSummary ? spaceSummaryWorkedOnTasks : userWorkedOnTasks);
+  const currentViewedTasks = isAdmin ? adminViewedTasks : (isPrivilegedSpaceSummary ? spaceSummaryViewedTasks : userViewedTasks);
+  const currentAssignedTasks = isAdmin ? adminAssignedTasks : (isPrivilegedSpaceSummary ? spaceSummaryAssignedTasks : userAssignedTasks);
   const statusData = isAdmin ? adminStatusData : userStatusData;
   const totalTasksCount = isAdmin ? 882 : 47;
+  const pageTitle = embedded ? "Space Summary" : "Dashboard";
+  const pageDescription = embedded
+    ? "Track task progress, members, recent tasks, and activities in this space."
+    : "Track system-wide task progress, user accounts, audit logs, and recent activities.";
+  const accountOverviewData = isPrivilegedSpaceSummary ? buildSpaceUserAccountData(spaceMemberCount) : userAccountData;
+  const accountOverviewTitle = embedded ? "Space User Overview" : "User Account Overview";
+  const accountOverviewDescription = embedded
+    ? "Monitor member status and health inside this space."
+    : "Monitor the current status and health of user accounts across the system.";
+  const renderPriorityBreakdown = (compact = false) => (
+    <div className={`glass-card p-8 rounded-2xl flex flex-col w-full ${compact ? 'h-full' : ''}`}>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h4 className="text-lg font-bold text-[#170338]">Priority breakdown</h4>
+          <p className="text-[#5e636e] text-sm mt-1">Get a holistic view of how work is being prioritized.</p>
+        </div>
+      </div>
+
+      <div className="relative flex-1 mt-6">
+        <div className={`${compact ? 'h-56' : 'h-64'} flex relative`}>
+          <div className="flex flex-col justify-between text-[11px] font-bold text-[#5e636e]/60 pr-6 pb-8 border-r border-[#170338]/10 h-full">
+            {yAxisTicks.map((tick, i) => (
+              <span key={i} className={i === yAxisTicks.length - 1 ? "mb-[-2px]" : ""}>{tick}</span>
+            ))}
+          </div>
+
+          <div className="flex-1 relative ml-1 h-full">
+            <div className="absolute inset-0 bottom-8 border-b border-[#170338]/40">
+              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className={`w-full border-t border-[#170338]/5`}></div>
+                ))}
+              </div>
+
+              <div className="absolute inset-x-0 bottom-0 h-full flex items-end justify-around px-2">
+                {priorityBreakdownData.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="group relative flex flex-col items-center w-full h-full justify-end"
+                    onMouseEnter={() => setHoveredPriority(item)}
+                    onMouseLeave={() => setHoveredPriority(null)}
+                  >
+                    <div
+                      className={`w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
+                        }`}
+                      style={{
+                        height: `${(item.value / maxPriorityValue) * 100}%`,
+                      }}
+                    >
+                      {hoveredPriority?.label === item.label && item.value > 0 && (
+                        <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-50 animate-in fade-in zoom-in slide-in-from-bottom-1 duration-200 pointer-events-none">
+                          <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 min-w-[90px] flex flex-col items-center gap-1 relative">
+                            <span className="text-[9px] font-bold text-[#5e636e] uppercase tracking-wider">{item.label}</span>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: item.color }}></div>
+                              <span className="text-lg font-black text-[#170338]">{item.value}</span>
+                            </div>
+                            <div className="absolute top-[99%] left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-white"></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="absolute top-full mt-2 w-0.5 h-3 bg-[#170338]/10"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-around pl-14 mt-6">
+          {priorityBreakdownData.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-1.5 text-[#5e636e] group cursor-pointer hover:text-[#170338] transition-colors">
+              <span className="material-symbols-outlined text-[16px] font-bold" style={{ color: item.color }}>{item.icon}</span>
+              <span className="text-[11px] font-bold">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  const renderUserOverview = (compact = false) => (
+    <div className={`glass-card p-8 rounded-2xl flex flex-col w-full ${compact ? 'h-full' : ''}`}>
+      <div className="mb-8">
+        <h4 className="text-lg font-bold text-[#1a1c1e]">{accountOverviewTitle}</h4>
+        <p className="text-sm text-[#5e636e] mt-1 font-medium">
+          {accountOverviewDescription}
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <div className={`${compact ? 'grid grid-cols-[1fr,1.8fr]' : 'grid grid-cols-[1.5fr,2.5fr]'} gap-4 px-2`}>
+          <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Account Status</span>
+          <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">User Distribution</span>
+        </div>
+
+        <div className="space-y-4">
+          {accountOverviewData.map((item, idx) => (
+            <div
+              key={idx}
+              className={`${compact ? 'grid grid-cols-[1fr,1.8fr]' : 'grid grid-cols-[1.5fr,2.5fr]'} gap-4 items-center group cursor-pointer relative`}
+              onMouseEnter={() => setHoveredAccount(idx)}
+              onMouseLeave={() => setHoveredAccount(null)}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
+                  style={{ backgroundColor: item.color }}
+                >
+                  <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+                </div>
+                <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
+                  {item.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 relative">
+                <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
+                  <div
+                    className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
+                    style={{
+                      width: `${item.percentage}%`,
+                      background: item.gradient,
+                      boxShadow: `4px 0 12px ${item.glow}`
+                    }}
+                  >
+                    {item.count > 0 && <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>}
+                  </div>
+                </div>
+
+                {hoveredAccount === idx && (
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+                    <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
+                      <span className="text-white/70">{item.percentage}%</span>
+                      <span className="w-1 h-1 rounded-full bg-white/30"></span>
+                      <span>({item.count}/{item.total} users)</span>
+                    </div>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   // Filtering logic for Admin section
   const getFilteredData = (data) => {
@@ -797,9 +1005,9 @@ const Dashboard = () => {
   // Modal Filtering Logic
   const filteredModalActivities = (isAdmin ? adminActivities : userActivities).filter(log => {
     const matchSearch = log.user.toLowerCase().includes(modalSearch.toLowerCase()) ||
-      log.target.toLowerCase().includes(modalSearch.toLowerCase()) ||
+      (log.target || '').toLowerCase().includes(modalSearch.toLowerCase()) ||
       log.action.toLowerCase().includes(modalSearch.toLowerCase());
-    const matchType = modalEventType === "All Events" || log.entityType.toLowerCase() === modalEventType.toLowerCase();
+    const matchType = modalEventType === "All Events" || log.labelTitle.toLowerCase() === modalEventType.toLowerCase();
 
     // Time range filtering (simplified for mock)
     const matchTime = modalTimeRange === "All Time" ||
@@ -844,10 +1052,10 @@ const Dashboard = () => {
       matchEvent = ev === opt || log.event.toLowerCase() === modalEventType.toLowerCase();
     }
 
-    // 4. Entity Type filter
+    // 4. Label Title filter
     let matchEntity = true;
-    if (modalEntityType !== "All Entities") {
-      matchEntity = log.entityType.toLowerCase() === modalEntityType.toLowerCase();
+    if (modalLabelTitle !== "All Labels") {
+      matchEntity = log.labelTitle.toLowerCase() === modalLabelTitle.toLowerCase();
     }
 
     return matchSearch && matchDate && matchEvent && matchEntity;
@@ -1010,7 +1218,7 @@ const Dashboard = () => {
 
       {/* Activity Modal / Audit Log Table */}
       {isActivityModalOpen && createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 bg-[#170338]/40 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-hidden p-4 sm:p-6 bg-[#170338]/40 backdrop-blur-sm animate-in fade-in duration-300">
           {isAdmin ? (
             <div className="bg-white w-full max-w-[1240px] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 relative">
               {/* TOP CLOSE BUTTON */}
@@ -1058,7 +1266,7 @@ const Dashboard = () => {
                         setModalEventType("All Events");
                         setModalTimeRange("Last 7 days");
                         setModalSortOrder("Newest First");
-                        setModalEntityType("All Entities");
+                        setModalLabelTitle("All Labels");
                         setModalPage(1);
                         setTimeout(() => setIsRefreshing(false), 500);
                       }}
@@ -1110,14 +1318,14 @@ const Dashboard = () => {
                     </div>
                     {/* Entity Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Entity Type</label>
+                      <label className="font-label-sm px-1 text-black font-bold">Label Title</label>
                       <div className="relative">
                         <select
-                          value={modalEntityType}
-                          onChange={(e) => { setModalEntityType(e.target.value); setModalPage(1); }}
+                          value={modalLabelTitle}
+                          onChange={(e) => { setModalLabelTitle(e.target.value); setModalPage(1); }}
                           className="w-full appearance-none bg-white border border-outline-variant rounded-lg py-2 pl-4 pr-10 font-body-md focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100"
                         >
-                          <option value="All Entities">All Entities</option>
+                          <option value="All Labels">All Labels</option>
                           <option value="User">User</option>
                           <option value="Task">Task</option>
                           <option value="Comment">Comment</option>
@@ -1151,17 +1359,15 @@ const Dashboard = () => {
                 {/* Audit Table Section */}
                 <section className="border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col bg-white flex-1 min-h-0">
                   <div className="flex-1 overflow-auto relative custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
                       <thead className="border-b border-outline-variant sticky top-0 z-20 bg-slate-200">
                         <tr>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">ID</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">User</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Role</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Event</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Entity Type</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Object</th>
+                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Label Title</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">CREATED AT</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">IP Address</th>
                           <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold text-center">Details</th>
                         </tr>
                       </thead>
@@ -1185,20 +1391,16 @@ const Dashboard = () => {
                                   <span className="text-[#3525cd] font-semibold">{log.event}</span>
                                 </td>
                                 <td className="px-6 whitespace-nowrap py-2 border-r">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${log.entityType === 'User' ? 'bg-blue-100 text-blue-700' :
-                                    log.entityType === 'Task' ? 'bg-teal-100 text-teal-700' :
-                                      log.entityType === 'Token' ? 'bg-slate-200 text-slate-700' :
-                                        log.entityType === 'Attachment' ? 'bg-blue-100 text-blue-700' :
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${log.labelTitle === 'User' ? 'bg-blue-100 text-blue-700' :
+                                    log.labelTitle === 'Task' ? 'bg-teal-100 text-teal-700' :
+                                      log.labelTitle === 'Token' ? 'bg-slate-200 text-slate-700' :
+                                        log.labelTitle === 'Attachment' ? 'bg-blue-100 text-blue-700' :
                                           'bg-slate-200 text-slate-700'
                                     }`}>
-                                    {log.entityType}
+                                    {log.labelTitle}
                                   </span>
                                 </td>
-                                <td className="px-6 font-body-sm whitespace-nowrap py-2 border-r text-black truncate max-w-[200px]" title={log.object}>
-                                  {log.object}
-                                </td>
                                 <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.createdAt}</td>
-                                <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.ipAddress}</td>
                                 <td className="px-6 text-center whitespace-nowrap py-2">
                                   <button
                                     type="button"
@@ -1214,7 +1416,7 @@ const Dashboard = () => {
                               </tr>
                               {isExpanded && (
                                 <tr className="bg-surface-container-lowest">
-                                  <td className="px-6 py-4" colSpan={9}>
+                                  <td className="px-6 py-4" colSpan={7}>
                                     <div className="rounded-lg border border-outline-variant bg-slate-100 p-4">
                                       <div className="flex items-center justify-between mb-3">
                                         <h4 className="font-label-md text-black font-semibold">Log Payload</h4>
@@ -1246,7 +1448,7 @@ const Dashboard = () => {
                               setModalRowsPerPage(parseInt(e.target.value));
                               setModalPage(1);
                             }}
-                            className="bg-surface-container-lowest border border-[#c7c4d8] rounded-lg py-1 pl-2 pr-6 font-body-sm text-on-surface focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100 text-sm"
+                            className="bg-surface-container-lowest border border-[#c7c4d8] rounded-lg py-1 pl-2 pr-4 font-body-sm text-on-surface focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100 text-sm"
                           >
                             <option value={10}>10</option>
                             <option value={25}>25</option>
@@ -1281,32 +1483,32 @@ const Dashboard = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
-              <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+            <div className="bg-white w-full max-w-lg h-[560px] max-h-[72vh] rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
                 <div>
-                  <h3 className="text-2xl font-bold text-[#170338] tracking-tight">
+                  <h3 className="text-lg font-bold text-[#170338] tracking-tight">
                     Recent Activity</h3>
-                  <p className="text-sm text-[#5e636e] font-medium mt-1 opacity-90">
+                  <p className="text-xs text-[#5e636e] font-medium mt-1 opacity-90">
                     Stay up to date with what's happening across the space.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsActivityModalOpen(false)}
-                  className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center text-[#5e636e] transition-colors"
+                  className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-[#5e636e] transition-colors"
                 >
-                  <span className="material-symbols-outlined">close</span>
+                  <span className="material-symbols-outlined text-[20px]">close</span>
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-8 pt-6">
-                <div className="space-y-6">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar px-5 py-4">
+                <div className="space-y-4">
                   {["Today", "Yesterday"].map((group) => (
-                    <div key={group} className="space-y-3">
-                      <p className="text-[10px] font-black text-[#5e636e] uppercase tracking-widest bg-gray-100/50 px-3 py-1.5 rounded-lg inline-block">{group}</p>
-                      <div className="flex flex-col gap-3">
+                    <div key={group} className="space-y-2">
+                      <p className="text-[9px] font-black text-[#5e636e] uppercase tracking-widest bg-gray-100/50 px-2 py-1 rounded-md inline-block">{group}</p>
+                      <div className="flex flex-col gap-2">
                         {currentActivities.filter(a => a.group === group).map((activity, idx) => (
-                          <div key={idx} className="p-3.5 rounded-2xl border border-gray-100 hover:border-[#4C2B74]/30 hover:shadow-md transition-all group cursor-pointer bg-white">
+                          <div key={idx} className="p-2.5 rounded-xl border border-gray-100 hover:border-[#4C2B74]/30 hover:shadow-md transition-all group cursor-pointer bg-white">
                             <ActivityItem activity={activity} isCompact={true} />
                           </div>
                         ))}
@@ -1321,18 +1523,20 @@ const Dashboard = () => {
         document.body
       )}
 
-      <div className="dashboard-container space-y-6">
+      <div className={`dashboard-container ${embedded ? 'space-y-4' : 'space-y-6'}`}>
         {/* Page Title & KPI Banner */}
-        <div className="space-y-4">
+        <div className={embedded ? 'space-y-3' : 'space-y-4'}>
+          {!embedded && (
           <div>
-            <h2 className="text-2xl font-extrabold text-[#170338] tracking-tight">Dashboard</h2>
-            <p className="text-sm text-[#5e636e] font-medium">Track task progress, monitor task status, and stay updated with recent activities.</p>
+            <h2 className="text-2xl font-bold text-[#4C2B74]">{pageTitle}</h2>
+            <p className="text-sm text-gray-500">{pageDescription}</p>
           </div>
+          )}
 
           {/* KPI Cards */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${stats.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} ${embedded ? 'gap-4' : 'gap-6'} ${embedded && stats.length < 5 ? 'xl:max-w-6xl xl:mx-auto' : ''}`}>
             {stats.map((kpi, idx) => (
-              <StatCard key={idx} {...kpi} />
+              <StatCard key={idx} {...kpi} compact={embedded} />
             ))}
           </div>
         </div>
@@ -1340,16 +1544,16 @@ const Dashboard = () => {
         {/* 2x2 Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Status Overview (Top Left) */}
-          <div className="glass-card p-8 rounded-2xl flex flex-col h-full">
-            <div className="mb-6">
+          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-8 h-full'}`}>
+            <div className={isEmbeddedSummary ? 'mb-4' : 'mb-6'}>
               <div className="flex items-center justify-between">
                 <h4 className="text-lg font-bold text-[#170338]">Status Overview</h4>
                 <Link to={`/dashboard/spaces${location.search}`} className="text-[#170338] text-xs font-bold hover:underline">View all</Link>
               </div>
               <p className="text-[#5e636e] text-sm mt-1">Snapshot of your work item statuses.</p>
             </div>
-            <div className="flex flex-col lg:flex-row items-center justify-around gap-6 py-4 flex-1">
-              <div className="relative w-56 h-56 cursor-pointer">
+            <div className={`flex flex-col lg:flex-row items-center justify-around flex-1 ${isEmbeddedSummary ? 'gap-4 py-1' : 'gap-6 py-4'}`}>
+              <div className={`relative cursor-pointer ${isEmbeddedSummary ? 'w-44 h-44' : 'w-56 h-56'}`}>
                 {/* Tooltip Overlay - Absolute to this container */}
                 {hoveredSegment !== null && (
                   <div
@@ -1390,7 +1594,7 @@ const Dashboard = () => {
                   ))}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-4xl text-[#1a1c1e] font-bold tracking-tight">{totalTasksCount}</span>
+                  <span className={`${isEmbeddedSummary ? 'text-3xl' : 'text-4xl'} text-[#1a1c1e] font-bold tracking-tight`}>{totalTasksCount}</span>
                   <p className="text-[11px] text-[#5e636e] font-bold mt-1 text-center leading-tight">Total tasks</p>
                 </div>
               </div>
@@ -1412,9 +1616,9 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Audit Logs (ADMIN) / Recent Activity (USER) */}
-          <div className="glass-card p-8 rounded-2xl flex flex-col h-full">
-            <div className="mb-6 flex justify-between items-start">
+          {/* Audit Logs (SUPER ADMIN) */}
+          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-8 h-full'}`}>
+            <div className={`${isEmbeddedSummary ? 'mb-4' : 'mb-6'} flex justify-between items-start`}>
               <div>
                 <h4 className="text-lg font-bold text-[#170338]">{isAdmin ? "Audit Logs" : "Recent Activity"}</h4>
                 <p className="text-[#5e636e] text-sm mt-1">
@@ -1428,12 +1632,12 @@ const Dashboard = () => {
                 <span className="material-symbols-outlined text-lg">open_in_full</span>
               </button>
             </div>
-            <div className="flex-1 space-y-6 overflow-y-auto custom-scrollbar pr-2 max-h-[400px]">
+            <div className={`flex-1 overflow-y-auto custom-scrollbar pr-2 ${isEmbeddedSummary ? 'space-y-4 max-h-[240px]' : 'space-y-6 max-h-[400px]'}`}>
               {["Today", "Yesterday"].map((group) => {
                 const groupActivities = currentActivities.filter(a => a.group === group);
                 if (groupActivities.length === 0) return null;
                 return (
-                  <div key={group} className="space-y-4">
+                  <div key={group} className={isEmbeddedSummary ? 'space-y-3' : 'space-y-4'}>
                     <p className="text-[10px] font-bold text-[#5e636e] uppercase tracking-widest">{group === "Today" ? "Today" : "Yesterday"}</p>
                     {groupActivities.map((activity, idx) => (
                       <ActivityItem key={idx} activity={activity} isCompact={true} />
@@ -1445,25 +1649,29 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {isPrivilegedSpaceSummary && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {renderPriorityBreakdown(true)}
+            {renderUserOverview(true)}
+          </div>
+        )}
+
         {/* Priority Breakdown */}
-        <div className="glass-card p-8 rounded-2xl flex flex-col w-full">
-          <div className="mb-6 flex items-center justify-between">
+        <div className={`glass-card rounded-2xl flex flex-col w-full ${embedded ? 'p-6' : 'p-8'} ${isPrivilegedSpaceSummary ? 'hidden' : ''}`}>
+          <div className={`${embedded ? 'mb-4' : 'mb-6'} flex items-center justify-between`}>
             <div>
               <h4 className="text-lg font-bold text-[#170338]">Priority breakdown</h4>
               <p className="text-[#5e636e] text-sm mt-1">Get a holistic view of how work is being prioritized.</p>
             </div>
           </div>
 
-          <div className="relative flex-1 mt-6">
-            <div className="flex h-64 relative">
+          <div className={`relative flex-1 ${embedded ? 'mt-3' : 'mt-6'}`}>
+            <div className={`flex ${embedded ? 'h-44' : 'h-64'} relative`}>
               {/* Y-Axis */}
               <div className="flex flex-col justify-between text-[11px] font-bold text-[#5e636e]/60 pr-6 pb-8 border-r border-[#170338]/10 h-full">
-                <span>10</span>
-                <span>8</span>
-                <span>6</span>
-                <span>4</span>
-                <span>2</span>
-                <span className="mb-[-2px]">0</span>
+                {yAxisTicks.map((tick, i) => (
+                  <span key={i} className={i === yAxisTicks.length - 1 ? "mb-[-2px]" : ""}>{tick}</span>
+                ))}
               </div>
 
               <div className="flex-1 relative ml-1 h-full">
@@ -1476,16 +1684,9 @@ const Dashboard = () => {
                     ))}
                   </div>
 
-                  {/* 2. Container chứa các cột */}
+                  {/* 2. Container chứa các cột ('HIGH','MEDIUM','LOW')*/}
                   <div className="absolute inset-x-0 bottom-0 h-full flex items-end justify-around px-2">
-                    {[
-                      { label: 'Highest', value: 0, color: '#ff4d4d' },
-                      { label: 'High', value: 7, color: '#ff5c5c' },
-                      { label: 'Medium', value: 9, color: '#888995' },
-                      { label: 'Low', value: 0, color: '#3b82f6' },
-                      { label: 'Lowest', value: 0, color: '#4466ff' },
-                      { label: 'None', value: 1, color: '#d1d5db' },
-                    ].map((item, idx) => (
+                    {priorityBreakdownData.map((item, idx) => (
                       <div
                         key={idx}
                         className="group relative flex flex-col items-center w-full h-full justify-end"
@@ -1494,10 +1695,10 @@ const Dashboard = () => {
                       >
                         {/* Cột dữ liệu - Bây giờ chứa Tooltip để căn chỉnh chuẩn xác */}
                         <div
-                          className={`w-10 sm:w-12 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
+                          className={`w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
                             }`}
                           style={{
-                            height: `${(item.value / 10) * 100}%`,
+                            height: `${(item.value / maxPriorityValue) * 100}%`,
                           }}
                         >
                           {/* Popover khi hover - Gắn trực tiếp vào đầu cột */}
@@ -1519,22 +1720,14 @@ const Dashboard = () => {
                         <div className="absolute top-full mt-2 w-0.5 h-3 bg-[#170338]/10"></div>
                       </div>
                     ))}
-
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Legend / X-Axis Labels */}
-            <div className="flex justify-around pl-14 mt-6">
-              {[
-                { label: 'Highest', color: '#ff4d4d', icon: 'keyboard_double_arrow_up' },
-                { label: 'High', color: '#ff5c5c', icon: 'keyboard_arrow_up' },
-                { label: 'Medium', color: '#888995', icon: 'drag_handle' },
-                { label: 'Low', color: '#3b82f6', icon: 'keyboard_arrow_down' },
-                { label: 'Lowest', color: '#4466ff', icon: 'keyboard_double_arrow_down' },
-                { label: 'None', color: '#9ca3af', icon: 'remove' }
-              ].map((item, idx) => (
+            {/* Legend / X-Axis Labels ('HIGH','MEDIUM','LOW')*/}
+            <div className={`flex justify-around pl-14 ${embedded ? 'mt-4' : 'mt-6'}`}>
+              {priorityBreakdownData.map((item, idx) => (
                 <div key={idx} className="flex items-center gap-1.5 text-[#5e636e] group cursor-pointer hover:text-[#170338] transition-colors">
                   <span className="material-symbols-outlined text-[16px] font-bold" style={{ color: item.color }}>{item.icon}</span>
                   <span className="text-[11px] font-bold">{item.label}</span>
@@ -1544,145 +1737,75 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Conditionally render Team Workload or User Account Overview */}
-        <div className="glass-card p-8 rounded-2xl flex flex-col w-full">
-          {isAdmin ? (
-            <>
-              {/* User Account Overview (ADMIN ONLY) */}
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-[#1a1c1e]">User Account Overview</h4>
-                <p className="text-sm text-[#5e636e] mt-1 font-medium">
-                  Monitor the current status and health of user accounts across the system.
-                </p>
+        {/* Conditionally render User Account Overview */}
+        {isAdmin && (
+          <div className="glass-card p-8 rounded-2xl flex flex-col w-full">
+            {/* User Account Overview (SUPER ADMIN ONLY) */}
+            <div className="mb-8">
+              <h4 className="text-lg font-bold text-[#1a1c1e]">User Account Overview</h4>
+              <p className="text-sm text-[#5e636e] mt-1 font-medium">
+                Monitor the current status and health of user accounts across the system.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
+                <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Account Status</span>
+                <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">User Distribution</span>
               </div>
 
-              <div className="space-y-6">
-                <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Account Status</span>
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">User Distribution</span>
-                </div>
-
-                <div className="space-y-4">
-                  {userAccountData.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
-                      onMouseEnter={() => setHoveredAccount(idx)}
-                      onMouseLeave={() => setHoveredAccount(null)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                          style={{ backgroundColor: item.color }}
-                        >
-                          <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                        </div>
-                        <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
-                          {item.label}
-                        </span>
+              <div className="space-y-4">
+                {userAccountData.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
+                    onMouseEnter={() => setHoveredAccount(idx)}
+                    onMouseLeave={() => setHoveredAccount(null)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
+                        style={{ backgroundColor: item.color }}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
                       </div>
-                      <div className="flex items-center gap-4 relative">
-                        <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
-                          <div
-                            className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
-                            style={{
-                              width: `${item.percentage}%`,
-                              background: item.gradient,
-                              boxShadow: `4px 0 12px ${item.glow}`
-                            }}
-                          >
-                            <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>
-                          </div>
-                        </div>
-
-
-                        {/* Account Tooltip */}
-                        {hoveredAccount === idx && (
-                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
-                            <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
-                              <span className="text-white/70">{item.percentage}%</span>
-                              <span className="w-1 h-1 rounded-full bg-white/30"></span>
-                              <span>({item.count}/{item.total} users)</span>
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
-                          </div>
-                        )}
-                      </div>
+                      <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
+                        {item.label}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Team Workload (USER ONLY) */}
-              <div className="mb-8">
-                <h4 className="text-lg font-bold text-[#1a1c1e]">Team workload</h4>
-                <p className="text-sm text-[#5e636e] mt-1 font-medium">
-                  Monitor the capacity of your team.
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-[1.5fr,2.5fr] gap-4 px-2">
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Assignee</span>
-                  <span className="text-[11px] font-black text-[#5e636e] uppercase tracking-widest">Work distribution</span>
-                </div>
-
-                <div className="space-y-4">
-                  {teamWorkloadData.map((member, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-[1.5fr,2.5fr] gap-4 items-center group cursor-pointer relative"
-                      onMouseEnter={() => setHoveredWorkload(idx)}
-                      onMouseLeave={() => setHoveredWorkload(null)}
-                    >
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4 relative">
+                      <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
                         <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                          style={{ backgroundColor: member.color }}
+                          className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
+                          style={{
+                            width: `${item.percentage}%`,
+                            background: item.gradient,
+                            boxShadow: `4px 0 12px ${item.glow}`
+                          }}
                         >
-                          {member.avatar ? (
-                            <span className="material-symbols-outlined text-[18px]">{member.avatar}</span>
-                          ) : (
-                            member.initials
-                          )}
+                          <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>
                         </div>
-                        <span className="text-sm font-bold text-[#1a1c1e] group-hover:text-[#4C2B74] transition-colors truncate">
-                          {member.name}
-                        </span>
                       </div>
-                      <div className="flex items-center gap-4 relative">
-                        <div className="flex-1 h-8 bg-gray-100 rounded-md overflow-hidden relative shadow-inner">
-                          <div
-                            className="absolute h-full transition-all duration-1000 ease-out bg-[#888995] flex items-center px-3"
-                            style={{ width: `${member.percentage}%` }}
-                          >
-                            {member.percentage > 5 && member.name !== "Unassigned" && (
-                              <span className="text-[10px] font-black text-white/90">{member.percentage}%</span>
-                            )}
-                          </div>
-                        </div>
 
-                        {/* Workload Tooltip */}
-                        {hoveredWorkload === idx && (
-                          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
-                            <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
-                              <span className="text-white/70">{member.percentage}%</span>
-                              <span className="w-1 h-1 rounded-full bg-white/30"></span>
-                              <span>({member.tasks}/{member.total} work items)</span>
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
+
+                      {/* Account Tooltip */}
+                      {hoveredAccount === idx && (
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-[100] animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+                          <div className="bg-[#1a1c1e] text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl whitespace-nowrap flex items-center gap-2 border border-white/10">
+                            <span className="text-white/70">{item.percentage}%</span>
+                            <span className="w-1 h-1 rounded-full bg-white/30"></span>
+                            <span>({item.count}/{item.total} users)</span>
                           </div>
-                        )}
-                      </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-[#1a1c1e]"></div>
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
 
 
@@ -1715,11 +1838,10 @@ const Dashboard = () => {
                             setShowStatusFilter(!showStatusFilter);
                             setShowDateFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedStatus !== "All Status" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
-                              : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedStatus !== "All Status"
+                            ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
+                            : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
+                            }`}
                         >
                           <span className="truncate">{selectedStatus}</span>
                           <span className={`material-symbols-outlined text-gray-400 transition-transform ${showStatusFilter ? 'rotate-180' : ''}`}>expand_more</span>
@@ -1746,11 +1868,10 @@ const Dashboard = () => {
                             setShowDateFilter(!showDateFilter);
                             setShowStatusFilter(false);
                           }}
-                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${
-                            selectedDate !== "All Dates" 
-                              ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50" 
-                              : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
-                          }`}
+                          className={`flex items-center justify-between gap-2 min-w-[140px] px-4 py-2.5 rounded-xl border transition-all text-sm font-bold ${selectedDate !== "All Dates"
+                            ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
+                            : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
+                            }`}
                         >
                           <div className="flex items-center gap-2 truncate">
                             <span className="material-symbols-outlined text-gray-400 text-lg">calendar_today</span>
@@ -1799,7 +1920,6 @@ const Dashboard = () => {
                     ))}
                   </div>
 
-
                 </div>
               </div>
             ) : (
@@ -1808,6 +1928,7 @@ const Dashboard = () => {
                   <h3 className="text-lg font-bold text-[#170338]">Recent Tasks</h3>
                 </div>
 
+                {!embedded && (
                 <div className="p-8 bg-[#fafbfc]/50 flex gap-4 overflow-x-auto custom-scrollbar no-scrollbar scroll-smooth">
                   <>
                     <div className="min-w-[150px] max-w-[150px] bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer relative group border-l-[4px] border-l-[#fbc02d]">
@@ -1855,11 +1976,12 @@ const Dashboard = () => {
                     </div>
                   </>
                 </div>
+                )}
               </>
             )}
 
             {/* Role-based Interactive Tabs */}
-            <div className="px-8 border-b border-gray-100 flex gap-6 bg-white sticky top-[72px] z-10 overflow-x-auto no-scrollbar">
+            <div className={`px-8 border-b border-gray-100 flex gap-6 bg-white sticky ${embedded ? 'top-0' : 'top-[72px]'} z-10 overflow-x-auto no-scrollbar`}>
               {taskTabs.map(tab => (
                 <button
                   key={tab}
@@ -1913,7 +2035,7 @@ const Dashboard = () => {
                                   <p className="text-[10px] font-black text-[#170338] uppercase tracking-tight">{task.time || "2H AGO"}</p>
                                 </div>
                                 <div className="flex items-center">
-                                  {isAdmin && task.assignees ? (
+                                  {(isAdmin || isPrivilegedSpaceSummary) && task.assignees ? (
                                     <div className="flex -space-x-3 hover:space-x-1 transition-all duration-300">
                                       {task.assignees.map((assignee, aIdx) => (
                                         <div
@@ -1970,10 +2092,10 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* 3. Assign History (Admin) / Assigned to me (User) */}
+              {/* 3. Assign History */}
               {(activeTaskTab === 'Assigned to me' || activeTaskTab === 'Assign History') && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
-                  {isAdmin ? (
+                  {(isAdmin || isPrivilegedSpaceSummary) ? (
                     <div className="divide-y divide-gray-50">
                       <div className="px-8 py-3 bg-gray-50/50">
                         <p className="text-[10px] font-black text-[#8c8c8c] uppercase tracking-widest">TASK ASSIGNMENT HISTORY</p>

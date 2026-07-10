@@ -43,11 +43,19 @@ export default function LoginPage() {
             setIsLoading(false);
             setIsRedirecting(true);
 
+            // Determine user role based on email (mock logic)
+            // Super Admin: Alex Morgan (alex.morgan@example.com)
+            // Regular Users: Trang Nguyen, Tien Phham, etc.
+            const isAdminEmail = email.toLowerCase().includes('alex.morgan') || 
+                                 email.toLowerCase().includes('admin');
+
             setTimeout(() => {
                 setIsRedirecting(false);
                 setEmail('');
                 setPassword('');
-                navigate('/dashboard');
+                const normalizedEmail = email.trim().toLowerCase();
+                const isSuperAdminLogin = normalizedEmail.includes('admin') || normalizedEmail.includes('alex') || normalizedEmail.includes('super');
+                navigate(isSuperAdminLogin ? '/dashboard' : '/dashboard/spaces?role=USER');
             }, 1000);
         }, 2000);
     };
@@ -181,27 +189,6 @@ export default function LoginPage() {
                             )}
                         </button>
 
-                        <div className="flex items-center gap-5">
-                            <div className="h-px flex-1 bg-outline-variant/60 dark:bg-outline/30"></div>
-                            <span className="text-[12px] leading-[16px] font-semibold tracking-[0.08em] text-on-surface-variant/80 dark:text-surface-variant">
-                                OR
-                            </span>
-                            <div className="h-px flex-1 bg-outline-variant/60 dark:bg-outline/30"></div>
-                        </div>
-
-                        {/* Google Button */}
-                        <button
-                            type="button"
-                            className="w-full min-h-[56px] rounded-lg border border-outline-variant dark:border-outline/30 bg-surface-container-lowest dark:bg-on-surface/5 text-on-surface dark:text-inverse-on-surface text-[14px] leading-[20px] font-semibold flex items-center justify-center gap-4 hover:bg-surface-container-low dark:hover:bg-on-surface/10 active:scale-[0.98] transition-all duration-200 shadow-sm"
-                        >
-                            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                                <path fill="#4285F4" d="M21.6 12.23c0-.79-.07-1.55-.2-2.28H12v4.31h5.37a4.59 4.59 0 0 1-1.99 3.01v2.5h3.22c1.88-1.73 3-4.29 3-7.54z" />
-                                <path fill="#34A853" d="M12 22c2.7 0 4.96-.89 6.61-2.42l-3.22-2.5c-.9.6-2.04.95-3.39.95-2.6 0-4.8-1.75-5.59-4.11H3.08v2.58A9.99 9.99 0 0 0 12 22z" />
-                                <path fill="#FBBC05" d="M6.41 13.92a6.01 6.01 0 0 1 0-3.84V7.5H3.08a9.99 9.99 0 0 0 0 9l3.33-2.58z" />
-                                <path fill="#EA4335" d="M12 5.97c1.47 0 2.79.51 3.82 1.5l2.86-2.86C16.95 3 14.7 2 12 2a9.99 9.99 0 0 0-8.92 5.5l3.33 2.58C7.2 7.72 9.4 5.97 12 5.97z" />
-                            </svg>
-                            <span>Continue with Google</span>
-                        </button>
                     </form>
 
                     {/* Register Link */}

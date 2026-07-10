@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick, onGeneralClick, onNotificationClick }) => {
+const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick }) => {
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
+  const isSuperAdmin = currentRole === "ADMIN";
 
   // Re-initialize Lucide icons when submenu expands
   useEffect(() => {
@@ -15,14 +16,14 @@ const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick,
       {/* User Info Section */}
       <div className="p-4 flex items-center gap-3">
         <div className="w-12 h-12 rounded-full bg-indigo-100 text-[#2D1B4E] flex items-center justify-center font-bold text-lg border border-indigo-200">
-          {currentRole === "ADMIN" ? "AR" : "TN"}
+          {isSuperAdmin ? "AM" : "TN"}
         </div>
         <div className="flex-1 overflow-hidden">
           <p className="text-sm font-bold truncate text-gray-900">
-            {currentRole === "ADMIN" ? "Alex Rivera" : "Trang Nguyễn"}
+            {isSuperAdmin ? "Alex Morgan" : "Trang Nguyen"}
           </p>
           <p className="text-xs text-gray-500 truncate">
-            {currentRole === "ADMIN" ? "alex.rivera@taskcore.com" : "trang.nguyen@taskcore.com"}
+            {isSuperAdmin ? "alex.morgan@taskcore.com" : "trang.nguyen@taskcore.com"}
           </p>
         </div>
       </div>
@@ -36,25 +37,12 @@ const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick,
           <span>Profile</span>
         </button>
         <div>
-          <button onClick={() => setIsSettingsExpanded(!isSettingsExpanded)} className="w-full flex items-center justify-between gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
+          <button onClick={onSettingsClick} className="w-full flex items-center justify-between gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
             <div className="flex items-center gap-3">
               <i className="w-4 h-4 text-gray-400" data-lucide="settings"></i>
               <span>Settings</span>
             </div>
-            <i className={`w-4 h-4 text-gray-400 transition-transform ${isSettingsExpanded ? 'rotate-90' : ''}`} data-lucide="chevron-right"></i>
           </button>
-          {isSettingsExpanded && (
-            <div className="ml-4 mt-1 space-y-1">
-              <button onClick={onGeneralClick} className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
-                <i className="w-4 h-4 text-gray-400" data-lucide="layout-grid"></i>
-                <span>General</span>
-              </button>
-              <button onClick={onNotificationClick} className="w-full flex items-center gap-3 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm">
-                <i className="w-4 h-4 text-gray-400" data-lucide="bell"></i>
-                <span>Notification</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
