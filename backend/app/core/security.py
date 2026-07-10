@@ -1,19 +1,67 @@
+from typing import Optional
 import os
-import secrets
 from datetime import datetime, timedelta
+import secrets
 from typing import Any
 
-from jose import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.crud.repository import get_user_by_id, get_user_token
+from app.db.session import get_db
+from app.models.user import User
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
+bearer_auth = HTTPBearer(
+    auto_error=False,
+    description="Paste JWT access token here. Use Bearer authentication.",
+)
+
+def get_optional_bearer_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_auth),
+) -> Optional[str]:
+    if not credentials:
+        return None
+    return credentials.credentials
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+
+    token = credentials.credentials
+    user_id: str | None = None
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("user_id") or payload.get("sub")
+    except JWTError:
+        stored_token = get_user_token(db, token)
+        if stored_token and stored_token.access_expires_at >= datetime.utcnow():
+            user_id = stored_token.user_id
+
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token.")
+
+    user = get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user not found.")
+    return user
+
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
