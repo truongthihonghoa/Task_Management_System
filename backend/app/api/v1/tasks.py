@@ -4,8 +4,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
-from app.repository.auth_repository import create_audit_log
-from app.repository.task_repository import (
+from app.repository.auth import create_audit_log
+from app.repository.task import (
     create_assignment_history,
     create_task_assignee,
     delete_task_assignee,
@@ -15,7 +15,7 @@ from app.repository.task_repository import (
     list_assignment_history,
     list_task_assignees,
 )
-from app.repository.auth_repository import get_user_by_id
+from app.repository.auth import get_user_by_id
 from app.db.session import get_db
 from app.models.task import Task
 from app.models.user import User

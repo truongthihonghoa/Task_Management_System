@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.services import auth_service
-from app.repository.auth_repository import PASSWORD_RESET
+from app.repository.auth import PASSWORD_RESET
 from app.schemas.pydantic_models import EmailRequest, LoginRequest, ResetPasswordRequest, VerifyResetCodeRequest
 
 

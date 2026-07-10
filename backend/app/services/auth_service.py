@@ -29,7 +29,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.repository.auth_repository import (
+from app.repository.auth import (
     EMAIL_VERIFICATION,
     PASSWORD_RESET,
     create_audit_log,

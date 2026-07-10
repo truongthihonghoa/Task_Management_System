@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_optional_bearer_token
-from app.crud import space as space_crud
+from app.repository import space as space_crud
 from app.db.session import get_db
 from app.schemas.pydantic_models import (
     SpaceCreate,
