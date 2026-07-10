@@ -43,11 +43,19 @@ export default function LoginPage() {
             setIsLoading(false);
             setIsRedirecting(true);
 
+            // Determine user role based on email (mock logic)
+            // Super Admin: Alex Morgan (alex.morgan@example.com)
+            // Regular Users: Trang Nguyen, Tien Phham, etc.
+            const isAdminEmail = email.toLowerCase().includes('alex.morgan') || 
+                                 email.toLowerCase().includes('admin');
+
             setTimeout(() => {
                 setIsRedirecting(false);
                 setEmail('');
                 setPassword('');
-                navigate('/dashboard');
+                const normalizedEmail = email.trim().toLowerCase();
+                const isSuperAdminLogin = normalizedEmail.includes('admin') || normalizedEmail.includes('alex') || normalizedEmail.includes('super');
+                navigate(isSuperAdminLogin ? '/dashboard' : '/dashboard/spaces?role=USER');
             }, 1000);
         }, 2000);
     };

@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
+  AtSign,
   Bell,
+  CalendarClock,
   CheckSquare,
-  Clock,
-  FileText,
   Lock,
   Mail,
   MessageSquare,
@@ -16,97 +16,73 @@ import {
   Users,
 } from "lucide-react";
 
-const USER_NOTIFICATION_GROUPS = [
+const MEMBER_NOTIFICATION_GROUPS = [
   {
-    title: "Work assigned to you",
-    description: "Notifications for tasks where you are directly involved.",
+    title: "Task activity",
+    description: "Flexible defaults for task updates across spaces you belong to.",
     items: [
       {
         key: "task_assigned",
-        label: "You're assigned to a task",
-        description: "A task is assigned to you in a space.",
+        label: "Task assigned to me",
+        description: "Notify me when a task is assigned to me.",
         icon: UserPlus,
       },
       {
-        key: "task_mentioned",
-        label: "You're mentioned on a task",
-        description: "Someone mentions you in a task description or comment.",
-        icon: Users,
-      },
-    ],
-  },
-  {
-    title: "Task updates",
-    description: "Changes that matter to tasks you follow or work on.",
-    items: [
-      {
-        key: "task_created",
-        label: "A task is created in your space",
-        description: "A new task is added to a space you can access.",
-        icon: CheckSquare,
-      },
-      {
         key: "status_changed",
-        label: "A task status changes",
-        description: "A task moves between workflow states such as In Progress or Done.",
+        label: "Task status changed",
+        description: "Notify me when a task I follow changes workflow status.",
         icon: RefreshCw,
       },
       {
-        key: "priority_changed",
-        label: "A task priority changes",
-        description: "A task priority is changed to High, Medium, or Low.",
-        icon: AlertCircle,
+        key: "comment_added",
+        label: "Comment added",
+        description: "Notify me when someone adds a comment to a task I follow.",
+        icon: MessageSquare,
       },
       {
-        key: "due_today",
-        label: "A task is due today",
-        description: "Reminder for tasks reaching their due date today.",
-        icon: Clock,
+        key: "due_date_changed",
+        label: "Due date changed",
+        description: "Notify me when a task due date is changed.",
+        icon: CalendarClock,
       },
       {
-        key: "task_overdue",
-        label: "A task is overdue",
-        description: "A task misses its due date.",
-        icon: AlertCircle,
+        key: "mentioned_in_comment",
+        label: "Mentioned in comment",
+        description: "Notify me when someone mentions me in a comment.",
+        icon: AtSign,
       },
     ],
   },
   {
-    title: "Comments and files",
-    description: "Collaboration activity inside task details.",
+    title: "Space activity",
+    description: "Space-level changes that matter whether you are a member or an owner.",
     items: [
       {
-        key: "comment_added",
-        label: "A comment is added",
-        description: "Someone comments on a task you are involved in.",
-        icon: MessageSquare,
+        key: "space_member_added",
+        label: "Space member added",
+        description: "Notify me when a member is added to a space I can access.",
+        icon: Users,
       },
       {
-        key: "comment_edited",
-        label: "A comment is edited",
-        description: "Someone updates an existing task comment.",
-        icon: MessageSquare,
+        key: "space_role_changed",
+        label: "Space role changed",
+        description: "Notify me when my role or another visible member role changes.",
+        icon: ShieldCheck,
       },
       {
-        key: "comment_deleted",
-        label: "A comment is deleted",
-        description: "Someone removes a comment from a task.",
-        icon: MessageSquare,
-      },
-      {
-        key: "attachment_added",
-        label: "An attachment is added",
-        description: "A file is uploaded to a task.",
-        icon: FileText,
+        key: "owner_space_updates",
+        label: "Owner-level space updates",
+        description: "Notify me about settings, membership, and control updates in spaces where I am Owner.",
+        icon: Lock,
       },
     ],
   },
 ];
 
-const ADMIN_NOTIFICATION_GROUPS = [
+const SUPER_ADMIN_NOTIFICATION_GROUPS = [
   {
-    title: "User management",
-    description: "Account lifecycle events managed by administrators.",
+    title: "Account lifecycle",
+    description: "System-wide account events that require Super Admin visibility.",
     items: [
       {
         key: "user_registered",
@@ -115,93 +91,39 @@ const ADMIN_NOTIFICATION_GROUPS = [
         icon: UserPlus,
       },
       {
-        key: "user_verified",
-        label: "User verified",
-        description: "A user account is verified successfully.",
-        icon: UserCheck,
-      },
-      {
         key: "account_locked",
         label: "Account locked",
         description: "A user account is locked after failed login attempts.",
         icon: Lock,
       },
       {
-        key: "user_deactivated",
-        label: "User deactivated",
-        description: "An account is deactivated or removed from active use.",
+        key: "user_verified",
+        label: "User verified",
+        description: "A user account is verified successfully.",
+        icon: UserCheck,
+      },
+      {
+        key: "user_activation_changed",
+        label: "User deactivated/reactivated",
+        description: "A user account is deactivated or reactivated.",
         icon: Users,
       },
-      {
-        key: "role_changed",
-        label: "Role or permission changed",
-        description: "A user's role or access level is updated.",
-        icon: ShieldCheck,
-      },
     ],
   },
   {
-    title: "Task oversight",
-    description: "Operational changes across tasks and workflows.",
+    title: "Security and permissions",
+    description: "High-signal system notifications for access control and audit trails.",
     items: [
       {
-        key: "task_created",
-        label: "A task is created",
-        description: "A task is created in any managed space.",
-        icon: CheckSquare,
-      },
-      {
-        key: "task_updated",
-        label: "A task is edited",
-        description: "Task summary, assignee, status, priority, or dates are changed.",
-        icon: RefreshCw,
-      },
-      {
-        key: "task_deleted",
-        label: "A task is deleted",
-        description: "A task is removed from the system.",
-        icon: AlertCircle,
-      },
-      {
-        key: "comment_added",
-        label: "A comment is added",
-        description: "A new comment is added to a task.",
-        icon: MessageSquare,
-      },
-      {
-        key: "attachment_added",
-        label: "An attachment is added",
-        description: "A file is uploaded to a task.",
-        icon: FileText,
-      },
-    ],
-  },
-  {
-    title: "Spaces, audit, and security",
-    description: "System-level activity that admins usually need to monitor.",
-    items: [
-      {
-        key: "space_created",
-        label: "A space is created",
-        description: "A new workspace, board, or project space is created.",
-        icon: FileText,
-      },
-      {
-        key: "space_updated",
-        label: "A space is updated",
-        description: "A workspace, board, or project space settings are changed.",
-        icon: FileText,
-      },
-      {
-        key: "audit_log_event",
-        label: "Audit log event recorded",
-        description: "A security-sensitive action appears in audit logs.",
+        key: "important_permission_changes",
+        label: "Important permission changes",
+        description: "A user or group receives sensitive permission changes.",
         icon: ShieldCheck,
       },
       {
-        key: "system_alert",
-        label: "System alert",
-        description: "Critical system events and warnings.",
+        key: "audit_security_events",
+        label: "System audit/security events",
+        description: "Security-sensitive events are recorded in audit logs.",
         icon: AlertCircle,
       },
     ],
@@ -209,14 +131,19 @@ const ADMIN_NOTIFICATION_GROUPS = [
 ];
 
 const FREQUENCY_OPTIONS = ["Instant", "Daily digest", "Weekly digest", "Off"];
+const SUPER_ADMIN_FREQUENCY_OPTIONS = ["Instant", "Daily digest", "Off"];
 
 const NotificationSettingsPage = () => {
   const [searchParams] = useSearchParams();
   const roleParam = searchParams.get("role")?.toUpperCase();
   const currentRole = roleParam === "USER" ? "USER" : "ADMIN";
-  const isAdmin = currentRole === "ADMIN";
+  const isSuperAdmin = currentRole === "ADMIN";
 
-  const notificationGroups = isAdmin ? ADMIN_NOTIFICATION_GROUPS : USER_NOTIFICATION_GROUPS;
+  const notificationGroups = useMemo(() => {
+    if (isSuperAdmin) return SUPER_ADMIN_NOTIFICATION_GROUPS;
+    return MEMBER_NOTIFICATION_GROUPS;
+  }, [isSuperAdmin]);
+
   const notificationItems = useMemo(
     () => notificationGroups.flatMap((group) => group.items),
     [notificationGroups]
@@ -227,11 +154,15 @@ const NotificationSettingsPage = () => {
     [notificationItems]
   );
 
-  const storageKey = `notification-preferences-${currentRole.toLowerCase()}`;
+  const storageKey = isSuperAdmin
+    ? "notification-preferences-super-admin"
+    : "notification-preferences-user-account";
+  const legacyStorageKey = "notification-preferences-space-member";
+  const frequencyOptions = isSuperAdmin ? SUPER_ADMIN_FREQUENCY_OPTIONS : FREQUENCY_OPTIONS;
 
   const getSavedPreferences = () => {
     try {
-      return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      return JSON.parse(localStorage.getItem(storageKey) || localStorage.getItem(legacyStorageKey) || "{}");
     } catch {
       return {};
     }
@@ -242,15 +173,20 @@ const NotificationSettingsPage = () => {
     return saved[type] ? { ...initialChannelState, ...saved[type] } : initialChannelState;
   };
 
+  const getSavedEmailFrequency = () => {
+    const savedFrequency = getSavedPreferences().emailFrequency || "Instant";
+    return frequencyOptions.includes(savedFrequency) ? savedFrequency : "Instant";
+  };
+
   const [emailEnabled, setEmailEnabled] = useState(() => getSavedPreferences().emailEnabled ?? true);
-  const [emailFrequency, setEmailFrequency] = useState(() => getSavedPreferences().emailFrequency || "Instant");
+  const [emailFrequency, setEmailFrequency] = useState(() => getSavedEmailFrequency());
   const [emailSettings, setEmailSettings] = useState(() => getSavedChannelSettings("emailSettings"));
   const [appSettings, setAppSettings] = useState(() => getSavedChannelSettings("appSettings"));
 
   useEffect(() => {
     const saved = getSavedPreferences();
     setEmailEnabled(saved.emailEnabled ?? true);
-    setEmailFrequency(saved.emailFrequency || "Instant");
+    setEmailFrequency(getSavedEmailFrequency());
     setEmailSettings(getSavedChannelSettings("emailSettings"));
     setAppSettings(getSavedChannelSettings("appSettings"));
   }, [storageKey, initialChannelState]);
@@ -275,7 +211,7 @@ const NotificationSettingsPage = () => {
 
   const handleSave = () => {
     const preferences = {
-      role: currentRole,
+      scope: isSuperAdmin ? "SUPER_ADMIN" : "USER_ACCOUNT",
       emailEnabled,
       emailFrequency,
       emailSettings,
@@ -322,9 +258,9 @@ const NotificationSettingsPage = () => {
       <div className="mb-8 flex-shrink-0">
         <h1 className="text-2xl font-bold text-[#4C2B74]">Notification Settings</h1>
         <p className="text-sm text-gray-500">
-          {isAdmin
-            ? "Manage admin alerts for users, tasks, spaces, audit logs, and system events."
-            : "Choose how and when you want to be notified about your task work."}
+          {isSuperAdmin
+            ? "Manage Super Admin alerts for accounts, permissions, audit logs, and security events."
+            : "Manage one notification setting shared across all spaces where you are a member or an owner."}
         </p>
       </div>
 
@@ -336,7 +272,9 @@ const NotificationSettingsPage = () => {
               <h2 className="text-lg font-bold text-[#170338]">Email preferences</h2>
             </div>
             <p className="text-sm text-gray-500 mt-2 max-w-3xl">
-              Tell us what kind of email updates you want to receive, and how often we should send them.
+              {isSuperAdmin
+                ? "Control email delivery for system-level alerts only."
+                : "Tell us what kind of email updates you want to receive, and how often we should send them."}
             </p>
           </div>
 
@@ -344,12 +282,12 @@ const NotificationSettingsPage = () => {
             <div className="px-6 py-4 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-sm font-bold text-gray-800">
-                  {isAdmin ? "Send me admin email notifications" : "Send me emails for work item activity"}
+                  {isSuperAdmin ? "Send me system email alerts" : "Send me emails for space and task activity"}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {isAdmin
-                    ? "Applies to user management, security, audit, system, and task oversight events."
-                    : "Applies to assignments, mentions, task updates, comments, due dates, and attachments."}
+                  {isSuperAdmin
+                    ? "Applies only to account lifecycle, permission, audit, and security events."
+                    : "Applies to task, comment, mention, member, role, and owner-level space updates across your account."}
                 </p>
               </div>
               <ToggleSwitch checked={emailEnabled} onChange={() => setEmailEnabled((prev) => !prev)} />
@@ -358,7 +296,11 @@ const NotificationSettingsPage = () => {
             <div className="px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-sm font-bold text-gray-800">Email frequency</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Choose whether emails are sent immediately or grouped into a digest.</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {isSuperAdmin
+                    ? "System alerts can be sent immediately, grouped daily, or turned off."
+                    : "Choose whether emails are sent immediately or grouped into a digest."}
+                </p>
               </div>
               <select
                 value={emailFrequency}
@@ -366,7 +308,7 @@ const NotificationSettingsPage = () => {
                 onChange={(event) => setEmailFrequency(event.target.value)}
                 className="w-full sm:w-48 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#4C2B74]/20 disabled:bg-gray-50 disabled:text-gray-400"
               >
-                {FREQUENCY_OPTIONS.map((option) => (
+                {frequencyOptions.map((option) => (
                   <option key={option}>{option}</option>
                 ))}
               </select>
@@ -378,10 +320,14 @@ const NotificationSettingsPage = () => {
           <div className="p-6 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <Bell className="w-6 h-6 text-[#4C2B74]" />
-              <h2 className="text-lg font-bold text-[#170338]">Default notifications</h2>
+              <h2 className="text-lg font-bold text-[#170338]">
+                {isSuperAdmin ? "System notification channels" : "Default notifications"}
+              </h2>
             </div>
             <p className="text-sm text-gray-500 mt-2 max-w-4xl">
-              Set default notification channels for activity across your spaces.
+              {isSuperAdmin
+                ? "Only Super Admin account, permission, audit, and security settings are shown here."
+                : "Set default channels once for every space. Owner-level options only apply to spaces where you are Owner."}
             </p>
           </div>
 
