@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.api.v1 import notification_preferences as preference_api
 from app.api.v1 import notifications as notification_api
 from app.core.notification_constants import default_preference_values
-from app.crud.notification import NotificationListResult
+from app.repository.notification import NotificationListResult
 from app.schemas.notification import NotificationBulkIdsRequest, NotificationResponse
 from app.schemas.notification_preference import (
     NotificationPreferencePatchRequest,

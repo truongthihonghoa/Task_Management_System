@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.email import send_verification_email
 from app.core.security import create_access_token, create_refresh_token, generate_otp, hash_password, verify_password
-from app.crud.repository import (
+from app.repository.repository import (
     EMAIL_VERIFICATION,
     PASSWORD_RESET,
     create_audit_log,

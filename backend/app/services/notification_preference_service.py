@@ -6,7 +6,7 @@ from app.core.notification_constants import (
     SETTINGS_KEYS_BY_SCOPE,
     default_preference_values,
 )
-from app.crud import notification_preference as preference_repository
+from app.repository import notification_preference as preference_repository
 from app.models.notification_preference import NotificationPreference
 from app.models.user import User
 from app.schemas.notification_preference import (

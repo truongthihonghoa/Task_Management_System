@@ -11,7 +11,7 @@ from app.core.notification_constants import (
     SortOrder,
 )
 from app.core.security import get_current_user
-from app.crud import notification as notification_repository
+from app.repository import notification as notification_repository
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.notification import (

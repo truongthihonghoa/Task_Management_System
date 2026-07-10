@@ -17,8 +17,8 @@ from app.core.notification_constants import (
     default_preference_values,
     preference_scope_for_type,
 )
-from app.crud import notification as notification_repository
-from app.crud import notification_preference as preference_repository
+from app.repository import notification as notification_repository
+from app.repository import notification_preference as preference_repository
 from app.models.notification import Notification
 from app.models.space import Space
 from app.models.task import Task
