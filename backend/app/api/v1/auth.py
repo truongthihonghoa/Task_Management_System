@@ -32,9 +32,11 @@ from app.schemas.pydantic_models import (
     VerifyEmailResponse,
     VerifyResetCodeRequest,
 )
+from app.services.notification_service import NotificationService
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+notification_service = NotificationService()
 
 OTP_EXPIRE_MINUTES = 15
 MAX_RESENDS_PER_HOUR = 5
@@ -273,6 +275,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
                 user.status_user = "Locked"
                 user.locked_until = _account_locked_until(now)
+                notification_service.create_super_admin_notification(
+                    db,
+                    notification_type="account_locked",
+                    title="Account locked",
+                    message=f"Account {user.email} was locked after failed login attempts.",
+                    metadata={
+                        "user_id": user.user_id,
+                        "email": user.email,
+                        "failed_login_attempts": user.failed_login_attempts,
+                        "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+                    },
+                )
             db.commit()
         except Exception:
             db.rollback()
@@ -455,6 +469,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
         user.password_hash = hash_password(payload.password)
         user.failed_login_attempts = 0
         user.locked_until = None
+        was_locked = user.status_user == "Locked"
         if user.status_user == "Locked":
             user.status_user = "Active"
         user.updated_at = now
@@ -467,6 +482,14 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
             entity_id=user.user_id,
             payload={"email": email},
         )
+        if was_locked:
+            notification_service.create_super_admin_notification(
+                db,
+                notification_type="user_verified",
+                title="Locked account restored",
+                message=f"Account {user.email} reset password and was restored to Active.",
+                metadata={"user_id": user.user_id, "email": user.email},
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -523,6 +546,13 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
             label_title="Register user",
             entity_id=user.user_id,
             payload={"email": user.email, "role": user.role},
+        )
+        notification_service.create_super_admin_notification(
+            db,
+            notification_type="user_registered",
+            title="New user registered",
+            message=f"{user.full_name} registered a new account.",
+            metadata={"user_id": user.user_id, "email": user.email, "role": user.role},
         )
         db.commit()
         db.refresh(user)
