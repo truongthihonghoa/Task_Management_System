@@ -43,6 +43,13 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     return db.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
 
+def list_user_ids_by_role(db: Session, role: str, *, active_only: bool = True) -> list[str]:
+    statement = select(User.user_id).where(User.role == role)
+    if active_only:
+        statement = statement.where(User.status_user == "Active")
+    return list(db.execute(statement).scalars())
+
+
 def get_verification_token(db: Session, email: str, token_type: str = EMAIL_VERIFICATION) -> VerificationToken | None:
     return db.execute(
         select(VerificationToken).where(

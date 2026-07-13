@@ -54,6 +54,7 @@ class User(Base):
         foreign_keys="Notification.actor_id",
     )
     notification_preferences = relationship("NotificationPreference", back_populates="user")
+    recent_views = relationship("RecentView", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
     task_assignees = relationship(
         "TaskAssignee",
