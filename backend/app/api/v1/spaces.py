@@ -5,8 +5,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.security import get_optional_bearer_token
-from app.repository import space as space_repository
+from app.core.security import get_current_user
+from app.repository import space as space_crud
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pydantic_models import (
@@ -37,8 +37,13 @@ router = APIRouter(
 
 
 @router.post("", response_model=SpaceResponse, status_code=status.HTTP_201_CREATED)
-def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
-    return space_repository.create_space(db, payload)
+def create_space(
+    payload: SpaceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ensure_can_create_space(payload, current_user)
+    return space_crud.create_space(db, payload)
 
 
 @router.get("", response_model=List[SpaceResponse])
@@ -47,39 +52,68 @@ def list_spaces(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return space_repository.list_spaces(db, include_deleted=include_deleted)
+    return space_crud.list_spaces(db, include_deleted=include_deleted, current_user=current_user)
 
 
 @router.get("/owners/{owner_id}/trash", response_model=List[SpaceResponse])
-def list_owner_trash(owner_id: str, db: Session = Depends(get_db)):
-    return space_repository.list_owner_trash(db, owner_id)
+def list_owner_trash(
+    owner_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.list_owner_trash(db, owner_id, current_user=current_user)
 
 
 @router.get("/{space_id}", response_model=SpaceResponse)
-def get_space(space_id: str, db: Session = Depends(get_db)):
-    return space_repository.get_space(db, space_id)
+def get_space(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.get_space(db, space_id, current_user=current_user)
 
 
 @router.patch("/{space_id}", response_model=SpaceResponse)
-def update_space(space_id: str, payload: SpaceUpdate, db: Session = Depends(get_db)):
-    return space_repository.update_space(db, space_id, payload)
+def update_space(
+    space_id: str,
+    payload: SpaceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.update_space(db, space_id, payload, current_user=current_user)
 
 
 @router.post("/{space_id}/archive", response_model=SpaceResponse)
-def archive_space(space_id: str, db: Session = Depends(get_db)):
-    return space_repository.archive_space(db, space_id)
+def archive_space(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.archive_space(db, space_id, current_user=current_user)
 
 
 @router.post("/{space_id}/restore", response_model=SpaceResponse)
-def restore_space(space_id: str, db: Session = Depends(get_db)):
-    return space_repository.restore_space(db, space_id)
+def restore_space(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.restore_space(db, space_id, current_user=current_user)
 
 
 @router.delete("/{space_id}", response_model=SpaceResponse)
-def delete_space(space_id: str, db: Session = Depends(get_db)):
-    return space_repository.delete_space(db, space_id)
+def delete_space(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.delete_space(db, space_id, current_user=current_user)
 
 
 @router.get("/{space_id}/members", response_model=List[SpaceMemberResponse])
-def list_space_members(space_id: str, db: Session = Depends(get_db)):
-    return space_repository.list_space_members(db, space_id)
+def list_space_members(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.list_space_members(db, space_id, current_user=current_user)
