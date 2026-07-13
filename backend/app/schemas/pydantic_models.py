@@ -289,3 +289,50 @@ class UserManagementUpdateRequest(BaseModel):
     locked_until: datetime | None = None
 
     model_config = {"extra": "forbid"}
+
+
+class UserProfileResponse(BaseModel):
+    avatar_url: str | None
+    full_name: str
+    email: str
+    role: str
+    status_user: str
+    created_at: datetime
+    last_login: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        full_name = value.strip()
+        if not full_name:
+            raise ValueError("Full name is required.")
+        return full_name
+
+
+class UpdateAvatarResponse(MessageResponse):
+    avatar_url: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value, field_name="New password")
+
+    @model_validator(mode="after")
+    def validate_password_match(self) -> "ChangePasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Confirm password mismatch.")
+        if self.current_password == self.new_password:
+            raise ValueError("New password must not be the same as current password.")
+        return self
