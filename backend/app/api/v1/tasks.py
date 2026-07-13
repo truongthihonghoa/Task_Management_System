@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
-from app.crud.repository import (
+from app.repository.repository import (
     create_assignment_history,
     create_task_assignee,
     delete_task_assignee,

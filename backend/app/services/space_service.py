@@ -4,7 +4,7 @@ from typing import List
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.crud import space as space_repository
+from app.repository import space as space_repository
 from app.models.space import Space
 from app.models.space_member import SpaceMember
 from app.models.user import User

@@ -4,7 +4,7 @@ from typing import Iterable
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.crud import task as task_repository
+from app.repository import task as task_repository
 from app.models.space import Space
 from app.models.sprint import Sprint
 from app.models.task import Task
