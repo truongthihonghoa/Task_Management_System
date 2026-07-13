@@ -1,11 +1,14 @@
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.email import send_notification_email
 from app.core.notification_constants import (
+    NotificationEmailFrequency,
     NotificationAudience,
     NotificationPreferenceScope,
     NotificationType,
@@ -76,6 +79,40 @@ class NotificationService:
             return False
         return True
 
+    def _email_enabled_for_notification(self, preference, *, notification_type: str, scope: str) -> bool:
+        if preference.email_enabled is not True:
+            return False
+        if preference.email_frequency != NotificationEmailFrequency.INSTANT.value:
+            return False
+
+        defaults = default_preference_values(scope)["email_settings"]
+        email_settings = {**defaults, **(preference.email_settings or {})}
+        return email_settings.get(notification_type, defaults.get(notification_type, True)) is True
+
+    def _send_email_if_enabled(
+        self,
+        *,
+        recipient: User,
+        preference,
+        notification_type: str,
+        scope: str,
+        title: str,
+        message: str,
+    ) -> None:
+        if not self._email_enabled_for_notification(
+            preference,
+            notification_type=notification_type,
+            scope=scope,
+        ):
+            return
+        try:
+            send_notification_email(recipient.email, title=title, message=message)
+        except Exception:
+            logger.exception(
+                "notification email delivery failed",
+                extra={"notification_type": notification_type, "recipient_id": recipient.user_id},
+            )
+
     def create_notification(
         self,
         db: Session,
@@ -127,6 +164,8 @@ class NotificationService:
             space_id=space_id,
         ):
             return None
+        scope = preference_scope_for_type(notification_type)
+        preference = self._get_or_create_preference(db, user_id=recipient.user_id, scope=scope)
 
         notification = notification_repository.create_notification(
             db,
@@ -151,6 +190,14 @@ class NotificationService:
                 "task_id": task_id,
                 "space_id": space_id,
             },
+        )
+        self._send_email_if_enabled(
+            recipient=recipient,
+            preference=preference,
+            notification_type=notification_type,
+            scope=scope,
+            title=title,
+            message=message,
         )
         return notification
 
@@ -213,6 +260,7 @@ class NotificationService:
             )
         }
         defaults = default_preference_values(scope)["app_settings"]
+        email_defaults = default_preference_values(scope)["email_settings"]
 
         created = []
         for user_id in recipient_ids:
@@ -246,6 +294,19 @@ class NotificationService:
                 read_at=None,
             )
             created.append(notification)
+            email_preference = preference or SimpleNamespace(
+                email_enabled=default_preference_values(scope)["email_enabled"],
+                email_frequency=default_preference_values(scope)["email_frequency"],
+                email_settings=email_defaults,
+            )
+            self._send_email_if_enabled(
+                recipient=recipient,
+                preference=email_preference,
+                notification_type=notification_type,
+                scope=scope,
+                title=title,
+                message=message,
+            )
         logger.info("bulk notification count", extra={"created_count": len(created)})
         return created
 

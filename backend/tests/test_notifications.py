@@ -109,6 +109,11 @@ def make_preference(**overrides):
     return SimpleNamespace(**values)
 
 
+@pytest.fixture(autouse=True)
+def disable_real_notification_email(monkeypatch):
+    monkeypatch.setattr("app.services.notification_service.send_notification_email", lambda *args, **kwargs: None)
+
+
 def test_list_notifications_uses_current_user_and_returns_unread_count(monkeypatch):
     captured = {}
     item = make_notification()
@@ -593,6 +598,95 @@ def test_notification_service_creates_when_setting_key_missing_and_default_true(
     )
 
     assert notification is not None
+
+
+def test_notification_service_sends_email_when_email_preference_enabled(monkeypatch):
+    service = NotificationService()
+    db = FakeDb(
+        {
+            ("User", "USR00000001"): make_user("USR00000001"),
+            ("User", "USR00000002"): make_user("USR00000002"),
+        }
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        "app.services.notification_service.preference_repository.get_preference",
+        lambda _db, user_id, scope: make_preference(
+            user_id=user_id,
+            email_enabled=True,
+            email_frequency="INSTANT",
+            email_settings={"task_assigned": True},
+            app_settings={"task_assigned": True},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.notification_repository.create_notification",
+        lambda _db, **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.send_notification_email",
+        lambda email, **kwargs: sent.append((email, kwargs)),
+    )
+
+    notification = service.create_notification(
+        db,
+        user_id="USR00000001",
+        actor_id="USR00000002",
+        notification_type="task_assigned",
+        title="Task assigned",
+        message="A task was assigned.",
+    )
+
+    assert notification is not None
+    assert sent == [
+        (
+            "usr00000001@example.com",
+            {"title": "Task assigned", "message": "A task was assigned."},
+        )
+    ]
+
+
+def test_notification_service_does_not_send_email_when_email_setting_disabled(monkeypatch):
+    service = NotificationService()
+    db = FakeDb(
+        {
+            ("User", "USR00000001"): make_user("USR00000001"),
+            ("User", "USR00000002"): make_user("USR00000002"),
+        }
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        "app.services.notification_service.preference_repository.get_preference",
+        lambda _db, user_id, scope: make_preference(
+            user_id=user_id,
+            email_enabled=True,
+            email_frequency="INSTANT",
+            email_settings={"task_assigned": False},
+            app_settings={"task_assigned": True},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.notification_repository.create_notification",
+        lambda _db, **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.send_notification_email",
+        lambda email, **kwargs: sent.append((email, kwargs)),
+    )
+
+    notification = service.create_notification(
+        db,
+        user_id="USR00000001",
+        actor_id="USR00000002",
+        notification_type="task_assigned",
+        title="Task assigned",
+        message="A task was assigned.",
+    )
+
+    assert notification is not None
+    assert sent == []
 
 
 def test_owner_space_update_requires_recipient_to_own_space(monkeypatch):
