@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
  
-const CreateSpaceModal = ({ isOpen, onClose, onCreate }) => {
+const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: ''
@@ -10,7 +10,12 @@ const CreateSpaceModal = ({ isOpen, onClose, onCreate }) => {
  
   const handleSubmit = (e) => {
     e.preventDefault();
-    onCreate(formData);
+    // Include owner information when creating space
+    onCreate({
+      ...formData,
+      owner: currentUser?.id,
+      ownerName: currentUser?.name
+    });
     onClose();
     setFormData({ title: '', description: '' });
   };

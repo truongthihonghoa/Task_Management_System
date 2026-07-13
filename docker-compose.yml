@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_NAME: TaskFlow
+      FRONTEND_URL: http://localhost:3000
+    command: >
+      python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    command: alembic upgrade head
+    profiles:
+      - migrate
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api/v1
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
