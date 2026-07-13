@@ -732,13 +732,15 @@ export default function MainLayout() {
 
           <div className="flex items-center space-x-6 flex-shrink-0">
             {/* Create Button */}
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-[#2D1B4E] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all font-['Inter']"
-            >
-              <i className="w-4 h-4 mr-2" data-lucide="plus"></i>
-              Create Task
-            </button>
+            {!isSuperAdmin && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-[#2D1B4E] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all font-['Inter']"
+              >
+                <i className="w-4 h-4 mr-2" data-lucide="plus"></i>
+                Create Task
+              </button>
+            )}
             
             <div className="relative" ref={appsRef}>
             <button

@@ -1,6 +1,7 @@
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
 from app.models.notification_preference import NotificationPreference
+from app.models.recent_view import RecentView
 from app.models.space import Space
 from app.models.space_member import SpaceMember
 from app.models.sprint import Sprint
@@ -17,6 +18,7 @@ __all__ = [
     "AuditLog",
     "Notification",
     "NotificationPreference",
+    "RecentView",
     "Space",
     "SpaceMember",
     "Sprint",
