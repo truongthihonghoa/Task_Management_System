@@ -2,12 +2,13 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_optional_bearer_token
 from app.repository import space as space_repository
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas.pydantic_models import (
     SpaceCreate,
     SpaceMemberResponse,
@@ -16,10 +17,22 @@ from app.schemas.pydantic_models import (
 )
 
 
+def _ensure_can_create_space(payload: SpaceCreate, current_user: User) -> None:
+    if current_user.role != "USER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only users can create spaces",
+        )
+    if payload.owner_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Users can only create spaces for themselves",
+        )
+
+
 router = APIRouter(
     prefix="/spaces",
     tags=["spaces"],
-    dependencies=[Depends(get_optional_bearer_token)],
 )
 
 
@@ -32,6 +45,7 @@ def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
 def list_spaces(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     return space_repository.list_spaces(db, include_deleted=include_deleted)
 
