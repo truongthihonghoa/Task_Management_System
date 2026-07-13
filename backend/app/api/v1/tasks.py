@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
-from app.repository.auth import create_audit_log
+from app.repository.audit_log import create_audit_log
 from app.repository.task import (
     create_assignment_history,
     create_task_assignee,

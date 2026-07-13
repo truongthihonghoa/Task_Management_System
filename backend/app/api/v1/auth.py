@@ -46,6 +46,10 @@ from app.schemas.pydantic_models import (
     VerifyEmailResponse,
     VerifyResetCodeRequest,
 )
+from app.services import auth_service
+from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  # noqa: F401 — re-exported for tests
+
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 notification_service = NotificationService()

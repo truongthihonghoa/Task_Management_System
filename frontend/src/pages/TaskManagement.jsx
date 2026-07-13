@@ -100,11 +100,22 @@ const getNextSprintNumber = (sprints) => {
   return maxSprintNumber + 1;
 };
 
-export default function TaskManagement() {
+export default function TaskManagement({ routeContext = null, spaceIdOverride = null } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { spaceId } = useParams();
-  const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole = 'ADMIN', currentUser, currentSpaceRole = 'USER' } = useOutletContext() || {};
+  const { spaceId: routeSpaceId } = useParams();
+  const outletContext = useOutletContext() || {};
+  const {
+    setShowCreateModal,
+    setTasksForModal,
+    setCreateTaskHandler,
+    setSprintsForModal,
+    setCreateTaskInitialSprint,
+    currentRole = 'ADMIN',
+    currentUser,
+    currentSpaceRole = 'USER'
+  } = routeContext || outletContext;
+  const spaceId = spaceIdOverride || routeSpaceId;
  
   const isAdmin = currentRole === 'ADMIN';
   const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
