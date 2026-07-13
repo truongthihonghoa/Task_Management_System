@@ -5,8 +5,8 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.api.v1 import auth
-from app.repository.repository import PASSWORD_RESET
+from app.services import auth_service
+from app.repository.auth import PASSWORD_RESET
 from app.schemas.pydantic_models import EmailRequest, LoginRequest, ResetPasswordRequest, VerifyResetCodeRequest
 
 
@@ -69,24 +69,25 @@ def test_login_success_generates_tokens_saves_user_token_and_audit(monkeypatch):
     audit_logs = []
     token_payloads = []
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: True)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "verify_password", lambda password, password_hash: True)
     monkeypatch.setattr(
-        auth,
+        auth_service,
         "create_access_token",
         lambda payload: (token_payloads.append(payload) or ("access-token", datetime.utcnow() + timedelta(minutes=30))),
     )
     monkeypatch.setattr(
-        auth,
+        auth_service,
         "create_refresh_token",
         lambda payload: ("refresh-token", datetime.utcnow() + timedelta(days=7)),
     )
-    monkeypatch.setattr(auth, "create_user_token", lambda _db, **kwargs: saved_tokens.append(kwargs))
-    monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: audit_logs.append(kwargs))
+    monkeypatch.setattr(auth_service, "create_user_token", lambda _db, **kwargs: saved_tokens.append(kwargs))
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audit_logs.append(kwargs))
 
-    response = auth.login(
-        LoginRequest(email="minhtrang@gmail.com", password="Password@123"),
+    response = auth_service.login(
         db,
+        "minhtrang@gmail.com",
+        "Password@123",
     )
 
     assert response.access_token == "access-token"
@@ -104,10 +105,10 @@ def test_login_success_generates_tokens_saves_user_token_and_audit(monkeypatch):
 
 
 def test_login_email_not_found(monkeypatch):
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: None)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: None)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.login(LoginRequest(email="missing@gmail.com", password="Password@123"), FakeDb())
+        auth_service.login(FakeDb(), "missing@gmail.com", "Password@123")
 
     assert_http_error(exc_info, 404, "Email does not exist.")
 
@@ -116,11 +117,11 @@ def test_login_wrong_password_increments_failed_attempts(monkeypatch):
     db = FakeDb()
     user = make_user(failed_login_attempts=1)
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: False)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "verify_password", lambda password, password_hash: False)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.login(LoginRequest(email=user.email, password="Wrong@123"), db)
+        auth_service.login(db, user.email, "Wrong@123")
 
     assert_http_error(exc_info, 401, "Invalid email or password.")
     assert user.failed_login_attempts == 2
@@ -130,13 +131,13 @@ def test_login_wrong_password_increments_failed_attempts(monkeypatch):
 
 def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     db = FakeDb()
-    user = make_user(failed_login_attempts=auth.MAX_FAILED_LOGIN_ATTEMPTS - 1)
+    user = make_user(failed_login_attempts=auth_service.MAX_FAILED_LOGIN_ATTEMPTS - 1)
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "verify_password", lambda password, password_hash: False)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "verify_password", lambda password, password_hash: False)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.login(LoginRequest(email=user.email, password="Wrong@123"), db)
+        auth_service.login(db, user.email, "Wrong@123")
 
     assert_http_error(exc_info, 401, "Invalid email or password.")
     assert user.status_user == "Locked"
@@ -156,10 +157,10 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     ],
 )
 def test_login_blocked_account_states(monkeypatch, user, message):
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.login(LoginRequest(email=user.email, password="Password@123"), FakeDb())
+        auth_service.login(FakeDb(), user.email, "Password@123")
 
     assert_http_error(exc_info, 403, message)
 
@@ -170,13 +171,13 @@ def test_forgot_password_generates_password_reset_token_and_sends_email(monkeypa
     upserts = []
     sent = []
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "generate_otp", lambda: "483921")
-    monkeypatch.setattr(auth, "upsert_verification_token", lambda _db, **kwargs: upserts.append(kwargs))
-    monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth, "send_verification_email", lambda email, code: sent.append((email, code)))
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "generate_otp", lambda: "483921")
+    monkeypatch.setattr(auth_service, "upsert_verification_token", lambda _db, **kwargs: upserts.append(kwargs))
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
+    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)))
 
-    response = auth.forgot_password(EmailRequest(email=user.email), db)
+    response = auth_service.forgot_password(db, user.email)
 
     assert response.message == "Verification code sent successfully."
     assert upserts[0]["token_type"] == PASSWORD_RESET
@@ -186,10 +187,10 @@ def test_forgot_password_generates_password_reset_token_and_sends_email(monkeypa
 
 
 def test_forgot_password_email_not_found(monkeypatch):
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: None)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: None)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.forgot_password(EmailRequest(email="missing@gmail.com"), FakeDb())
+        auth_service.forgot_password(FakeDb(), "missing@gmail.com")
 
     assert_http_error(exc_info, 404, "Email does not exist.")
 
@@ -199,11 +200,11 @@ def test_verify_reset_code_success_marks_token_used(monkeypatch):
     user = make_user()
     token = make_token()
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
-    monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: None)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
 
-    response = auth.verify_reset_code(VerifyResetCodeRequest(email=user.email, code="483921"), db)
+    response = auth_service.verify_reset_code(db, user.email, "483921")
 
     assert response.verified is True
     assert token.used_at is not None
@@ -221,11 +222,11 @@ def test_verify_reset_code_success_marks_token_used(monkeypatch):
 def test_verify_reset_code_rejects_invalid_expired_or_used_codes(monkeypatch, token, code, message):
     user = make_user()
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.verify_reset_code(VerifyResetCodeRequest(email=user.email, code=code), FakeDb())
+        auth_service.verify_reset_code(FakeDb(), user.email, code)
 
     assert_http_error(exc_info, 400, message)
 
@@ -236,13 +237,13 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     token = make_token(otp_code="111111", resend_count=1, used_at=datetime.utcnow())
     sent = []
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
-    monkeypatch.setattr(auth, "generate_otp", lambda: "222222")
-    monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth, "send_verification_email", lambda email, code: sent.append((email, code)))
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
+    monkeypatch.setattr(auth_service, "generate_otp", lambda: "222222")
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
+    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)))
 
-    response = auth.resend_reset_code(EmailRequest(email=user.email), db)
+    response = auth_service.resend_reset_code(db, user.email)
 
     assert response.message == "Verification code has been resent."
     assert token.otp_code == "222222"
@@ -258,19 +259,12 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     token = make_token(used_at=datetime.utcnow())
     audits = []
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
-    monkeypatch.setattr(auth, "hash_password", lambda password: f"hashed::{password}")
-    monkeypatch.setattr(auth, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
+    monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
 
-    response = auth.reset_password(
-        ResetPasswordRequest(
-            email=user.email,
-            password="NewPassword@123",
-            confirm_password="NewPassword@123",
-        ),
-        db,
-    )
+    response = auth_service.reset_password(db, user.email, "NewPassword@123")
 
     assert response.message == "Password reset successfully."
     assert user.password_hash == "hashed::NewPassword@123"
@@ -285,14 +279,11 @@ def test_reset_password_requires_verified_reset_code(monkeypatch):
     user = make_user()
     token = make_token(used_at=None)
 
-    monkeypatch.setattr(auth, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth, "get_verification_token", lambda _db, email, token_type: token)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.reset_password(
-            ResetPasswordRequest(email=user.email, password="NewPassword@123", confirm_password="NewPassword@123"),
-            FakeDb(),
-        )
+        auth_service.reset_password(FakeDb(), user.email, "NewPassword@123")
 
     assert_http_error(exc_info, 400, "Password reset code must be verified before resetting password.")
 
