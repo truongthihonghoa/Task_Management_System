@@ -6,13 +6,32 @@ auth_service, return responses. No business logic here.
 """
 
 import os
-
+from app.models.user import User
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
+from app.core.email import send_verification_email
+from app.core.security import create_access_token, create_refresh_token, generate_otp, hash_password, verify_password
+
+from app.services.notification_service import NotificationService
+
+from app.services import auth_service
+from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  
 from app.core.security import get_current_user, bearer_scheme
-from app.models.user import User
+
+from app.repository.repository import (
+    EMAIL_VERIFICATION,
+    PASSWORD_RESET,
+    create_audit_log,
+    create_user,
+    create_user_token,
+    get_user_by_email,
+    get_verification_token,
+    reset_resend_window_if_needed,
+    upsert_email_verification_token,
+    upsert_verification_token,
+)
 
 from app.db.session import get_db
 from app.schemas.pydantic_models import (
@@ -27,10 +46,9 @@ from app.schemas.pydantic_models import (
     VerifyEmailResponse,
     VerifyResetCodeRequest,
 )
-from app.services import auth_service
-from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  # noqa: F401 — re-exported for tests
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+notification_service = NotificationService()
 
 
 @router.post("/check-email", response_model=MessageResponse, status_code=200)
