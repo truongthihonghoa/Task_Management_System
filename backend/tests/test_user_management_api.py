@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 
 from app.api.v1 import users as users_api
 from app.repository import user as user_repository
+from app.services import user_service
 from app.schemas.pydantic_models import UserManagementUpdateRequest
 
 
@@ -154,7 +155,7 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
     ],
 )
 def test_validate_update_payload_accepts_allowed_fields(payload):
-    user_repository.validate_update_payload(payload)
+    user_service.validate_update_payload(payload)
 
 
 @pytest.mark.parametrize(
@@ -178,7 +179,7 @@ def test_validate_update_payload_accepts_allowed_fields(payload):
 )
 def test_validate_update_payload_rejects_invalid_fields(payload, message):
     with pytest.raises(HTTPException) as exc_info:
-        user_repository.validate_update_payload(payload)
+        user_service.validate_update_payload(payload)
 
     assert_http_exception(exc_info, status.HTTP_400_BAD_REQUEST, message)
 
@@ -217,7 +218,7 @@ def test_get_user_or_404_returns_existing_user():
     user = make_user(user_id="USR00000002")
     db = FakeDb(users=[user])
 
-    result = user_repository.get_user_or_404(db, "USR00000002")
+    result = user_service.get_user_or_404(db, "USR00000002")
 
     assert result is user
 
@@ -226,7 +227,7 @@ def test_get_user_or_404_raises_for_missing_user():
     db = FakeDb(users=[])
 
     with pytest.raises(HTTPException) as exc_info:
-        user_repository.get_user_or_404(db, "USR99999999")
+        user_service.get_user_or_404(db, "USR99999999")
 
     assert_http_exception(exc_info, status.HTTP_404_NOT_FOUND, "User not found")
 
@@ -246,7 +247,7 @@ def test_update_user_updates_only_allowed_fields():
     db = FakeDb(users=[user])
     locked_until = datetime.utcnow() + timedelta(minutes=15)
 
-    response = user_repository.update_user(
+    response = user_service.update_user(
         db,
         user.user_id,
         {
@@ -271,7 +272,7 @@ def test_activate_user_sets_status_active():
     user = make_user(status_user="Inactive")
     db = FakeDb(users=[user])
 
-    response = user_repository.activate_user(db, user.user_id)
+    response = user_service.activate_user(db, user.user_id)
 
     assert response.status_user == "Active"
     assert user.status_user == "Active"
@@ -281,19 +282,19 @@ def test_deactivate_user_sets_status_inactive():
     user = make_user(status_user="Active")
     db = FakeDb(users=[user])
 
-    response = user_repository.deactivate_user(db, user.user_id)
+    response = user_service.deactivate_user(db, user.user_id)
 
     assert response.status_user == "Inactive"
     assert user.status_user == "Inactive"
 
 
 def test_lock_user_sets_status_and_locked_until(monkeypatch):
-    monkeypatch.setattr(user_repository, "ACCOUNT_LOCK_MINUTES", 15)
+    monkeypatch.setattr(user_service, "ACCOUNT_LOCK_MINUTES", 15)
     user = make_user(status_user="Active", locked_until=None)
     db = FakeDb(users=[user])
     before = datetime.utcnow()
 
-    response = user_repository.lock_user(db, user.user_id)
+    response = user_service.lock_user(db, user.user_id)
 
     after = datetime.utcnow()
     assert response.status_user == "Locked"
@@ -310,7 +311,7 @@ def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
     )
     db = FakeDb(users=[user])
 
-    response = user_repository.unlock_user(db, user.user_id)
+    response = user_service.unlock_user(db, user.user_id)
 
     assert response.status_user == "Active"
     assert response.failed_login_attempts == 0
@@ -323,7 +324,7 @@ def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
 def test_user_response_never_exposes_password_hash():
     user = make_user(password_hash="secret-hash")
 
-    response = user_repository._user_response(user)
+    response = user_service._user_response(user)
     response_data = response.model_dump()
 
     assert "password_hash" not in response_data

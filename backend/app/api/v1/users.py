@@ -1,16 +1,22 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.repository import user as user_crud
+from app.repository import user as user_repo
+from app.services import user_service
 from app.schemas.pydantic_models import (
+    ChangePasswordRequest,
+    MessageResponse,
+    UpdateAvatarResponse,
+    UpdateProfileRequest,
     UserManagementListResponse,
     UserManagementResponse,
     UserManagementUpdateRequest,
+    UserProfileResponse,
 )
 
 
@@ -53,7 +59,7 @@ def get_users(
     _ensure_super_admin(current_user)
     _validate_pagination(page, page_size)
 
-    total, items = user_crud.list_users(
+    total, items = user_service.list_users(
         db,
         page=page,
         page_size=page_size,
@@ -62,7 +68,7 @@ def get_users(
         sort_by=sort_by,
         sort_order=sort_order.lower(),
     )
-    user_crud.create_user_audit_log(
+    user_repo.create_user_audit_log(
         db,
         actor_user_id=current_user.user_id,
         action="VIEW_USERS",
@@ -81,6 +87,97 @@ def get_users(
     return UserManagementListResponse(total=total, page=page, page_size=page_size, items=items)
 
 
+@router.get("/profile", response_model=UserProfileResponse)
+def get_profile(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserProfileResponse:
+    profile = user_service.get_user_profile(db, current_user.user_id)
+    user_repo.create_user_audit_log(
+        db,
+        actor_user_id=current_user.user_id,
+        action="VIEW_PROFILE",
+        entity_id=current_user.user_id,
+        payload=None,
+        ip_address=_get_client_ip(request),
+    )
+    db.commit()
+    return profile
+
+
+@router.put("/profile", response_model=UserProfileResponse)
+def update_profile(
+    request: Request,
+    payload: UpdateProfileRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserProfileResponse:
+    try:
+        profile = user_service.update_user_profile(db, current_user.user_id, payload)
+        user_repo.create_user_audit_log(
+            db,
+            actor_user_id=current_user.user_id,
+            action="UPDATE_PROFILE",
+            entity_id=current_user.user_id,
+            payload=payload.model_dump() if hasattr(payload, "model_dump") else payload.dict(),
+            ip_address=_get_client_ip(request),
+        )
+        db.commit()
+        return profile
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.put("/profile/avatar", response_model=UpdateAvatarResponse)
+def upload_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UpdateAvatarResponse:
+    try:
+        avatar_url = user_service.update_user_avatar(db, current_user.user_id, file)
+        user_repo.create_user_audit_log(
+            db,
+            actor_user_id=current_user.user_id,
+            action="UPLOAD_AVATAR",
+            entity_id=current_user.user_id,
+            payload={"avatar_url": avatar_url},
+            ip_address=_get_client_ip(request),
+        )
+        db.commit()
+        return UpdateAvatarResponse(message="Avatar updated successfully.", avatar_url=avatar_url)
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.put("/change-password", response_model=MessageResponse)
+def change_password(
+    request: Request,
+    payload: ChangePasswordRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    try:
+        user_service.change_user_password(db, current_user.user_id, payload)
+        user_repo.create_user_audit_log(
+            db,
+            actor_user_id=current_user.user_id,
+            action="CHANGE_PASSWORD",
+            entity_id=current_user.user_id,
+            payload=None,
+            ip_address=_get_client_ip(request),
+        )
+        db.commit()
+        return MessageResponse(message="Password changed successfully. Please log in again.")
+    except Exception:
+        db.rollback()
+        raise
+
+
 @router.get("/{user_id}", response_model=UserManagementResponse)
 def get_user(
     user_id: str,
@@ -89,8 +186,8 @@ def get_user(
     current_user: User = Depends(get_current_user),
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
-    user = user_crud.get_user_details(db, user_id)
-    user_crud.create_user_audit_log(
+    user = user_service.get_user_details(db, user_id)
+    user_repo.create_user_audit_log(
         db,
         actor_user_id=current_user.user_id,
         action="VIEW_USER",
@@ -111,21 +208,14 @@ def update_user(
     current_user: User = Depends(get_current_user),
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
-    user_crud.validate_update_payload(payload)
-    allowed_payload = UserManagementUpdateRequest(**payload)
-    if hasattr(allowed_payload, "model_dump"):
-        update_data = allowed_payload.model_dump(exclude_unset=True)
-    else:
-        update_data = allowed_payload.dict(exclude_unset=True)
-
     try:
-        user = user_crud.update_user(db, user_id, update_data)
-        user_crud.create_user_audit_log(
+        user = user_service.update_user(db, user_id, payload)
+        user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
             action="UPDATE_USER",
             entity_id=user_id,
-            payload=update_data,
+            payload=payload,
             ip_address=_get_client_ip(request),
         )
         db.commit()
@@ -144,8 +234,8 @@ def activate_user(
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
     try:
-        user = user_crud.activate_user(db, user_id)
-        user_crud.create_user_audit_log(
+        user = user_service.activate_user(db, user_id)
+        user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
             action="ACTIVATE_USER",
@@ -169,8 +259,8 @@ def deactivate_user(
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
     try:
-        user = user_crud.deactivate_user(db, user_id)
-        user_crud.create_user_audit_log(
+        user = user_service.deactivate_user(db, user_id)
+        user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
             action="DEACTIVATE_USER",
@@ -194,8 +284,8 @@ def lock_user(
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
     try:
-        user = user_crud.lock_user(db, user_id)
-        user_crud.create_user_audit_log(
+        user = user_service.lock_user(db, user_id)
+        user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
             action="LOCK_USER",
@@ -219,8 +309,8 @@ def unlock_user(
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
     try:
-        user = user_crud.unlock_user(db, user_id)
-        user_crud.create_user_audit_log(
+        user = user_service.unlock_user(db, user_id)
+        user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
             action="UNLOCK_USER",
