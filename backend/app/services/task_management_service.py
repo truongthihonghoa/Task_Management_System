@@ -100,6 +100,14 @@ def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_
     )
 
 
+def _build_task_detail_response(task: Task) -> TaskDetailResponse:
+    response = TaskDetailResponse.model_validate(task)
+    response.attachments = [
+        attachment for attachment in response.attachments if attachment.deleted_at is None
+    ]
+    return response
+
+
 def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: User) -> TaskDetailResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_active(space)
@@ -121,7 +129,7 @@ def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: U
         updated_at=now,
     )
     task_repository.create_task_record(db, task)
-    return TaskDetailResponse.model_validate(_get_task_or_404(db, task.task_id))
+    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
 def list_tasks(
@@ -200,7 +208,7 @@ def get_task_detail(db: Session, task_id: str, current_user: User) -> TaskDetail
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
-    return TaskDetailResponse.model_validate(task)
+    return _build_task_detail_response(task)
 
 
 def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: User) -> TaskDetailResponse:
@@ -221,7 +229,7 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
     task.updated_at = datetime.utcnow()
 
     task_repository.save_task(db, task)
-    return TaskDetailResponse.model_validate(_get_task_or_404(db, task.task_id))
+    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
 def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
@@ -237,7 +245,7 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     task.deleted_at = now
     task.updated_at = now
     task_repository.save_task(db, task, refresh=False)
-    return TaskDetailResponse.model_validate(_get_task_or_404(db, task.task_id))
+    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
 def restore_task(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
@@ -252,4 +260,4 @@ def restore_task(db: Session, task_id: str, current_user: User) -> TaskDetailRes
     task.deleted_at = None
     task.updated_at = datetime.utcnow()
     task_repository.save_task(db, task, refresh=False)
-    return TaskDetailResponse.model_validate(_get_task_or_404(db, task.task_id))
+    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
