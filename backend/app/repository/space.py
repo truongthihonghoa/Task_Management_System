@@ -1,3 +1,9 @@
+"""
+space_repository.py — Database operations and space business logic.
+
+Moved from crud/space.py as part of the crud → repository rename.
+"""
+
 from datetime import datetime, timedelta
 from typing import List
 
