@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session
 from app.models.space import Space
 from app.models.space_member import SpaceMember
 from app.models.user import User
+from app.services.notification_service import NotificationService
+
 from app.schemas.pydantic_models import (
     SpaceCreate,
     SpaceMemberResponse,
     SpaceResponse,
     SpaceUpdate,
 )
-from app.services.notification_service import NotificationService
 
 
 TRASH_RETENTION_DAYS = 14

@@ -10,7 +10,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
-from app.repository.repository import get_user_by_id, get_user_token
+from app.repository.auth import get_user_by_id, get_user_token
 from app.db.session import get_db
 from app.models.user import User
 
