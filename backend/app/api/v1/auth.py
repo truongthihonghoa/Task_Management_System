@@ -7,8 +7,12 @@ auth_service, return responses. No business logic here.
 
 import os
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+
+from app.core.security import get_current_user, bearer_scheme
+from app.models.user import User
 
 from app.db.session import get_db
 from app.schemas.pydantic_models import (
@@ -72,3 +76,14 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     return auth_service.register(db, payload)
+
+
+@router.post("/logout", response_model=MessageResponse, status_code=200)
+def logout(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> MessageResponse:
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    return auth_service.logout(db, current_user, credentials.credentials)
