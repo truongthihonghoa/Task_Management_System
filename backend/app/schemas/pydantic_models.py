@@ -252,3 +252,40 @@ class RegisterResponse(MessageResponse):
     user: UserResponse
     access_token: str
     refresh_token: str
+
+
+UserStatus = Literal["Pending", "Active", "Inactive", "Locked"]
+UserSortField = Literal["created_at", "full_name", "email", "last_login"]
+
+
+class UserManagementResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    status_user: UserStatus
+    role: str
+    avatar_url: str | None
+    is_verified: bool | None
+    failed_login_attempts: int | None
+    locked_until: datetime | None
+    last_login: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserManagementListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[UserManagementResponse]
+
+
+class UserManagementUpdateRequest(BaseModel):
+    status: UserStatus | None = None
+    is_verified: bool | None = None
+    failed_login_attempts: int | None = Field(default=None, ge=0)
+    locked_until: datetime | None = None
+
+    model_config = {"extra": "forbid"}
