@@ -27,6 +27,15 @@ class SpaceResponse(BaseModel):
     deleted_at: Optional[datetime]
 
 
+class UserSummaryResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    status_user: str
+
+    model_config = {"from_attributes": True}
+
+
 class SpaceMemberResponse(BaseModel):
     space_member_id: str
     space_id: str
@@ -35,6 +44,18 @@ class SpaceMemberResponse(BaseModel):
     joined_at: datetime
     status: str
     removed_at: Optional[datetime]
+    user: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceMemberCreate(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=15)
+    role: Literal["MEMBER"] = "MEMBER"
+
+
+class SpaceMemberUpdate(BaseModel):
+    role: Literal["MEMBER", "OWNER"]
 
 
 class AssignTaskAssigneesRequest(BaseModel):
@@ -62,13 +83,263 @@ class RemoveTaskAssigneeRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-class UserSummaryResponse(BaseModel):
-    user_id: str
-    full_name: str
-    email: str
-    status_user: str
+TaskStatus = Literal[
+    "new",
+    "in_progress",
+    "in_testing",
+    "pending_review",
+    "need_revision",
+    "done",
+    "cancelled",
+]
+TaskPriority = Literal["HIGH", "MEDIUM", "LOW"]
+TaskSort = Literal["newest", "oldest"]
+SprintStatus = Literal["Planned", "Active", "Completed", "Deleted"]
+MediaUsage = Literal["attachment", "comment", "description"]
+
+
+class SprintSummaryResponse(BaseModel):
+    sprint_id: str
+    space_id: str
+    name: str
+    status: str
 
     model_config = {"from_attributes": True}
+
+
+class SprintCreate(BaseModel):
+    goal: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_weeks: Optional[int] = Field(default=2, ge=1, le=52)
+    status: Literal["Planned", "Active"] = "Active"
+    auto_start: bool = False
+    auto_complete: bool = False
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "SprintCreate":
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("End date must be after start date.")
+        return self
+
+
+class SprintUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    goal: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_weeks: Optional[int] = Field(default=None, ge=1, le=52)
+    status: Optional[Literal["Planned", "Active"]] = None
+    auto_start: Optional[bool] = None
+    auto_complete: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        name = value.strip()
+        if not name:
+            raise ValueError("Sprint name is required.")
+        return name
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "SprintUpdate":
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("End date must be after start date.")
+        return self
+
+
+class SprintResponse(BaseModel):
+    sprint_id: str
+    space_id: str
+    name: str
+    goal: Optional[str]
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
+    duration_weeks: Optional[int]
+    status: str
+    auto_start: Optional[bool]
+    auto_complete: Optional[bool]
+    completed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    sprint_id: str = Field(..., min_length=1, max_length=15)
+    priority: TaskPriority
+    task_status: TaskStatus = "new"
+    story_points: float = Field(default=0, ge=0)
+    completed_at: Optional[datetime] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Title is required.")
+        return title
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    sprint_id: Optional[str] = Field(default=None, min_length=1, max_length=15)
+    priority: Optional[TaskPriority] = None
+    task_status: Optional[TaskStatus] = None
+    story_points: Optional[float] = Field(default=None, ge=0)
+    completed_at: Optional[datetime] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_optional_title(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        title = value.strip()
+        if not title:
+            raise ValueError("Title is required.")
+        return title
+
+
+class TaskCommentCreate(BaseModel):
+    comment: str = Field(..., min_length=1, max_length=5000)
+    parent_comment_id: Optional[str] = Field(default=None, max_length=15)
+
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str) -> str:
+        comment = value.strip()
+        if not comment:
+            raise ValueError("Comment is required.")
+        return comment
+
+
+class TaskCommentUpdate(BaseModel):
+    comment: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str) -> str:
+        comment = value.strip()
+        if not comment:
+            raise ValueError("Comment is required.")
+        return comment
+
+
+class TaskAttachmentResponse(BaseModel):
+    attachment_id: str
+    task_id: str
+    file_name: str
+    file_path: str
+    storage_url: Optional[str]
+    mime_type: Optional[str]
+    file_size: Optional[int]
+    uploaded_by: str
+    uploaded_at: datetime
+    deleted_at: Optional[datetime]
+    type: Optional[str] = None
+    previewUrl: Optional[str] = None
+    url: Optional[str] = None
+    name: Optional[str] = None
+    size: Optional[str] = None
+
+    @model_validator(mode="after")
+    def hydrate_frontend_fields(self) -> "TaskAttachmentResponse":
+        is_image = (self.mime_type or "").startswith("image/")
+        file_url = self.storage_url or (f"/media/{self.file_path}" if self.file_path else None)
+        self.type = self.type or ("image" if is_image else "file")
+        self.url = self.url or file_url
+        self.previewUrl = self.previewUrl or (file_url if is_image else None)
+        self.name = self.name or self.file_name
+        if self.size is None and self.file_size is not None:
+            if self.file_size >= 1024 * 1024:
+                self.size = f"{self.file_size / (1024 * 1024):.1f} MB"
+            elif self.file_size >= 1024:
+                self.size = f"{self.file_size / 1024:.1f} KB"
+            else:
+                self.size = f"{self.file_size} B"
+        return self
+
+    model_config = {"from_attributes": True}
+
+
+class TaskAttachmentListResponse(BaseModel):
+    items: list[TaskAttachmentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class MediaUploadResponse(BaseModel):
+    usage: MediaUsage
+    file_name: str
+    file_path: str
+    file_url: str
+    mime_type: Optional[str]
+    file_size: int
+    attachment_id: Optional[str] = None
+
+
+class TaskCommentResponse(BaseModel):
+    comment_id: str
+    task_id: str
+    user_id: str
+    parent_comment_id: Optional[str]
+    comment: str
+    is_edited: bool
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+    user: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCommentListResponse(BaseModel):
+    items: list[TaskCommentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TaskListItemResponse(BaseModel):
+    task_id: str
+    space_id: str
+    sprint_id: str
+    title: str
+    priority: str
+    task_status: str
+    completed_at: Optional[datetime]
+    story_points: Optional[float]
+    created_at: datetime
+    updated_at: datetime
+    sprint: Optional[SprintSummaryResponse] = None
+    attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskListItemResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TaskBoardResponse(BaseModel):
+    new: list[TaskListItemResponse]
+    in_progress: list[TaskListItemResponse]
+    in_testing: list[TaskListItemResponse]
+    pending_review: list[TaskListItemResponse]
+    need_revision: list[TaskListItemResponse]
+    done: list[TaskListItemResponse]
+    cancelled: list[TaskListItemResponse]
+
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
@@ -194,6 +465,21 @@ class TaskAssigneesResponse(BaseModel):
 
 class AssignmentHistoryListResponse(BaseModel):
     history: list[AssignmentHistoryResponse]
+
+
+class TaskDetailResponse(TaskListItemResponse):
+    description: Optional[str]
+    creator_id: str
+    deleted_at: Optional[datetime]
+    task_status_label: Optional[str] = None
+    sprint_name: Optional[str] = None
+    creator_name: Optional[str] = None
+    primary_assignee: Optional[TaskAssigneeResponse] = None
+    creator: Optional[UserSummaryResponse] = None
+    assignees: list[TaskAssigneeResponse] = Field(default_factory=list)
+    comments: list[TaskCommentResponse] = Field(default_factory=list)
+    attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
+    assignment_history: list[AssignmentHistoryResponse] = Field(default_factory=list)
 
 
 
