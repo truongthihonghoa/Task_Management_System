@@ -95,6 +95,7 @@ TaskStatus = Literal[
 TaskPriority = Literal["HIGH", "MEDIUM", "LOW"]
 TaskSort = Literal["newest", "oldest"]
 SprintStatus = Literal["Planned", "Active", "Completed", "Deleted"]
+MediaUsage = Literal["attachment", "comment", "description"]
 
 
 class SprintSummaryResponse(BaseModel):
@@ -205,6 +206,31 @@ class TaskUpdate(BaseModel):
         return title
 
 
+class TaskCommentCreate(BaseModel):
+    comment: str = Field(..., min_length=1, max_length=5000)
+    parent_comment_id: Optional[str] = Field(default=None, max_length=15)
+
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str) -> str:
+        comment = value.strip()
+        if not comment:
+            raise ValueError("Comment is required.")
+        return comment
+
+
+class TaskCommentUpdate(BaseModel):
+    comment: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("comment")
+    @classmethod
+    def validate_comment(cls, value: str) -> str:
+        comment = value.strip()
+        if not comment:
+            raise ValueError("Comment is required.")
+        return comment
+
+
 class TaskAttachmentResponse(BaseModel):
     attachment_id: str
     task_id: str
@@ -220,6 +246,23 @@ class TaskAttachmentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskAttachmentListResponse(BaseModel):
+    items: list[TaskAttachmentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class MediaUploadResponse(BaseModel):
+    usage: MediaUsage
+    file_name: str
+    file_path: str
+    file_url: str
+    mime_type: Optional[str]
+    file_size: int
+    attachment_id: Optional[str] = None
+
+
 class TaskCommentResponse(BaseModel):
     comment_id: str
     task_id: str
@@ -233,6 +276,13 @@ class TaskCommentResponse(BaseModel):
     user: Optional[UserSummaryResponse] = None
 
     model_config = {"from_attributes": True}
+
+
+class TaskCommentListResponse(BaseModel):
+    items: list[TaskCommentResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 class TaskListItemResponse(BaseModel):

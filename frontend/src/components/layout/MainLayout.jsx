@@ -1,11 +1,17 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Outlet, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
+import Dashboard from '../../pages/Dashboard';
+import SpaceManagement from '../../pages/SpaceManagement';
+import TaskManagement from '../../pages/TaskManagement';
+import UserManagement from '../../pages/UserManagement';
+import ProfilePage from '../../pages/ProfilePage';
 import HelpCenter from '../../pages/HelpCenter';
+import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
 import { useLanguage } from '../../context/LanguageContext';
 const INITIAL_NOTIFICATIONS = [
   {
@@ -382,7 +388,7 @@ export default function MainLayout() {
   };
 
   const handleSearchSpaceClick = (taskId) => {
-    navigate(`/dashboard/tasks/${taskId}${location.search}`);
+    openDashboardPath(`/dashboard/tasks/${taskId}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -402,17 +408,17 @@ export default function MainLayout() {
   };
   // Handlers for AvatarDropdown actions
   const handleProfileClick = () => {
-    navigate(`/dashboard/profile${location.search}`);
+    openDashboardPath('/dashboard/profile');
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
   const handleSettingsClick = () => {
-    navigate(`/dashboard/notification-settings${location.search}`);
+    openDashboardPath('/dashboard/notification-settings');
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
   const handleNotificationClick = () => {
-    navigate(`/dashboard/notification-settings${location.search}`);
+    openDashboardPath('/dashboard/notification-settings');
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
@@ -426,6 +432,62 @@ export default function MainLayout() {
     setLanguage(lang);
     setShowApps(false);
   };
+
+  const layoutContext = {
+    setShowCreateModal,
+    setTasksForModal,
+    setCreateTaskHandler,
+    setSprintsForModal,
+    setCreateTaskInitialSprint,
+    currentRole,
+    currentUser,
+    currentSpaceRole,
+    isSuperAdmin
+  };
+
+  const renderMainContent = () => {
+    const pathname = location.pathname.replace(/\/+$/, '') || '/dashboard';
+
+    if (pathname === '/dashboard') {
+      return <Dashboard />;
+    }
+
+    if (pathname === '/dashboard/spaces') {
+      return <SpaceManagement routeContext={layoutContext} />;
+    }
+
+    if (pathname === '/dashboard/users') {
+      return <UserManagement />;
+    }
+
+    if (pathname === '/dashboard/profile') {
+      return <ProfilePage routeContext={layoutContext} />;
+    }
+
+    if (pathname === '/dashboard/help') {
+      return <HelpCenter />;
+    }
+
+    if (pathname === '/dashboard/notification-settings') {
+      return <NotificationSettingsPage />;
+    }
+
+    if (pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/')) {
+      const spaceId = pathname.startsWith('/dashboard/tasks/')
+        ? decodeURIComponent(pathname.slice('/dashboard/tasks/'.length))
+        : undefined;
+
+      return (
+        <TaskManagement
+          routeContext={layoutContext}
+          spaceIdOverride={spaceId}
+        />
+      );
+    }
+
+    return <Dashboard />;
+  };
+
   return (
     <div className="h-screen flex overflow-hidden font-['Inter'] bg-[#F5F7FA]">
 
@@ -462,13 +524,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isDashboardActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard${location.search}`}>
+              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
                 <span className="text-sm font-bold">Dashboard</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={`/dashboard${location.search}`}>
+            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
               <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
               <span className="text-sm font-medium">Dashboard</span>
             </Link>
@@ -478,7 +540,7 @@ export default function MainLayout() {
           {isTasksActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={`/dashboard/spaces${location.search}`}>
+              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
                 <div className="flex items-center">
                   <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
                   <span className="text-sm font-bold">Tasks</span>
@@ -487,7 +549,7 @@ export default function MainLayout() {
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={`/dashboard/spaces${location.search}`}>
+            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
               <div className="flex items-center">
                 <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
                 <span className="text-sm font-medium">Tasks</span>
@@ -500,13 +562,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isUsersActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/users${location.search}`}>
+              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
                 <span className="text-sm font-bold">Users</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/users${location.search}`}>
+            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
               <i className="w-5 h-5 mr-3" data-lucide="users"></i>
               <span className="text-sm font-medium">Users</span>
             </Link>
@@ -519,20 +581,20 @@ export default function MainLayout() {
           {isHelpActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={`/dashboard/help${location.search}`}>
+              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
                 <span className="text-sm font-bold">Help</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={`/dashboard/help${location.search}`}>
+            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
               <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
               <span className="text-sm font-medium">Help</span>
             </Link>
           )}
           <div className="relative" ref={settingsRef}>
             <button
-              onClick={() => navigate(`/dashboard/notification-settings${location.search}`)}
+              onClick={() => openDashboardPath('/dashboard/notification-settings')}
               className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
                 isSettingsActive
                   ? "bg-[#E0E8FF] text-[#2D1B4E]"
@@ -734,7 +796,7 @@ export default function MainLayout() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigate(`/dashboard/spaces${location.search}`);
+                      openDashboardPath('/dashboard/spaces');
                       setShowSearchDropdown(false);
                     }}
                     className="w-full px-4 py-3 border-t border-gray-100 text-left text-xs font-bold text-[#4C2B74] hover:bg-[#FAF8FF] transition-colors"
@@ -880,7 +942,9 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <Outlet context={{ setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole, currentUser, currentSpaceRole, isSuperAdmin }} />
+          <React.Fragment key={location.pathname}>
+            {renderMainContent()}
+          </React.Fragment>
         </main>
         {/* END: MainContentArea */}
 

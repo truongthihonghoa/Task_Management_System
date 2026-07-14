@@ -45,10 +45,11 @@ export const DEMO_SPACES = [
   }
 ];
 
-const SpaceManagement = () => {
+const SpaceManagement = ({ routeContext = null } = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentRole = 'ADMIN', currentUser = null } = useOutletContext() || {};
+  const outletContext = useOutletContext() || {};
+  const { currentRole = 'ADMIN', currentUser = null } = routeContext || outletContext;
   
   // Normalize name by removing accents and lowercasing
   const normalizeName = (value = '') => {
