@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import spaces
+from app.repository import space as space_repository
 from app.schemas.pydantic_models import SpaceCreate, SpaceUpdate
 from app.services import space_service
 
@@ -65,6 +66,7 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
     assert spaces.get_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.update_space("SPC00000002", update_payload, db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.archive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.complete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.restore_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.delete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
 
@@ -73,6 +75,7 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
         ("list", db, {"include_deleted": True, "current_user": current_user}),
         ("get", db, "SPC00000002", {"current_user": current_user}),
         ("update", db, "SPC00000002", update_payload, {"current_user": current_user}),
+        ("archive", db, "SPC00000002", {"current_user": current_user}),
         ("archive", db, "SPC00000002", {"current_user": current_user}),
         ("restore", db, "SPC00000002", {"current_user": current_user}),
         ("delete", db, "SPC00000002", {"current_user": current_user}),
@@ -144,3 +147,19 @@ def test_space_service_normalizes_space_name():
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Space name is required"
+
+
+def test_archived_space_is_read_only():
+    archived_space = SimpleNamespace(status_space="Archived", deleted_at=None)
+
+    with pytest.raises(HTTPException) as repo_exc:
+        space_repository._ensure_space_mutable(archived_space)
+
+    assert repo_exc.value.status_code == 400
+    assert repo_exc.value.detail == "Space is archived"
+
+    with pytest.raises(HTTPException) as service_exc:
+        space_service._ensure_space_mutable(archived_space)
+
+    assert service_exc.value.status_code == 400
+    assert service_exc.value.detail == "Space is archived"

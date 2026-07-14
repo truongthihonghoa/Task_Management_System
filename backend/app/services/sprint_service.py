@@ -26,6 +26,8 @@ def _get_sprint_or_404(db: Session, sprint_id: str) -> Sprint:
 
 
 def _ensure_space_active(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if space.status_space != "Active" or space.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
 
