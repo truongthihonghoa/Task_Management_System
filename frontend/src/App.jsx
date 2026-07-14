@@ -21,6 +21,7 @@ import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import { LanguageProvider } from "./context/LanguageContext";
 
 /**
  * Redirect /dashboard → /dashboard/ while preserving the query string
@@ -33,6 +34,7 @@ function DashboardRedirect() {
 
 export default function App() {
     return (
+        <LanguageProvider>
         <BrowserRouter>
             <Routes>
 
@@ -63,5 +65,6 @@ export default function App() {
 
             </Routes>
         </BrowserRouter>
+        </LanguageProvider>
     );
 }

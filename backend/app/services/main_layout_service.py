@@ -10,6 +10,7 @@ from app.models.user import User
 from app.repository import main_layout as main_layout_repository
 from app.repository import recent_view as recent_view_repository
 from app.repository.notification import get_unread_count
+from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileResponse
 from app.schemas.main_layout import (
     CurrentUserLayoutResponse,
     GlobalSearchAssigneeItem,
@@ -27,6 +28,8 @@ from app.schemas.main_layout import (
 )
 
 SEARCH_TYPES = {"spaces", "tasks", "users"}
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = {"en", "vi"}
 
 
 def initials_for_name(full_name: str) -> str:
@@ -136,13 +139,44 @@ def get_main_layout(db: Session, user: User) -> MainLayoutResponse:
             can_view_users=is_super_admin,
             can_create_task=not is_super_admin,
         ),
-        preferences=MainLayoutPreferencesResponse(language="en"),
+        preferences=get_preferences(db, user),
         notification=MainLayoutNotificationResponse(unread_count=get_unread_count(db, user.user_id)),
     )
 
 
 def get_sidebar_summary(db: Session, user: User) -> SidebarSummaryResponse:
     return get_main_layout(db, user).sidebar
+
+
+def get_preferences(db: Session, user: User) -> MainLayoutPreferencesResponse:
+    preference = main_layout_repository.get_user_preference(db, user.user_id)
+    return MainLayoutPreferencesResponse(language=preference.language if preference else DEFAULT_LANGUAGE)
+
+
+def update_language(db: Session, *, user: User, language: str) -> MainLayoutPreferencesResponse:
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "Unsupported language.", "supported_languages": sorted(SUPPORTED_LANGUAGES)},
+        )
+
+    preference = main_layout_repository.get_user_preference(db, user.user_id)
+    if preference is None:
+        preference = main_layout_repository.create_user_preference(db, user_id=user.user_id, language=language)
+    else:
+        main_layout_repository.update_user_preference(preference, language=language)
+
+    return MainLayoutPreferencesResponse(language=preference.language)
+
+
+def get_profile(user: User) -> UserProfileResponse:
+    return UserProfileResponse.model_validate(user)
+
+
+def update_profile(db: Session, *, user: User, payload: UpdateProfileRequest) -> UserProfileResponse:
+    user.full_name = payload.full_name
+    user.updated_at = datetime.utcnow()
+    return UserProfileResponse.model_validate(user)
 
 
 def get_space_context(db: Session, *, space_id: str, user: User) -> SpaceContextResponse:
