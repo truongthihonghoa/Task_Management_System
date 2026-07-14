@@ -35,6 +35,48 @@ def test_create_task_delegates_to_service(monkeypatch):
     assert calls == [(db, "SPC00000002", payload, user)]
 
 
+def test_create_task_with_attachments_delegates_to_service(monkeypatch):
+    db = object()
+    user = SimpleNamespace(user_id="USR00000003")
+    upload = SimpleNamespace(filename="logo.png", content_type="image/png")
+    expected = {"task_id": "TSK00000007", "attachments": []}
+    calls = []
+
+    def fake_create_task_with_attachments(received_db, space_id, payload, current_user, **kwargs):
+        calls.append((received_db, space_id, payload, current_user, kwargs))
+        return expected
+
+    monkeypatch.setattr(
+        task_management.task_management_service,
+        "create_task_with_attachments",
+        fake_create_task_with_attachments,
+    )
+
+    response = task_management.create_task_with_attachments(
+        "SPC00000002",
+        title="Design Screen App Quick",
+        sprint_id="SPR00000003",
+        priority="HIGH",
+        description="Create quick task screen",
+        task_status="new",
+        story_points=2,
+        completed_at=None,
+        attachments=[upload],
+        db=db,
+        current_user=user,
+    )
+
+    assert response is expected
+    assert calls[0][0:4] == (db, "SPC00000002", calls[0][2], user)
+    assert calls[0][2].title == "Design Screen App Quick"
+    assert calls[0][2].description == "Create quick task screen"
+    assert calls[0][2].sprint_id == "SPR00000003"
+    assert calls[0][2].priority == "HIGH"
+    assert calls[0][2].task_status == "new"
+    assert calls[0][2].story_points == 2
+    assert calls[0][4] == {"attachments": [upload]}
+
+
 def test_list_task_endpoints_delegate_filters_to_service(monkeypatch):
     db = object()
     user = SimpleNamespace(user_id="USR00000003")
@@ -182,6 +224,59 @@ def test_delete_task_requires_space_owner(monkeypatch):
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Only the space owner can perform this action"
+
+
+def test_create_task_with_attachments_uploads_after_task_is_created(monkeypatch):
+    db = object()
+    user = SimpleNamespace(user_id="USR00000003")
+    payload = TaskCreate(
+        title="Design Screen App Quick",
+        description="Create quick task screen",
+        sprint_id="SPR00000003",
+        priority="HIGH",
+        task_status="new",
+        story_points=2,
+    )
+    upload = SimpleNamespace(filename="logo.png", content_type="image/png")
+    empty_upload = SimpleNamespace(filename="", content_type="image/png")
+    created = SimpleNamespace(task_id="TSK00000007")
+    refreshed = SimpleNamespace(task_id="TSK00000007", attachments=["logo"])
+    calls = []
+
+    monkeypatch.setattr(
+        task_management_service,
+        "create_task",
+        lambda received_db, space_id, received_payload, current_user: calls.append(
+            ("create", received_db, space_id, received_payload, current_user)
+        )
+        or created,
+    )
+    monkeypatch.setattr(
+        task_management_service.media_service,
+        "upload_task_media",
+        lambda received_db, task_id, **kwargs: calls.append(("upload", received_db, task_id, kwargs)),
+    )
+    monkeypatch.setattr(task_management_service, "_get_task_or_404", lambda received_db, task_id: refreshed)
+    monkeypatch.setattr(task_management_service, "_build_task_detail_response", lambda task: task)
+
+    response = task_management_service.create_task_with_attachments(
+        db,
+        "SPC00000002",
+        payload,
+        user,
+        attachments=[upload, empty_upload],
+    )
+
+    assert response is refreshed
+    assert calls == [
+        ("create", db, "SPC00000002", payload, user),
+        (
+            "upload",
+            db,
+            "TSK00000007",
+            {"usage": "attachment", "file": upload, "current_user": user},
+        ),
+    ]
 
 
 def test_task_list_item_hydrates_image_attachment_for_board_preview():

@@ -40,9 +40,16 @@ def _get_active_task_or_404(db: Session, task_id: str) -> Task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    if task.space is None or task.space.deleted_at is not None or task.space.status_space == "Deleted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is deleted")
+    return task
+
+
+def _ensure_task_space_active(task: Task) -> None:
+    if task.space is not None and task.space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if task.space is None or task.space.deleted_at is not None or task.space.status_space != "Active":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
-    return task
 
 
 def _is_space_owner(task: Task, user: User) -> bool:
@@ -192,6 +199,7 @@ def upload_task_media(
     current_user: User,
 ) -> MediaUploadResponse:
     task = _get_active_task_or_404(db, task_id)
+    _ensure_task_space_active(task)
     _ensure_can_upload_media(db, task, current_user)
 
     safe_name = _validate_file(usage, file)
@@ -268,7 +276,8 @@ def get_task_attachment(db: Session, attachment_id: str, current_user: User) -> 
 
 def delete_task_attachment(db: Session, attachment_id: str, current_user: User) -> TaskAttachmentResponse:
     attachment = _get_attachment_or_404(db, attachment_id)
-    _get_active_task_or_404(db, attachment.task_id)
+    task = _get_active_task_or_404(db, attachment.task_id)
+    _ensure_task_space_active(task)
     _ensure_attachment_active(attachment)
     _ensure_can_delete_attachment(attachment, current_user)
 
@@ -285,7 +294,8 @@ def replace_task_attachment(
     current_user: User,
 ) -> TaskAttachmentResponse:
     attachment = _get_attachment_or_404(db, attachment_id)
-    _get_active_task_or_404(db, attachment.task_id)
+    task = _get_active_task_or_404(db, attachment.task_id)
+    _ensure_task_space_active(task)
     _ensure_attachment_active(attachment)
     _ensure_can_replace_attachment(attachment, current_user)
 

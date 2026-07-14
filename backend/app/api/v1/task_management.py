@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -32,6 +34,42 @@ def create_task(
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
     return task_management_service.create_task(db, space_id, payload, current_user)
+
+
+@router.post(
+    "/spaces/{space_id}/tasks/with-attachments",
+    response_model=TaskDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_task_with_attachments(
+    space_id: str,
+    title: str = Form(...),
+    sprint_id: str = Form(...),
+    priority: TaskPriority = Form(...),
+    description: str | None = Form(default=None),
+    task_status: TaskStatus = Form(default="new"),
+    story_points: float = Form(default=0),
+    completed_at: datetime | None = Form(default=None),
+    attachments: list[UploadFile] | None = File(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TaskDetailResponse:
+    payload = TaskCreate(
+        title=title,
+        description=description,
+        sprint_id=sprint_id,
+        priority=priority,
+        task_status=task_status,
+        story_points=story_points,
+        completed_at=completed_at,
+    )
+    return task_management_service.create_task_with_attachments(
+        db,
+        space_id,
+        payload,
+        current_user,
+        attachments=attachments,
+    )
 
 
 @router.get("/spaces/{space_id}/tasks", response_model=TaskListResponse)
