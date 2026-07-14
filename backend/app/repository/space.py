@@ -1,8 +1,4 @@
-"""
-space_repository.py — Database operations and space business logic.
-
-Moved from crud/space.py as part of the crud → repository rename.
-"""
+"""Database operations and rules for spaces."""
 
 from datetime import datetime, timedelta
 from typing import List
@@ -14,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.space import Space
 from app.models.space_member import SpaceMember
 from app.models.user import User
+from app.services.notification_service import NotificationService
+
 from app.schemas.pydantic_models import (
     SpaceCreate,
     SpaceMemberResponse,
@@ -23,6 +21,7 @@ from app.schemas.pydantic_models import (
 
 
 TRASH_RETENTION_DAYS = 14
+notification_service = NotificationService()
 
 
 def _trash_expires_at(space: Space) -> datetime | None:
@@ -147,6 +146,17 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
             status="Active",
         )
     )
+    notification_service.create_notification(
+        db,
+        user_id=payload.owner_id,
+        notification_type="space_created",
+        title="Space created",
+        message=f"Space {space.name_space} was created.",
+        space_id=space.space_id,
+        audience="USER",
+        metadata={"space_name": space.name_space},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -212,6 +222,17 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceRespo
         setattr(space, field, value)
 
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="space_updated",
+        title="Space updated",
+        message=f"Space {space.name_space} was updated.",
+        space_id=space.space_id,
+        audience="USER",
+        metadata={"space_name": space.name_space, "updated_fields": sorted(update_data)},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -227,6 +248,17 @@ def archive_space(db: Session, space_id: str) -> SpaceResponse:
 
     space.status_space = "Archived"
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space archived",
+        message=f"Space {space.name_space} was archived.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_archived"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -261,6 +293,17 @@ def restore_space(db: Session, space_id: str) -> SpaceResponse:
     space.status_space = "Active"
     space.deleted_at = None
     space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space restored",
+        message=f"Space {space.name_space} was restored.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_restored"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)
@@ -272,6 +315,17 @@ def delete_space(db: Session, space_id: str) -> SpaceResponse:
     space.status_space = "Deleted"
     space.deleted_at = now
     space.updated_at = now
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space deleted",
+        message=f"Space {space.name_space} was moved to trash.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_deleted"},
+        allow_self_notification=True,
+    )
     db.commit()
     db.refresh(space)
     return _space_response(space)

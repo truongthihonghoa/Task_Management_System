@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useOutletContext, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import SprintInfoPopover from '../components/tasks/SprintInfoPopover';
 import CompleteSprintModal from '../components/tasks/CompleteSprintModal';
@@ -104,6 +104,8 @@ export default function TaskManagement() {
   const navigate = useNavigate();
   const location = useLocation();
   const { spaceId } = useParams();
+  const [taskSearchParams, setTaskSearchParams] = useSearchParams();
+  const routeTaskId = taskSearchParams.get('taskId');
   const { setShowCreateModal, setTasksForModal, setCreateTaskHandler, setSprintsForModal, setCreateTaskInitialSprint, currentRole = 'ADMIN', currentUser, currentSpaceRole = 'USER' } = useOutletContext() || {};
  
   const isAdmin = currentRole === 'ADMIN';
@@ -315,6 +317,23 @@ export default function TaskManagement() {
       }
     }
   }, [tasks, selectedTaskDetail]);
+
+  useEffect(() => {
+    if (!routeTaskId) return;
+    const taskFromRoute = tasks.find(task => task.id === routeTaskId);
+    if (taskFromRoute && selectedTaskDetail?.id !== taskFromRoute.id) {
+      setSelectedTaskDetail(taskFromRoute);
+    }
+  }, [routeTaskId, selectedTaskDetail?.id, tasks]);
+
+  const handleCloseTaskDetail = () => {
+    setSelectedTaskDetail(null);
+    if (!routeTaskId) return;
+
+    const nextParams = new URLSearchParams(taskSearchParams);
+    nextParams.delete('taskId');
+    setTaskSearchParams(nextParams, { replace: true });
+  };
  
   const toggleAll = () => {
     if (selectedTasks.length === tasks.length) {
@@ -1416,7 +1435,7 @@ export default function TaskManagement() {
 
       <TaskDetailModal
         task={selectedTaskDetail}
-        onClose={() => setSelectedTaskDetail(null)}
+        onClose={handleCloseTaskDetail}
         tasks={tasks}
         currentRole={currentRole}
         currentUser={currentUser}

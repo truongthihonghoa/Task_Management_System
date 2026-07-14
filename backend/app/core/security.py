@@ -43,13 +43,21 @@ def get_current_user(
 
     token = credentials.credentials
     user_id: str | None = None
+    stored_token = get_user_token(db, token)
+    now = datetime.utcnow()
 
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("user_id") or payload.get("sub")
+        token_user_id = payload.get("user_id") or payload.get("sub")
+        if (
+            payload.get("type") == "access"
+            and stored_token is not None
+            and stored_token.access_expires_at >= now
+            and stored_token.user_id == token_user_id
+        ):
+            user_id = token_user_id
     except JWTError:
-        stored_token = get_user_token(db, token)
-        if stored_token and stored_token.access_expires_at >= datetime.utcnow():
+        if stored_token and stored_token.access_expires_at >= now:
             user_id = stored_token.user_id
 
     if not user_id:

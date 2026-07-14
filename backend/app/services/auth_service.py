@@ -35,6 +35,7 @@ from app.repository.auth import (
     create_audit_log,
     create_user,
     create_user_token,
+    delete_user_token,
     get_user_by_email,
     get_verification_token,
     reset_resend_window_if_needed,
@@ -621,3 +622,22 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
         access_token=access_token,
         refresh_token=refresh_token,
     )
+
+
+def logout(db: Session, current_user, access_token: str) -> MessageResponse:
+    """Logout the user by deleting their access token."""
+    try:
+        delete_user_token(db, access_token)
+        create_audit_log(
+            db,
+            user_id=current_user.user_id,
+            action="LOGOUT",
+            label_title="Logout user",
+            entity_id=current_user.user_id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return MessageResponse(message="Successfully logged out.")

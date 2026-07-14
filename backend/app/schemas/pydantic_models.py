@@ -27,6 +27,15 @@ class SpaceResponse(BaseModel):
     deleted_at: Optional[datetime]
 
 
+class UserSummaryResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    status_user: str
+
+    model_config = {"from_attributes": True}
+
+
 class SpaceMemberResponse(BaseModel):
     space_member_id: str
     space_id: str
@@ -35,6 +44,18 @@ class SpaceMemberResponse(BaseModel):
     joined_at: datetime
     status: str
     removed_at: Optional[datetime]
+    user: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceMemberCreate(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=15)
+    role: Literal["MEMBER"] = "MEMBER"
+
+
+class SpaceMemberUpdate(BaseModel):
+    role: Literal["MEMBER", "OWNER"]
 
 
 class AssignTaskAssigneesRequest(BaseModel):
@@ -62,13 +83,190 @@ class RemoveTaskAssigneeRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-class UserSummaryResponse(BaseModel):
-    user_id: str
-    full_name: str
-    email: str
-    status_user: str
+TaskStatus = Literal[
+    "new",
+    "in_progress",
+    "in_testing",
+    "pending_review",
+    "need_revision",
+    "done",
+    "cancelled",
+]
+TaskPriority = Literal["HIGH", "MEDIUM", "LOW"]
+TaskSort = Literal["newest", "oldest"]
+SprintStatus = Literal["Planned", "Active", "Completed", "Deleted"]
+
+
+class SprintSummaryResponse(BaseModel):
+    sprint_id: str
+    space_id: str
+    name: str
+    status: str
 
     model_config = {"from_attributes": True}
+
+
+class SprintCreate(BaseModel):
+    goal: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_weeks: Optional[int] = Field(default=2, ge=1, le=52)
+    status: Literal["Planned", "Active"] = "Active"
+    auto_start: bool = False
+    auto_complete: bool = False
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "SprintCreate":
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("End date must be after start date.")
+        return self
+
+
+class SprintUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    goal: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    duration_weeks: Optional[int] = Field(default=None, ge=1, le=52)
+    status: Optional[Literal["Planned", "Active"]] = None
+    auto_start: Optional[bool] = None
+    auto_complete: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        name = value.strip()
+        if not name:
+            raise ValueError("Sprint name is required.")
+        return name
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "SprintUpdate":
+        if self.start_date and self.end_date and self.end_date <= self.start_date:
+            raise ValueError("End date must be after start date.")
+        return self
+
+
+class SprintResponse(BaseModel):
+    sprint_id: str
+    space_id: str
+    name: str
+    goal: Optional[str]
+    start_date: Optional[datetime]
+    end_date: Optional[datetime]
+    duration_weeks: Optional[int]
+    status: str
+    auto_start: Optional[bool]
+    auto_complete: Optional[bool]
+    completed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    sprint_id: str = Field(..., min_length=1, max_length=15)
+    priority: TaskPriority
+    task_status: TaskStatus = "new"
+    story_points: float = Field(default=0, ge=0)
+    completed_at: Optional[datetime] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Title is required.")
+        return title
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    sprint_id: Optional[str] = Field(default=None, min_length=1, max_length=15)
+    priority: Optional[TaskPriority] = None
+    task_status: Optional[TaskStatus] = None
+    story_points: Optional[float] = Field(default=None, ge=0)
+    completed_at: Optional[datetime] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_optional_title(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        title = value.strip()
+        if not title:
+            raise ValueError("Title is required.")
+        return title
+
+
+class TaskAttachmentResponse(BaseModel):
+    attachment_id: str
+    task_id: str
+    file_name: str
+    file_path: str
+    storage_url: Optional[str]
+    mime_type: Optional[str]
+    file_size: Optional[int]
+    uploaded_by: str
+    uploaded_at: datetime
+    deleted_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCommentResponse(BaseModel):
+    comment_id: str
+    task_id: str
+    user_id: str
+    parent_comment_id: Optional[str]
+    comment: str
+    is_edited: bool
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+    user: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskListItemResponse(BaseModel):
+    task_id: str
+    space_id: str
+    sprint_id: str
+    title: str
+    priority: str
+    task_status: str
+    completed_at: Optional[datetime]
+    story_points: Optional[float]
+    created_at: datetime
+    updated_at: datetime
+    sprint: Optional[SprintSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskListItemResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TaskBoardResponse(BaseModel):
+    new: list[TaskListItemResponse]
+    in_progress: list[TaskListItemResponse]
+    in_testing: list[TaskListItemResponse]
+    pending_review: list[TaskListItemResponse]
+    need_revision: list[TaskListItemResponse]
+    done: list[TaskListItemResponse]
+    cancelled: list[TaskListItemResponse]
+
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
@@ -196,6 +394,17 @@ class AssignmentHistoryListResponse(BaseModel):
     history: list[AssignmentHistoryResponse]
 
 
+class TaskDetailResponse(TaskListItemResponse):
+    description: Optional[str]
+    creator_id: str
+    deleted_at: Optional[datetime]
+    creator: Optional[UserSummaryResponse] = None
+    assignees: list[TaskAssigneeResponse] = Field(default_factory=list)
+    comments: list[TaskCommentResponse] = Field(default_factory=list)
+    attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
+    assignment_history: list[AssignmentHistoryResponse] = Field(default_factory=list)
+
+
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -252,3 +461,87 @@ class RegisterResponse(MessageResponse):
     user: UserResponse
     access_token: str
     refresh_token: str
+
+
+UserStatus = Literal["Pending", "Active", "Inactive", "Locked"]
+UserSortField = Literal["created_at", "full_name", "email", "last_login"]
+
+
+class UserManagementResponse(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    status_user: UserStatus
+    role: str
+    avatar_url: str | None
+    is_verified: bool | None
+    failed_login_attempts: int | None
+    locked_until: datetime | None
+    last_login: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserManagementListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[UserManagementResponse]
+
+
+class UserManagementUpdateRequest(BaseModel):
+    status: UserStatus | None = None
+    is_verified: bool | None = None
+    failed_login_attempts: int | None = Field(default=None, ge=0)
+    locked_until: datetime | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+class UserProfileResponse(BaseModel):
+    avatar_url: str | None
+    full_name: str
+    email: str
+    role: str
+    status_user: str
+    created_at: datetime
+    last_login: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        full_name = value.strip()
+        if not full_name:
+            raise ValueError("Full name is required.")
+        return full_name
+
+
+class UpdateAvatarResponse(MessageResponse):
+    avatar_url: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value, field_name="New password")
+
+    @model_validator(mode="after")
+    def validate_password_match(self) -> "ChangePasswordRequest":
+        if self.new_password != self.confirm_password:
+            raise ValueError("Confirm password mismatch.")
+        if self.current_password == self.new_password:
+            raise ValueError("New password must not be the same as current password.")
+        return self
