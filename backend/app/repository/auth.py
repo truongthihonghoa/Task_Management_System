@@ -8,7 +8,7 @@ and perform exactly one DB concern.
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -190,6 +190,10 @@ def create_user_token(
     )
     db.add(user_token)
     return user_token
+
+
+def delete_user_token(db: Session, access_token: str) -> None:
+    db.execute(delete(UserToken).where(UserToken.access_token == access_token))
 
 
 # ---------------------------------------------------------------------------

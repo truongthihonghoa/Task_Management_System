@@ -2,6 +2,18 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
+from app.repository.audit_log import create_audit_log
+from app.repository.task import (
+    create_assignment_history,
+    create_task_assignee,
+    delete_task_assignee,
+    get_active_space_member,
+    get_task_assignee,
+    get_task_by_id,
+    list_assignment_history,
+    list_task_assignees,
+)
+from app.repository.auth import get_user_by_id
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pydantic_models import (

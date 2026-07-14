@@ -4,6 +4,7 @@ from typing import Iterable
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.repository import recent_view as recent_view_repository
 from app.repository import task as task_repository
 from app.models.space import Space
 from app.models.sprint import Sprint
@@ -234,6 +235,13 @@ def get_task_detail(db: Session, task_id: str, current_user: User) -> TaskDetail
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
     return _build_task_detail_response(task)
+    recent_view_repository.record_recent_view(
+        db,
+        user_id=current_user.user_id,
+        entity_type="task",
+        entity_id=task.task_id,
+    )
+    return TaskDetailResponse.model_validate(task)
 
 
 def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: User) -> TaskDetailResponse:
