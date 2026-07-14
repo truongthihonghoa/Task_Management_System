@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +22,10 @@ class SidebarSummaryResponse(BaseModel):
 
 class MainLayoutPreferencesResponse(BaseModel):
     language: str = "en"
+
+
+class MainLayoutLanguageRequest(BaseModel):
+    language: Literal["en", "vi"]
 
 
 class MainLayoutNotificationResponse(BaseModel):

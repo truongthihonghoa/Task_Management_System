@@ -6,6 +6,7 @@ import UserModal from '../components/tasks/EditUserModal';
 const USERS = [
   {
     id: 1,
+    userId:    'USR-1',
     name:      'Alex Morgan',
     email:     'alex.morgan@taskcore.com',
     role:      'Super Admin',
@@ -16,6 +17,7 @@ const USERS = [
   },
   {
     id: 2,
+    userId:    'USR-2',
     name:      'Trang Nguyen',
     email:     'trang.nguyen@taskcore.com',
     role:      'User',
@@ -26,6 +28,7 @@ const USERS = [
   },
   {
     id: 3,
+    userId:    'USR-3',
     name:      'Tien Phham',
     email:     'tienthicamphamqn20@gmail.com',
     role:      'User',
@@ -38,10 +41,12 @@ const USERS = [
 
 export default function UserManagement() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   // Role-based access control
   const roleParam = searchParams.get('role')?.toUpperCase();
+  const routeUserId = searchParams.get('userId');
+  const routeMode = searchParams.get('mode');
   const isAdmin = roleParam !== "USER"; // Default to ADMIN unless role=user is specified
 
   useEffect(() => {
@@ -88,6 +93,28 @@ export default function UserManagement() {
     setModalMode('edit');
     setModalOpen(true);
   };
+
+  const closeUserModal = () => {
+    setModalOpen(false);
+    if (routeUserId || routeMode) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('userId');
+      nextParams.delete('mode');
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    if (routeMode !== 'edit' || !routeUserId || !isAdmin) return;
+    const userFromRoute = USERS.find((user) => {
+      const userRouteId = user.userId || user.id;
+      return String(userRouteId) === routeUserId;
+    });
+    if (userFromRoute) {
+      openEditModal(userFromRoute);
+    }
+  }, [routeMode, routeUserId, isAdmin]);
+
   useEffect(() => {
   const handleClickOutside = (event) => {
     if (
@@ -310,7 +337,7 @@ export default function UserManagement() {
       <UserModal
           isOpen={modalOpen}
           selectedUser={selectedUser}
-          onClose={() => setModalOpen(false)}
+          onClose={closeUserModal}
           onSaveSuccess={triggerToast}
       />
 

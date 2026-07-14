@@ -12,6 +12,7 @@ import UserManagement from '../../pages/UserManagement';
 import ProfilePage from '../../pages/ProfilePage';
 import HelpCenter from '../../pages/HelpCenter';
 import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
+import { useLanguage } from '../../context/LanguageContext';
 const INITIAL_NOTIFICATIONS = [
   {
     NOTI_id: 1,
@@ -148,14 +149,14 @@ const INITIAL_NOTIFICATIONS = [
   }
 ];
 const SEARCH_TASKS = [
-  { id: 'TM-1', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-2', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-3', title: 'Checkout flow mobile fix', status: 'In Testing', priority: 'High', assignee: 'Trong Nghia' },
-  { id: 'TM-4', title: 'Security Protocols Audit', status: 'Done', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-5', title: 'SSO Authentication implementation', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-8', title: 'Database Migration Script', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
-  { id: 'TM-9', title: 'Dashboard Charts optimization', status: 'In Testing', priority: 'Medium', assignee: 'Trong Nghia' },
-  { id: 'TM-11', title: 'Push Notification Service', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
+  { id: 'TM-1', spaceId: 'SP-001', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
+  { id: 'TM-2', spaceId: 'SP-001', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
+  { id: 'TM-3', spaceId: 'SP-002', title: 'Checkout flow mobile fix', status: 'In Testing', priority: 'High', assignee: 'Trong Nghia' },
+  { id: 'TM-4', spaceId: 'SP-001', title: 'Security Protocols Audit', status: 'Done', priority: 'High', assignee: 'Pham Tien' },
+  { id: 'TM-5', spaceId: 'SP-001', title: 'SSO Authentication implementation', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
+  { id: 'TM-8', spaceId: 'SP-003', title: 'Database Migration Script', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
+  { id: 'TM-9', spaceId: 'SP-001', title: 'Dashboard Charts optimization', status: 'In Testing', priority: 'Medium', assignee: 'Trong Nghia' },
+  { id: 'TM-11', spaceId: 'SP-001', title: 'Push Notification Service', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
 ];
 
 const SEARCH_SPACES = [
@@ -223,7 +224,7 @@ export default function MainLayout() {
   const avatarRef = useRef(null);
   const avatarDropdownRef = useRef(null);
   const [showApps, setShowApps] = useState(false);
-  const [language, setLanguage] = useState("en");
+  const { language, setLanguage } = useLanguage();
 
   const appsRef = useRef(null);
   const appsDropdownRef = useRef(null);
@@ -373,10 +374,17 @@ export default function MainLayout() {
 
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
-  const dashboardPath = (path) => `${path}${location.search}`;
-
-  const openDashboardPath = (path) => {
-    window.location.assign(dashboardPath(path));
+  const buildSearchParams = (updates = {}) => {
+    const params = new URLSearchParams(location.search);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+    const query = params.toString();
+    return query ? `?${query}` : '';
   };
 
   const handleSearchSpaceClick = (taskId) => {
@@ -385,14 +393,16 @@ export default function MainLayout() {
     setShowSearchDropdown(false);
   };
 
-  const handleSearchTaskClick = (taskId) => {
-    openDashboardPath(`/dashboard/tasks/${taskId}`);
+  const handleSearchTaskClick = (task) => {
+    if (!task?.spaceId) return;
+    navigate(`/dashboard/tasks/${task.spaceId}${buildSearchParams({ taskId: task.id })}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
 
-  const handleSearchUserClick = () => {
-    openDashboardPath('/dashboard/users');
+  const handleSearchUserClick = (user) => {
+    if (!isSuperAdmin || !user?.id) return;
+    navigate(`/dashboard/users${buildSearchParams({ userId: user.id, mode: 'edit' })}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -645,9 +655,9 @@ export default function MainLayout() {
                   if (event.key === 'Enter' && visibleSpaces[0]) {
                     handleSearchSpaceClick(visibleSpaces[0].taskId);
                   } else if (event.key === 'Enter' && visibleUsers[0]) {
-                    handleSearchUserClick();
+                    handleSearchUserClick(visibleUsers[0]);
                   } else if (event.key === 'Enter' && visibleTasks[0]) {
-                    handleSearchTaskClick(visibleTasks[0].id);
+                    handleSearchTaskClick(visibleTasks[0]);
                   }
                 }}
               />
@@ -717,7 +727,7 @@ export default function MainLayout() {
                           <button
                             key={task.id}
                             type="button"
-                            onClick={() => handleSearchTaskClick(task.id)}
+                            onClick={() => handleSearchTaskClick(task)}
                             className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#EEF2FF] border border-blue-100 flex items-center justify-center shrink-0">
@@ -750,7 +760,7 @@ export default function MainLayout() {
                           <button
                             key={user.id}
                             type="button"
-                            onClick={handleSearchUserClick}
+                            onClick={() => handleSearchUserClick(user)}
                             className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
                           >
                             <div className="w-9 h-9 rounded-full bg-[#EADFF9] text-[#4C2B74] flex items-center justify-center text-xs font-black shrink-0">
@@ -822,7 +832,7 @@ export default function MainLayout() {
                 />
 
                 <span className="text-sm font-medium">
-                    {language === "en"} 
+                    {language === "en" ? "EN" : "VI"}
                 </span>
 
                 <i

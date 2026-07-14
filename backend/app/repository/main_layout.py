@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -6,6 +8,7 @@ from app.models.space_member import SpaceMember
 from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
 from app.models.user import User
+from app.models.user_preference import UserPreference
 
 
 def _active_space_filter():
@@ -61,6 +64,22 @@ def get_active_space_member(db: Session, *, space_id: str, user_id: str) -> Spac
         )
         .first()
     )
+
+
+def get_user_preference(db: Session, user_id: str) -> UserPreference | None:
+    return db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+
+
+def create_user_preference(db: Session, *, user_id: str, language: str) -> UserPreference:
+    preference = UserPreference(user_id=user_id, language=language)
+    db.add(preference)
+    return preference
+
+
+def update_user_preference(preference: UserPreference, *, language: str) -> UserPreference:
+    preference.language = language
+    preference.updated_at = datetime.utcnow()
+    return preference
 
 
 def search_spaces(db: Session, *, user: User, query_text: str, limit: int) -> list[tuple[Space, int]]:
