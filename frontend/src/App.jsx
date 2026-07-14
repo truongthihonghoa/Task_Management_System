@@ -3,7 +3,8 @@ import {
     BrowserRouter,
     Routes,
     Route,
-    Navigate
+    Navigate,
+    useLocation
 } from "react-router-dom";
 
 import LoginPage from "./pages/LoginPage";
@@ -21,41 +22,40 @@ import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
+function AppRoutes() {
+    const location = useLocation();
+
+    return (
+        <Routes location={location} key={location.pathname}>
+            {/* Authentication */}
+            <Route path="/" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* Protected layout - role guard is handled inside each page */}
+            <Route path="/dashboard" element={<MainLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="spaces" element={<SpaceManagement />} />
+                <Route path="tasks" element={<TaskManagement />} />
+                <Route path="tasks/:spaceId" element={<TaskManagement />} />
+                <Route path="users" element={<UserManagement />} />
+                <Route path="profile" element={<ProfilePage />} />
+                <Route path="help" element={<HelpCenter />} />
+                <Route path="notification-settings" element={<NotificationSettingsPage />} />
+            </Route>
+
+            {/* Catch-all - back to login */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+    );
+}
 
 export default function App() {
     return (
         <BrowserRouter>
-            <Routes>
-
-                {/* Authentication */}
-                <Route path="/" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-
-                {/* Dashboard - Thêm dấu /* vào path để React Router nhận diện chính xác các route con khi click */}
-                <Route path="/dashboard/*" element={<MainLayout />}>
-                    <Route index element={<Dashboard />} />
-                    <Route path="spaces" element={<SpaceManagement />} />
-                    <Route path="tasks/:spaceId?" element={<TaskManagement />} />
-                    <Route path="tasks" element={<TaskManagement />} />
-
-
-                    <Route path ="users" element={<UserManagement />} />
-                    <Route path="profile" element={<ProfilePage />} />
-                    <Route path="help" element={<HelpCenter />} />
-                    {/* Nối link trang cài đặt thông báo (nếu cần dùng sau này) */}
-                    <Route path="notification-settings" element={<NotificationSettingsPage />} />
-                </Route>
-
-                {/* Dự phòng trường hợp user vào thẳng /dashboard không có dấu gạch chéo */}
-                <Route path="/dashboard" element={<Navigate to="/dashboard/" replace />} />
-
-                {/* Redirect */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-
-            </Routes>
+            <AppRoutes />
         </BrowserRouter>
     );
 }

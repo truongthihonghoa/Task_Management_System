@@ -142,6 +142,34 @@ const NotificationItem = ({ notification, onClick }) => {
                     IconComponent: Users,
                     iconColor: 'text-purple-500'
                 };
+            case 'permission_changed':
+                return {
+                    title: 'Important Permission Change',
+                    message: `${targetUser}'s permissions were changed and may need review.`,
+                    IconComponent: ShieldCheck,
+                    iconColor: 'text-purple-600'
+                };
+            case 'space_member_added':
+                return {
+                    title: 'Space Member Added',
+                    message: `A new member was added to "${spaceName}".`,
+                    IconComponent: Users,
+                    iconColor: 'text-blue-500'
+                };
+            case 'space_role_changed':
+                return {
+                    title: 'Space Role Changed',
+                    message: `A member role changed in "${spaceName}".`,
+                    IconComponent: ShieldCheck,
+                    iconColor: 'text-violet-500'
+                };
+            case 'owner_space_update':
+                return {
+                    title: 'Owner-Level Space Update',
+                    message: notification.message || `An owner-level update happened in "${spaceName}".`,
+                    IconComponent: Settings,
+                    iconColor: 'text-slate-600'
+                };
             case 'space_created':
                 return {
                     title: 'Space Created',
