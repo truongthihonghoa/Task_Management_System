@@ -21,6 +21,15 @@ import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import { LanguageProvider } from "./context/LanguageContext";
+
+/**
+ * Redirect /dashboard → /dashboard/ while preserving query params.
+ */
+function DashboardRedirect() {
+    const location = useLocation();
+    return <Navigate to={`/dashboard/${location.search}`} replace />;
+}
 
 function AppRoutes() {
     const location = useLocation();
@@ -34,19 +43,20 @@ function AppRoutes() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* Protected layout - role guard is handled inside each page */}
-            <Route path="/dashboard" element={<MainLayout />}>
+            {/* Protected layout */}
+            <Route path="/dashboard/*" element={<MainLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="spaces" element={<SpaceManagement />} />
                 <Route path="tasks" element={<TaskManagement />} />
-                <Route path="tasks/:spaceId" element={<TaskManagement />} />
+                <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="help" element={<HelpCenter />} />
                 <Route path="notification-settings" element={<NotificationSettingsPage />} />
             </Route>
 
-            {/* Catch-all - back to login */}
+            <Route path="/dashboard" element={<DashboardRedirect />} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
@@ -54,8 +64,10 @@ function AppRoutes() {
 
 export default function App() {
     return (
-        <BrowserRouter>
-            <AppRoutes />
-        </BrowserRouter>
+        <LanguageProvider>
+            <BrowserRouter>
+                <AppRoutes />
+            </BrowserRouter>
+        </LanguageProvider>
     );
 }

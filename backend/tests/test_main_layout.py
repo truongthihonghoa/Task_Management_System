@@ -1,13 +1,29 @@
 from types import SimpleNamespace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
 
+from app.api.v1 import main_layout as main_layout_api
+from app.core import security
 from app.services import main_layout_service
+from app.schemas.pydantic_models import UpdateProfileRequest
+
+
+class FakeDb:
+    def __init__(self):
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
 
 def make_user(user_id="USR00000001", role="USER", full_name="Trang Nguyen"):
+    now = datetime.utcnow()
     return SimpleNamespace(
         user_id=user_id,
         role=role,
@@ -15,6 +31,18 @@ def make_user(user_id="USR00000001", role="USER", full_name="Trang Nguyen"):
         email=f"{user_id.lower()}@example.com",
         avatar_url=None,
         status_user="Active",
+        created_at=now,
+        updated_at=now,
+        last_login=None,
+    )
+
+
+def make_preference(language="en"):
+    return SimpleNamespace(
+        preference_id="UPR00000001",
+        user_id="USR00000001",
+        language=language,
+        updated_at=datetime.utcnow(),
     )
 
 
@@ -43,6 +71,7 @@ def test_get_main_layout_uses_current_user_and_existing_notification_count(monke
     user = make_user(role="SUPER_ADMIN", full_name="Alex Morgan")
 
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 12)
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: make_preference("vi"))
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 4)
 
     response = main_layout_service.get_main_layout(object(), user)
@@ -54,6 +83,7 @@ def test_get_main_layout_uses_current_user_and_existing_notification_count(monke
     assert response.sidebar.can_view_dashboard is True
     assert response.sidebar.can_view_users is True
     assert response.sidebar.can_create_task is False
+    assert response.preferences.language == "vi"
     assert response.notification.unread_count == 4
 
 
@@ -61,6 +91,7 @@ def test_get_main_layout_regular_user_sidebar(monkeypatch):
     user = make_user(role="USER", full_name="Trang Nguyen")
 
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 7)
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 2)
 
     response = main_layout_service.get_main_layout(object(), user)
@@ -78,12 +109,184 @@ def test_sidebar_summary_matches_main_layout(monkeypatch):
     user = make_user(role="USER")
 
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 3)
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 0)
 
     response = main_layout_service.get_sidebar_summary(object(), user)
 
     assert response.task_count == 3
     assert response.can_create_task is True
+
+
+def test_get_preferences_uses_default_when_missing(monkeypatch):
+    user = make_user()
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
+
+    response = main_layout_service.get_preferences(object(), user)
+
+    assert response.language == "en"
+
+
+def test_update_language_creates_missing_preference(monkeypatch):
+    user = make_user()
+    created = []
+
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
+    monkeypatch.setattr(
+        main_layout_service.main_layout_repository,
+        "create_user_preference",
+        lambda db, user_id, language: created.append((user_id, language)) or make_preference(language),
+    )
+
+    response = main_layout_service.update_language(object(), user=user, language="vi")
+
+    assert response.language == "vi"
+    assert created == [(user.user_id, "vi")]
+
+
+def test_update_language_updates_existing_preference(monkeypatch):
+    user = make_user()
+    preference = make_preference("en")
+
+    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: preference)
+
+    response = main_layout_service.update_language(object(), user=user, language="vi")
+
+    assert response.language == "vi"
+    assert preference.language == "vi"
+
+
+def test_update_language_rejects_unsupported_language():
+    with pytest.raises(HTTPException) as exc:
+        main_layout_service.update_language(object(), user=make_user(), language="fr")
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail["message"] == "Unsupported language."
+
+
+def test_update_language_endpoint_commits(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+
+    monkeypatch.setattr(
+        main_layout_api.main_layout_service,
+        "update_language",
+        lambda received_db, user, language: make_preference(language),
+    )
+
+    response = main_layout_api.update_language(
+        SimpleNamespace(language="vi"),
+        db=db,
+        current_user=user,
+    )
+
+    assert response.language == "vi"
+    assert db.commits == 1
+    assert db.rollbacks == 0
+
+
+def test_main_layout_profile_get_and_update():
+    user = make_user(full_name="Trang Nguyen")
+
+    profile = main_layout_service.get_profile(user)
+    assert profile.full_name == "Trang Nguyen"
+    assert profile.email == user.email
+
+    updated = main_layout_service.update_profile(
+        object(),
+        user=user,
+        payload=UpdateProfileRequest(full_name="Trang Nguyen Updated"),
+    )
+    assert updated.full_name == "Trang Nguyen Updated"
+    assert user.full_name == "Trang Nguyen Updated"
+
+
+def test_main_layout_logout_delegates_to_auth_service(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    calls = []
+
+    monkeypatch.setattr(
+        main_layout_api.auth_service,
+        "logout",
+        lambda received_db, current_user, access_token: calls.append((received_db, current_user, access_token))
+        or SimpleNamespace(message="Successfully logged out."),
+    )
+
+    response = main_layout_api.logout(
+        db=db,
+        current_user=user,
+        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+    )
+
+    assert response.message == "Successfully logged out."
+    assert calls == [(db, user, "access-token")]
+
+
+def test_main_layout_logout_requires_bearer_credentials():
+    with pytest.raises(HTTPException) as exc:
+        main_layout_api.logout(db=FakeDb(), current_user=make_user(), credentials=None)
+
+    assert exc.value.status_code == 401
+
+
+def test_current_user_rejects_access_token_missing_from_token_store(monkeypatch):
+    user = make_user()
+    access_token, _expires_at = security.create_access_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+
+    monkeypatch.setattr(security, "get_user_token", lambda db, token: None)
+
+    with pytest.raises(HTTPException) as exc:
+        security.get_current_user(
+            credentials=SimpleNamespace(scheme="Bearer", credentials=access_token),
+            db=object(),
+        )
+
+    assert exc.value.status_code == 401
+
+
+def test_current_user_accepts_stored_matching_access_token(monkeypatch):
+    user = make_user()
+    access_token, _expires_at = security.create_access_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+    stored_token = SimpleNamespace(
+        user_id=user.user_id,
+        access_expires_at=datetime.utcnow() + timedelta(minutes=5),
+    )
+
+    monkeypatch.setattr(security, "get_user_token", lambda db, token: stored_token)
+    monkeypatch.setattr(security, "get_user_by_id", lambda db, user_id: user)
+
+    response = security.get_current_user(
+        credentials=SimpleNamespace(scheme="Bearer", credentials=access_token),
+        db=object(),
+    )
+
+    assert response == user
+
+
+def test_current_user_rejects_refresh_token_even_when_stored(monkeypatch):
+    user = make_user()
+    refresh_token, _expires_at = security.create_refresh_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+    stored_token = SimpleNamespace(
+        user_id=user.user_id,
+        access_expires_at=datetime.utcnow() + timedelta(minutes=5),
+    )
+
+    monkeypatch.setattr(security, "get_user_token", lambda db, token: stored_token)
+
+    with pytest.raises(HTTPException) as exc:
+        security.get_current_user(
+            credentials=SimpleNamespace(scheme="Bearer", credentials=refresh_token),
+            db=object(),
+        )
+
+    assert exc.value.status_code == 401
 
 
 def test_space_context_owner_member_and_non_member(monkeypatch):
@@ -237,6 +440,7 @@ def test_global_search_keyword_searches_selected_types(monkeypatch):
 
     assert response.spaces[0].space_id == space.space_id
     assert response.tasks[0].task_id == task.task_id
+    assert response.tasks[0].space_id == space.space_id
     assert [name for name, _kwargs in calls] == ["spaces", "tasks"]
     assert response.users == []
 
