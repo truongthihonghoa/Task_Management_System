@@ -2,8 +2,9 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import ChangePasswordSection from "./ChangePasswordSection";
 
-export default function ProfileTab() {
-  const { currentRole, currentUser } = useOutletContext();
+export default function ProfileTab({ routeContext = null } = {}) {
+  const outletContext = useOutletContext() || {};
+  const { currentRole, currentUser } = routeContext || outletContext;
   
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef(null); // Ref để trigger chọn file
