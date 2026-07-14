@@ -10,6 +10,9 @@ from app.repository import space as space_crud
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pydantic_models import (
+    MessageResponse,
+    SpaceAddPeopleRequest,
+    SpaceAddPeopleResponse,
     SpaceCreate,
     SpaceMemberCreate,
     SpaceMemberResponse,
@@ -129,3 +132,31 @@ def list_space_members(
     current_user: User = Depends(get_current_user),
 ):
     return space_crud.list_space_members(db, space_id, current_user=current_user)
+
+
+@router.post("/{space_id}/people", response_model=SpaceAddPeopleResponse)
+def add_people_to_space(
+    space_id: str,
+    payload: SpaceAddPeopleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.add_people_to_space(db, space_id, payload, current_user=current_user)
+
+
+@router.get("/member-requests/{review_token}/approve", response_model=MessageResponse)
+def approve_space_member_request(
+    review_token: str,
+    db: Session = Depends(get_db),
+):
+    message = space_crud.review_space_member_request(db, review_token, approve=True)
+    return MessageResponse(message=message)
+
+
+@router.get("/member-requests/{review_token}/reject", response_model=MessageResponse)
+def reject_space_member_request(
+    review_token: str,
+    db: Session = Depends(get_db),
+):
+    message = space_crud.review_space_member_request(db, review_token, approve=False)
+    return MessageResponse(message=message)

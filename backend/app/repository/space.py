@@ -5,6 +5,9 @@ space_repository.py — Database operations and space business logic.
 Moved from crud/space.py as part of the crud → repository rename.
 """
 
+import html
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import List
 
@@ -12,16 +15,22 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.email import get_email_service
 from app.models.space import Space
 from app.models.space_member import SpaceMember
+from app.models.space_member_request import SpaceMemberRequest
 from app.models.user import User
 from app.services.notification_service import NotificationService
 
 from app.schemas.pydantic_models import (
+    SpaceAddPeopleRequest,
+    SpaceAddPeopleResponse,
     SpaceCreate,
     SpaceMemberResponse,
+    SpaceMemberRequestResponse,
     SpaceResponse,
     SpaceUpdate,
+    UserSummaryResponse,
 )
 
 
@@ -156,7 +165,338 @@ def _space_member_response(member: SpaceMember) -> SpaceMemberResponse:
         joined_at=member.joined_at,
         status=member.status,
         removed_at=member.removed_at,
+        user=UserSummaryResponse.model_validate(member.user) if member.user else None,
     )
+
+
+def _space_member_request_response(request: SpaceMemberRequest) -> SpaceMemberRequestResponse:
+    return SpaceMemberRequestResponse.model_validate(request)
+
+
+def _ensure_space_active(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is archived",
+        )
+    if space.status_space != "Active" or space.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space must be active",
+        )
+
+
+def _normalize_email_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip().lower()
+
+
+def _resolve_requested_user(db: Session, payload: SpaceAddPeopleRequest) -> User | None:
+    if payload.user_id:
+        return db.query(User).filter(User.user_id == payload.user_id).first()
+    if payload.email:
+        email = _normalize_email_value(payload.email)
+        return db.query(User).filter(func.lower(User.email) == email).first()
+    if payload.name:
+        return (
+            db.query(User)
+            .filter(func.lower(func.trim(User.full_name)) == payload.name.strip().lower())
+            .first()
+        )
+    return None
+
+
+def _ensure_user_can_join(user: User) -> None:
+    if user.status_user != "Active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not active",
+        )
+    if user.locked_until is not None and user.locked_until > datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is locked",
+        )
+
+
+def _get_space_member(db: Session, space_id: str, user_id: str) -> SpaceMember | None:
+    return (
+        db.query(SpaceMember)
+        .filter(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
+        .first()
+    )
+
+
+def _add_or_restore_space_member(db: Session, space: Space, user: User) -> SpaceMember:
+    existing_member = _get_space_member(db, space.space_id, user.user_id)
+    if existing_member and existing_member.status == "Active" and existing_member.removed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User is already an active member",
+        )
+
+    now = datetime.utcnow()
+    role = "OWNER" if space.owner_id == user.user_id else "MEMBER"
+
+    if existing_member:
+        existing_member.role = role
+        existing_member.status = "Active"
+        existing_member.removed_at = None
+        existing_member.joined_at = now
+        existing_member.user = user
+        return existing_member
+
+    member = SpaceMember(
+        space_id=space.space_id,
+        user_id=user.user_id,
+        role=role,
+        status="Active",
+        joined_at=now,
+    )
+    member.user = user
+    db.add(member)
+    return member
+
+
+def _pending_member_request_exists(
+    db: Session,
+    *,
+    space_id: str,
+    requested_user_id: str | None,
+    requested_email: str,
+) -> bool:
+    query = db.query(SpaceMemberRequest).filter(
+        SpaceMemberRequest.space_id == space_id,
+        SpaceMemberRequest.status.in_(["PENDING_OWNER", "PENDING_INVITEE"]),
+    )
+    if requested_user_id:
+        query = query.filter(
+            (SpaceMemberRequest.requested_user_id == requested_user_id)
+            | (func.lower(SpaceMemberRequest.requested_email) == requested_email)
+        )
+    else:
+        query = query.filter(func.lower(SpaceMemberRequest.requested_email) == requested_email)
+    return query.first() is not None
+
+
+def _api_public_base_url() -> str:
+    return (
+        os.getenv("API_PUBLIC_URL")
+        or os.getenv("BACKEND_PUBLIC_URL")
+        or os.getenv("BACKEND_URL")
+        or "http://localhost:8000"
+    ).rstrip("/")
+
+
+def _send_member_request_email(
+    *,
+    owner: User,
+    requester: User,
+    space: Space,
+    request: SpaceMemberRequest,
+) -> bool:
+    safe_space_name = html.escape(space.name_space)
+    safe_requester_name = html.escape(requester.full_name)
+    safe_requester_email = html.escape(requester.email)
+    safe_owner_email = html.escape(owner.email)
+    safe_requested_name = html.escape(request.requested_name or request.requested_email)
+    safe_requested_email = html.escape(request.requested_email)
+    base_url = _api_public_base_url()
+    approve_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/approve"
+    reject_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/reject"
+
+    text_content = (
+        "TaskFlow\n\n"
+        f"{requester.full_name} ({requester.email}) requested your approval before inviting "
+        f"{request.requested_name or request.requested_email} ({request.requested_email}) "
+        f"to {space.name_space}.\n\n"
+        f"Owner: {owner.email}\n"
+        f"Requested by: {requester.email}\n"
+        f"Invitee: {request.requested_email}\n\n"
+        f"Approve: {approve_url}\n"
+        f"Reject: {reject_url}\n\n"
+        "If you did not expect this request, reject it or ignore this email."
+    )
+    html_content = f"""<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;padding:18px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #E0D7F0;border-radius:14px;overflow:hidden;box-shadow:0 16px 42px rgba(76,43,116,0.14);">
+            <tr>
+              <td style="padding:14px 28px 15px;background:#4C2B74;color:#ffffff;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#EADFF9;">TaskFlow</div>
+                <div style="font-size:20px;font-weight:800;margin-top:5px;">Review member request</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 28px 24px;">
+                <span style="display:inline-block;background:#F0EDFF;color:#4C2B74;font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;">Owner approval needed</span>
+                <h1 style="margin:14px 0 8px;font-size:20px;color:#0f172a;">Approve this invitation?</h1>
+                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#334155;">
+                  <strong>{safe_requester_name}</strong>
+                  <span style="color:#64748b;">({safe_requester_email})</span>
+                  wants to invite <strong>{safe_requested_name}</strong>
+                  to <strong>{safe_space_name}</strong>.
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #E0D7F0;border-radius:10px;background:#FAF8FF;margin-bottom:18px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;width:130px;">Space</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_space_name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;">Owner email</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_owner_email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;">Requested by</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_requester_email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;">Invitee email</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;">{safe_requested_email}</td>
+                  </tr>
+                </table>
+                <a href="{html.escape(approve_url)}" style="display:inline-block;background:#6B4A91;color:#ffffff;text-decoration:none;font-weight:800;font-size:13px;padding:11px 17px;border-radius:9px;margin-right:10px;">Approve and send invite</a>
+                <a href="{html.escape(reject_url)}" style="display:inline-block;background:#ffffff;color:#b91c1c;text-decoration:none;font-weight:800;font-size:13px;padding:10px 16px;border:1px solid #fecaca;border-radius:9px;">Reject</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+    return get_email_service().send_email(
+        to_email=owner.email,
+        subject=f"TaskFlow: Approve member for {space.name_space}",
+        text_content=text_content,
+        html_content=html_content,
+    )
+
+
+def _send_member_invitation_email(
+    *,
+    inviter: User,
+    space: Space,
+    request: SpaceMemberRequest,
+) -> bool:
+    safe_space_name = html.escape(space.name_space)
+    safe_inviter_name = html.escape(inviter.full_name)
+    safe_inviter_email = html.escape(inviter.email)
+    safe_requested_name = html.escape(request.requested_name or request.requested_email)
+    safe_requested_email = html.escape(request.requested_email)
+    base_url = _api_public_base_url()
+    accept_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/approve"
+    decline_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/reject"
+
+    text_content = (
+        "TaskFlow\n\n"
+        f"{inviter.full_name} ({inviter.email}) invited you to join {space.name_space}.\n\n"
+        f"Accept invitation: {accept_url}\n"
+        f"Decline invitation: {decline_url}\n\n"
+        f"This invitation was sent to {request.requested_email}."
+    )
+    html_content = f"""<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;padding:18px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #E2D8EE;border-radius:14px;overflow:hidden;box-shadow:0 14px 34px rgba(76,43,116,0.12);">
+            <tr>
+              <td style="padding:14px 28px 15px;background:#5B3A7A;color:#ffffff;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#EADFF9;">TaskFlow invitation</div>
+                <div style="font-size:20px;font-weight:800;margin-top:5px;">You're invited to collaborate</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 28px 24px;">
+                <span style="display:inline-block;background:#F0EDFF;color:#5B3A7A;font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;">Waiting for your acceptance</span>
+                <h1 style="margin:14px 0 8px;font-size:20px;color:#0f172a;font-weight:400;">Join <strong style="font-weight:700;">{safe_space_name}</strong></h1>
+                <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#334155;">
+                  Hi <strong>{safe_requested_name}</strong>, <strong>{safe_inviter_name}</strong>
+                  <span style="color:#64748b;">({safe_inviter_email})</span>
+                  invited you to join <strong>{safe_space_name}</strong> on TaskFlow.
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #E2D8EE;border-radius:10px;background:#FAF8FF;margin-bottom:18px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E2D8EE;width:130px;">Workspace</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E2D8EE;">{safe_space_name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E2D8EE;">Invited by</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E2D8EE;">{safe_inviter_email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;">Sent to</td>
+                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;">{safe_requested_email}</td>
+                  </tr>
+                </table>
+                <a href="{html.escape(accept_url)}" style="display:inline-block;background:#6B4A91;color:#ffffff;text-decoration:none;font-weight:800;font-size:13px;padding:11px 17px;border-radius:9px;margin-right:10px;">Accept invitation</a>
+                <a href="{html.escape(decline_url)}" style="display:inline-block;background:#ffffff;color:#5B3A7A;text-decoration:none;font-weight:800;font-size:13px;padding:10px 16px;border:1px solid #E2D8EE;border-radius:9px;">Decline</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+    return get_email_service().send_email(
+        to_email=request.requested_email,
+        subject=f"TaskFlow: Invitation to join {space.name_space}",
+        text_content=text_content,
+        html_content=html_content,
+    )
+
+
+def _notify_inviter_invitation_accepted(
+    db: Session,
+    *,
+    space: Space,
+    request: SpaceMemberRequest,
+    invitee: User | None,
+) -> None:
+    invitee_name = (
+        invitee.full_name
+        if invitee is not None
+        else request.requested_name
+        or request.requested_email
+    )
+    message = f"{invitee_name} accepted your invitation to join {space.name_space}."
+
+    recipient_ids = [request.requester_id]
+    owner_id = getattr(request, "owner_id", None)
+
+    if owner_id:
+        recipient_ids.append(owner_id)
+
+    for recipient_id in dict.fromkeys(recipient_ids):
+        recipient = db.query(User).filter(User.user_id == recipient_id).first()
+        if recipient is None:
+            continue
+
+        notification_service.create_notification(
+            db,
+            user_id=recipient.user_id,
+            actor_id=invitee.user_id if invitee is not None else None,
+            space_id=space.space_id,
+            notification_type="space_member_added",
+            title="Invitation accepted",
+            message=message,
+            audience="USER",
+            metadata={
+                "space_name": space.name_space,
+                "invitee_email": request.requested_email,
+                "event": "space_invitation_accepted",
+            },
+            allow_self_notification=True,
+        )
 
 
 def get_space_or_404(db: Session, space_id: str) -> Space:
@@ -435,3 +775,219 @@ def list_space_members(db: Session, space_id: str, current_user: User | None = N
         .all()
     )
     return [_space_member_response(member) for member in members]
+
+
+def add_people_to_space(
+    db: Session,
+    space_id: str,
+    payload: SpaceAddPeopleRequest,
+    current_user: User,
+) -> SpaceAddPeopleResponse:
+    space = get_space_or_404(db, space_id)
+    _ensure_space_active(space)
+    _ensure_can_view_space(db, space, current_user)
+
+    requested_user = _resolve_requested_user(db, payload)
+    requested_email = _normalize_email_value(payload.email) if payload.email else None
+
+    if requested_user:
+        _ensure_user_can_join(requested_user)
+        requested_email = requested_user.email.strip().lower()
+    elif payload.user_id or (payload.name and not payload.email):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if not requested_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is required when the user account cannot be resolved",
+        )
+
+    owner = db.query(User).filter(User.user_id == space.owner_id).first()
+    if owner is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner user not found",
+        )
+
+    if requested_user and _get_space_member(db, space.space_id, requested_user.user_id):
+        active_member = _is_active_space_member(db, space.space_id, requested_user.user_id)
+        if active_member:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is already an active member",
+            )
+
+    if _pending_member_request_exists(
+        db,
+        space_id=space.space_id,
+        requested_user_id=requested_user.user_id if requested_user else None,
+        requested_email=requested_email,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A pending approval request already exists for this person",
+        )
+
+    is_owner_invite = current_user.role == "SUPER_ADMIN" or space.owner_id == current_user.user_id
+    request_status = "PENDING_INVITEE" if is_owner_invite else "PENDING_OWNER"
+    requested_name = (
+        requested_user.full_name
+        if requested_user
+        else payload.name
+        or requested_email.split("@", 1)[0]
+    )
+    member_request = SpaceMemberRequest(
+        space_id=space.space_id,
+        requester_id=current_user.user_id,
+        requested_user_id=requested_user.user_id if requested_user else None,
+        requested_email=requested_email,
+        requested_name=requested_name,
+        owner_id=space.owner_id,
+        status=request_status,
+        review_token=secrets.token_urlsafe(32),
+        requested_at=datetime.utcnow(),
+    )
+    member_request.requester = current_user
+    member_request.requested_user = requested_user
+    member_request.owner = owner
+    db.add(member_request)
+    db.flush()
+
+    if is_owner_invite:
+        email_sent = _send_member_invitation_email(
+            inviter=current_user,
+            space=space,
+            request=member_request,
+        )
+        message = "Invitation email sent. Waiting for the invitee to accept."
+    else:
+        email_sent = _send_member_request_email(
+            owner=owner,
+            requester=current_user,
+            space=space,
+            request=member_request,
+        )
+        message = "Approval request sent to the space owner."
+
+    db.commit()
+    db.refresh(member_request)
+    member_request.requester = current_user
+    member_request.requested_user = requested_user
+    member_request.owner = owner
+
+    if not email_sent:
+        message = "Request created, but email delivery is not configured or failed."
+
+    return SpaceAddPeopleResponse(
+        status=request_status,
+        message=message,
+        request=_space_member_request_response(member_request),
+    )
+
+
+def review_space_member_request(
+    db: Session,
+    review_token: str,
+    *,
+    approve: bool,
+) -> str:
+    member_request = (
+        db.query(SpaceMemberRequest)
+        .filter(SpaceMemberRequest.review_token == review_token)
+        .first()
+    )
+    if member_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Approval request not found",
+        )
+    if member_request.status not in ("PENDING_OWNER", "PENDING_INVITEE"):
+        return f"Request was already {member_request.status.lower()}."
+
+    member_request.reviewed_at = datetime.utcnow()
+    if not approve:
+        member_request.status = "REJECTED"
+        db.commit()
+        return "Request rejected."
+
+    space = get_space_or_404(db, member_request.space_id)
+    _ensure_space_active(space)
+
+    if member_request.status == "PENDING_OWNER":
+        owner = db.query(User).filter(User.user_id == member_request.owner_id).first()
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Owner user not found",
+            )
+        requester = db.query(User).filter(User.user_id == member_request.requester_id).first()
+        if requester is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Requester user not found",
+            )
+        member_request.status = "PENDING_INVITEE"
+        member_request.review_token = secrets.token_urlsafe(32)
+        email_sent = _send_member_invitation_email(
+            inviter=requester,
+            space=space,
+            request=member_request,
+        )
+        db.commit()
+        if not email_sent:
+            return "Owner approved, but invitation email delivery failed."
+        return "Owner approved. Invitation email sent to the invitee."
+
+    user = None
+    if member_request.requested_user_id:
+        user = db.query(User).filter(User.user_id == member_request.requested_user_id).first()
+    if user is None:
+        user = (
+            db.query(User)
+            .filter(func.lower(User.email) == member_request.requested_email.strip().lower())
+            .first()
+        )
+
+    member = None
+    if user is not None:
+        _ensure_user_can_join(user)
+        member_request.requested_user_id = user.user_id
+        existing_member = _get_space_member(db, space.space_id, user.user_id)
+        if existing_member and existing_member.status == "Active" and existing_member.removed_at is None:
+            member = existing_member
+        else:
+            member = _add_or_restore_space_member(db, space, user)
+        notification_service.create_notification(
+            db,
+            user_id=user.user_id,
+            actor_id=member_request.owner_id,
+            space_id=space.space_id,
+            notification_type="space_member_added",
+            title="Added to space",
+            message=f"You were added to {space.name_space}.",
+            audience="USER",
+            metadata={"space_name": space.name_space},
+        )
+        _notify_inviter_invitation_accepted(
+            db,
+            space=space,
+            request=member_request,
+            invitee=user,
+        )
+
+    member_request.status = "APPROVED"
+    if user is None:
+        _notify_inviter_invitation_accepted(
+            db,
+            space=space,
+            request=member_request,
+            invitee=None,
+        )
+    db.commit()
+    if member is not None:
+        db.refresh(member)
+        return "Invitation accepted and member added."
+    return "Invitation accepted. Register with this email to access the space."

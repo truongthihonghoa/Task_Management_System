@@ -83,6 +83,9 @@ class EmailService:
     def _logo_path(self) -> Path | None:
         """Find a local TaskFlow logo file."""
 
+        if os.getenv("EMAIL_EMBED_LOGO", "false").lower() != "true":
+            return None
+
         configured_path = os.getenv("EMAIL_LOGO_PATH")
         candidates: list[Path] = []
 
@@ -371,19 +374,13 @@ class EmailService:
         detail_lines = message_lines[1:]
 
         logo_url = os.getenv("EMAIL_LOGO_URL")
-        logo_path = self._logo_path()
 
-        if logo_url or logo_path is not None:
-            logo_src = (
-                html.escape(logo_url)
-                if logo_url
-                else "cid:taskflow-logo"
-            )
-
+        if logo_url:
+            logo_src = html.escape(logo_url)
             logo_markup = (
                 f'<img src="{logo_src}" '
                 f'alt="{safe_app_name}" '
-                'width="42" height="42" '
+                'width="44" height="44" '
                 'style="display:block;'
                 'border-radius:10px;'
                 'object-fit:contain;'
@@ -392,16 +389,12 @@ class EmailService:
         else:
             logo_markup = (
                 '<div style="'
-                'width:42px;'
-                'height:42px;'
-                'border-radius:10px;'
-                'background:#2563eb;'
-                'color:#ffffff;'
-                'font-size:21px;'
-                'line-height:42px;'
-                'text-align:center;'
-                'font-weight:800;'
-                '">T</div>'
+                'font-size:22px;'
+                'line-height:1;'
+                'font-weight:900;'
+                'letter-spacing:0;'
+                'color:#4C2B74;'
+                '">TaskFlow</div>'
             )
 
         details_markup = ""
@@ -414,9 +407,9 @@ class EmailService:
                 'cellpadding="0" '
                 'style="'
                 'margin-top:18px;'
-                'border:1px solid #e5e7eb;'
+                'border:1px solid #E0D7F0;'
                 'border-radius:10px;'
-                'background:#f9fafb;'
+                'background:#FAF8FF;'
                 '">'
             )
 
@@ -432,10 +425,10 @@ class EmailService:
   <td style="
       padding:13px 16px;
       width:110px;
-      color:#64748b;
+      color:#6E5A8A;
       font-size:13px;
       font-weight:700;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
   ">
     {safe_label}
   </td>
@@ -444,7 +437,7 @@ class EmailService:
       padding:13px 16px;
       color:#1f2937;
       font-size:14px;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
   ">
     {safe_value}
   </td>
@@ -461,7 +454,7 @@ class EmailService:
       padding:13px 16px;
       color:#1f2937;
       font-size:14px;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
     "
   >
     {safe_detail}
@@ -481,7 +474,7 @@ class EmailService:
       href="{safe_action_url}"
       style="
         display:inline-block;
-        background:#2563eb;
+        background:#6B4A91;
         color:#ffffff;
         text-decoration:none;
         font-weight:700;
@@ -501,7 +494,7 @@ class EmailService:
   <body style="
       margin:0;
       padding:0;
-      background:#f3f6fb;
+      background:#ffffff;
       font-family:Arial,Helvetica,sans-serif;
       color:#111827;
   ">
@@ -510,7 +503,7 @@ class EmailService:
       width="100%"
       cellspacing="0"
       cellpadding="0"
-      style="background:#f3f6fb;padding:28px 14px;"
+      style="background:#ffffff;padding:18px 12px;"
     >
       <tr>
         <td align="center">
@@ -520,19 +513,19 @@ class EmailService:
             cellspacing="0"
             cellpadding="0"
             style="
-              max-width:560px;
+              max-width:640px;
               background:#ffffff;
-              border:1px solid #dbe3ef;
-              border-radius:16px;
+              border:1px solid #E0D7F0;
+              border-radius:14px;
               overflow:hidden;
-              box-shadow:0 16px 36px rgba(15,23,42,0.08);
+              box-shadow:0 16px 42px rgba(76,43,116,0.12);
             "
           >
             <tr>
               <td style="
-                  background:#ffffff;
-                  padding:24px 34px 18px;
-                  border-bottom:1px solid #eef2f7;
+                  background:#FAF8FF;
+                  padding:18px 28px;
+                  border-bottom:1px solid #E0D7F0;
               ">
                 <table
                   role="presentation"
@@ -541,29 +534,22 @@ class EmailService:
                   cellpadding="0"
                 >
                   <tr>
-                    <td style="
-                        vertical-align:middle;
-                        width:42px;
-                    ">
+                    <td style="vertical-align:middle;">
                       {logo_markup}
                     </td>
 
                     <td style="
                         vertical-align:middle;
-                        padding-left:14px;
+                        text-align:right;
                     ">
                       <div style="
-                          font-size:20px;
+                          display:inline-block;
+                          background:#F0EDFF;
+                          color:#4C2B74;
+                          font-size:11px;
                           font-weight:800;
-                          color:#111827;
-                      ">
-                        {safe_app_name}
-                      </div>
-
-                      <div style="
-                          font-size:13px;
-                          color:#64748b;
-                          margin-top:3px;
+                          padding:6px 10px;
+                          border-radius:999px;
                       ">
                         Notification
                       </div>
@@ -574,23 +560,10 @@ class EmailService:
             </tr>
 
             <tr>
-              <td style="padding:28px 34px 10px;">
-                <div style="
-                    display:inline-block;
-                    background:#eff6ff;
-                    color:#1d4ed8;
-                    font-size:12px;
-                    font-weight:700;
-                    padding:6px 10px;
-                    border-radius:999px;
-                    margin-bottom:15px;
-                ">
-                  New update
-                </div>
-
+              <td style="padding:24px 28px 10px;">
                 <h1 style="
-                    margin:0 0 12px;
-                    font-size:24px;
+                    margin:0 0 10px;
+                    font-size:22px;
                     line-height:1.3;
                     color:#0f172a;
                     font-weight:800;
@@ -600,8 +573,8 @@ class EmailService:
 
                 <div style="
                     margin:0;
-                    font-size:15px;
-                    line-height:1.65;
+                    font-size:14px;
+                    line-height:1.55;
                     color:#334155;
                 ">
                   {primary_message}
@@ -614,18 +587,18 @@ class EmailService:
             {action_button}
 
             <tr>
-              <td style="padding:0 34px 30px;">
+              <td style="padding:0 28px 24px;">
                 <div style="
                     height:1px;
-                    background:#e5e7eb;
-                    margin-bottom:14px;
+                    background:#E0D7F0;
+                    margin-bottom:12px;
                 "></div>
 
                 <p style="
                     margin:0;
                     font-size:12px;
                     line-height:1.6;
-                    color:#64748b;
+                    color:#6E5A8A;
                 ">
                   You received this email because your
                   {safe_app_name} notification preferences
@@ -674,6 +647,8 @@ class EmailService:
             if (
                 logo_path is not None
                 and not os.getenv("EMAIL_LOGO_URL")
+                and html_content is not None
+                and "cid:taskflow-logo" in html_content
             ):
                 try:
                     html_part = message.get_payload()[-1]

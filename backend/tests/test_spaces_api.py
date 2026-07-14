@@ -163,3 +163,187 @@ def test_archived_space_is_read_only():
 
     assert service_exc.value.status_code == 400
     assert service_exc.value.detail == "Space is archived"
+
+
+def test_invitation_acceptance_notifies_original_inviter(monkeypatch):
+    inviter = SimpleNamespace(user_id="USR00000003", full_name="Inviter", email="inviter@example.com")
+    invitee = SimpleNamespace(user_id="USR00000004", full_name="Invitee", email="invitee@example.com")
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team")
+    member_request = SimpleNamespace(
+        requester_id=inviter.user_id,
+        owner_id=inviter.user_id,
+        requested_email=invitee.email,
+        requested_name=invitee.full_name,
+    )
+
+    class FakeQuery:
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return inviter
+
+    class FakeDB:
+        def query(self, _model):
+            return FakeQuery()
+
+    notifications = []
+
+    class FakeNotificationService:
+        def create_notification(self, *args, **kwargs):
+            notifications.append(kwargs)
+
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    space_repository._notify_inviter_invitation_accepted(
+        FakeDB(),
+        space=space,
+        request=member_request,
+        invitee=invitee,
+    )
+
+    assert notifications == [
+        {
+            "user_id": inviter.user_id,
+            "actor_id": invitee.user_id,
+            "space_id": space.space_id,
+            "notification_type": "space_member_added",
+            "title": "Invitation accepted",
+            "message": "Invitee accepted your invitation to join Product Team.",
+            "audience": "USER",
+            "metadata": {
+                "space_name": space.name_space,
+                "invitee_email": invitee.email,
+                "event": "space_invitation_accepted",
+            },
+            "allow_self_notification": True,
+        }
+    ]
+
+
+def test_invitation_acceptance_notifies_owner_and_requester(monkeypatch):
+    owner = SimpleNamespace(user_id="USR00000001", full_name="Owner", email="owner@example.com")
+    requester = SimpleNamespace(user_id="USR00000003", full_name="Requester", email="requester@example.com")
+    invitee = SimpleNamespace(user_id="USR00000004", full_name="Invitee", email="invitee@example.com")
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team")
+    member_request = SimpleNamespace(
+        requester_id=requester.user_id,
+        owner_id=owner.user_id,
+        requested_email=invitee.email,
+        requested_name=invitee.full_name,
+    )
+
+    users = {
+        owner.user_id: owner,
+        requester.user_id: requester,
+    }
+
+    class FakeQuery:
+        def __init__(self):
+            self.user_id = None
+
+        def filter(self, condition):
+            self.user_id = condition.right.value
+            return self
+
+        def first(self):
+            return users.get(self.user_id)
+
+    class FakeDB:
+        def query(self, _model):
+            return FakeQuery()
+
+    notifications = []
+
+    class FakeNotificationService:
+        def create_notification(self, *args, **kwargs):
+            notifications.append(kwargs)
+
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    space_repository._notify_inviter_invitation_accepted(
+        FakeDB(),
+        space=space,
+        request=member_request,
+        invitee=invitee,
+    )
+
+    assert [notification["user_id"] for notification in notifications] == [
+        requester.user_id,
+        owner.user_id,
+    ]
+    assert all(
+        notification["title"] == "Invitation accepted"
+        and notification["message"] == "Invitee accepted your invitation to join Product Team."
+        and notification["metadata"]["invitee_email"] == invitee.email
+        for notification in notifications
+    )
+
+
+def test_owner_approval_sends_invitation_from_original_requester(monkeypatch):
+    owner = SimpleNamespace(
+        user_id="USR00000001",
+        full_name="Owner User",
+        email="owner@example.com",
+    )
+    requester = SimpleNamespace(
+        user_id="USR00000002",
+        full_name="Member User",
+        email="member@example.com",
+    )
+    member_request = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=owner.user_id,
+        requester_id=requester.user_id,
+        requested_email="invitee@example.com",
+        requested_name="Invitee",
+        status="PENDING_OWNER",
+        review_token="owner-review-token",
+        reviewed_at=None,
+    )
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team", status_space="Active", deleted_at=None)
+
+    class FakeQuery:
+        def __init__(self, result):
+            self.result = result
+
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return self.result
+
+    class FakeDB:
+        def __init__(self):
+            self.user_results = [owner, requester]
+            self.committed = False
+
+        def query(self, model):
+            if model is space_repository.SpaceMemberRequest:
+                return FakeQuery(member_request)
+            if model is space_repository.User:
+                return FakeQuery(self.user_results.pop(0))
+            raise AssertionError(f"Unexpected model: {model}")
+
+        def commit(self):
+            self.committed = True
+
+    sent_invitations = []
+
+    def fake_send_member_invitation_email(*, inviter, space, request):
+        sent_invitations.append((inviter, space, request))
+        return True
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: space)
+    monkeypatch.setattr(space_repository, "_ensure_space_active", lambda _space: None)
+    monkeypatch.setattr(space_repository, "_send_member_invitation_email", fake_send_member_invitation_email)
+    monkeypatch.setattr(space_repository.secrets, "token_urlsafe", lambda _size: "invitee-token")
+
+    message = space_repository.review_space_member_request(db, "owner-review-token", approve=True)
+
+    assert message == "Owner approved. Invitation email sent to the invitee."
+    assert member_request.status == "PENDING_INVITEE"
+    assert member_request.review_token == "invitee-token"
+    assert db.committed is True
+    assert sent_invitations == [(requester, space, member_request)]
