@@ -21,9 +21,16 @@ def _get_active_task_or_404(db: Session, task_id: str) -> Task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    if task.space is None or task.space.deleted_at is not None or task.space.status_space == "Deleted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is deleted")
+    return task
+
+
+def _ensure_task_space_active(task: Task) -> None:
+    if task.space is not None and task.space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if task.space is None or task.space.deleted_at is not None or task.space.status_space != "Active":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
-    return task
 
 
 def _get_comment_or_404(db: Session, comment_id: str) -> TaskComment:
@@ -139,6 +146,7 @@ def create_task_comment(
     current_user: User,
 ) -> TaskCommentResponse:
     task = _get_active_task_or_404(db, task_id)
+    _ensure_task_space_active(task)
     _ensure_can_create_comment(db, task, current_user)
     _validate_parent_comment(db, task_id, payload.parent_comment_id)
 
@@ -173,6 +181,7 @@ def update_task_comment(
 ) -> TaskCommentResponse:
     comment = _get_comment_or_404(db, comment_id)
     task = _get_active_task_or_404(db, comment.task_id)
+    _ensure_task_space_active(task)
     _ensure_can_create_comment(db, task, current_user)
     _ensure_can_update_comment(comment, current_user)
     if comment.deleted_at is not None:
@@ -187,7 +196,8 @@ def update_task_comment(
 
 def delete_task_comment(db: Session, comment_id: str, current_user: User) -> TaskCommentResponse:
     comment = _get_comment_or_404(db, comment_id)
-    _get_active_task_or_404(db, comment.task_id)
+    task = _get_active_task_or_404(db, comment.task_id)
+    _ensure_task_space_active(task)
     _ensure_can_delete_comment(comment, current_user)
     if comment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Comment is already deleted")

@@ -1,11 +1,12 @@
 from datetime import datetime
 from typing import Iterable
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.repository import recent_view as recent_view_repository
 from app.repository import task as task_repository
+from app.services import media_service
 from app.models.space import Space
 from app.models.sprint import Sprint
 from app.models.task import Task
@@ -33,6 +34,8 @@ def _ensure_space_not_deleted(space: Space) -> None:
 
 
 def _ensure_space_active(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if space.status_space != "Active" or space.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
 
@@ -156,6 +159,28 @@ def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: U
     )
     task_repository.create_task_record(db, task)
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
+
+
+def create_task_with_attachments(
+    db: Session,
+    space_id: str,
+    payload: TaskCreate,
+    current_user: User,
+    *,
+    attachments: Iterable[UploadFile] | None = None,
+) -> TaskDetailResponse:
+    created_task = create_task(db, space_id, payload, current_user)
+    for attachment in attachments or []:
+        if not attachment.filename:
+            continue
+        media_service.upload_task_media(
+            db,
+            created_task.task_id,
+            usage="attachment",
+            file=attachment,
+            current_user=current_user,
+        )
+    return _build_task_detail_response(_get_task_or_404(db, created_task.task_id))
 
 
 def list_tasks(

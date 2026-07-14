@@ -98,6 +98,19 @@ def _ensure_space_owner(space: Space, current_user: User) -> None:
         )
 
 
+def _ensure_space_mutable(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is archived",
+        )
+    if space.status_space == "Deleted" or space.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is deleted",
+        )
+
+
 def _ensure_space_name_available(
     db: Session,
     *,
@@ -264,11 +277,7 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate, current_user:
     space = get_space_or_404(db, space_id)
     if current_user is not None:
         _ensure_space_owner(space, current_user)
-    if space.status_space == "Deleted" or space.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update deleted space",
-        )
+    _ensure_space_mutable(space)
 
     if hasattr(payload, "model_dump"):
         update_data = payload.model_dump(exclude_unset=True)
@@ -308,6 +317,11 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
     space = get_space_or_404(db, space_id)
     if current_user is not None:
         _ensure_space_owner(space, current_user)
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is already archived",
+        )
     if space.status_space == "Deleted" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -383,6 +397,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     space = get_space_or_404(db, space_id)
     if current_user is not None:
         _ensure_space_owner(space, current_user)
+    _ensure_space_mutable(space)
     now = datetime.utcnow()
     space.status_space = "Deleted"
     space.deleted_at = now
