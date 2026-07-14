@@ -120,7 +120,6 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   } = routeContext || outletContext;
 
   const spaceId = spaceIdOverride || routeSpaceId;
- 
   const isAdmin = currentRole === 'ADMIN';
   const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
   const projectOwnerId = selectedSpace?.ownerId;

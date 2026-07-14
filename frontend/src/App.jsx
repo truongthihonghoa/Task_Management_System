@@ -24,7 +24,8 @@ import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 import { LanguageProvider } from "./context/LanguageContext";
 
 /**
- * Redirect /dashboard → /dashboard/ while preserving query params.
+ * Redirect /dashboard → /dashboard/ while preserving the query string
+ * (e.g. ?role=ADMIN is kept intact so the Dashboard can read the role param).
  */
 function DashboardRedirect() {
     const location = useLocation();
@@ -47,7 +48,6 @@ function AppRoutes() {
             <Route path="/dashboard/*" element={<MainLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="spaces" element={<SpaceManagement />} />
-                <Route path="tasks" element={<TaskManagement />} />
                 <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="profile" element={<ProfilePage />} />
