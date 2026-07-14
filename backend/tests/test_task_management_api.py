@@ -1,7 +1,12 @@
+from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 from app.api.v1 import task_management
-from app.schemas.pydantic_models import TaskCreate, TaskUpdate
+from app.schemas.pydantic_models import TaskCreate, TaskListItemResponse, TaskUpdate
+from app.services import task_management_service
 
 
 def test_create_task_delegates_to_service(monkeypatch):
@@ -152,3 +157,65 @@ def test_task_detail_update_delete_restore_and_board_delegate_to_service(monkeyp
         ("delete", db, "TSK00000007", user),
         ("restore", db, "TSK00000007", user),
     ]
+
+
+def test_delete_task_requires_space_owner(monkeypatch):
+    db = object()
+    member_user = SimpleNamespace(user_id="USR00000004", role="USER")
+    task_space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id="USR00000003",
+        status_space="Active",
+        deleted_at=None,
+    )
+    task = SimpleNamespace(
+        task_id="TSK00000007",
+        space_id="SPC00000002",
+        space=task_space,
+        deleted_at=None,
+    )
+
+    monkeypatch.setattr(task_management_service, "_get_task_or_404", lambda received_db, task_id: task)
+
+    with pytest.raises(HTTPException) as exc_info:
+        task_management_service.delete_task(db, "TSK00000007", member_user)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Only the space owner can perform this action"
+
+
+def test_task_list_item_hydrates_image_attachment_for_board_preview():
+    now = datetime.utcnow()
+    task = SimpleNamespace(
+        task_id="TSK00000007",
+        space_id="SPC00000002",
+        sprint_id="SPR00000003",
+        title="Database Migration Script",
+        priority="HIGH",
+        task_status="new",
+        completed_at=None,
+        story_points=5,
+        created_at=now,
+        updated_at=now,
+        sprint=None,
+        attachments=[
+            SimpleNamespace(
+                attachment_id="TAT00000001",
+                task_id="TSK00000007",
+                file_name="logo.png",
+                file_path="attachments/TSK00000007/logo.png",
+                storage_url=None,
+                mime_type="image/png",
+                file_size=2048,
+                uploaded_by="USR00000003",
+                uploaded_at=now,
+                deleted_at=None,
+            )
+        ],
+    )
+
+    response = TaskListItemResponse.model_validate(task)
+
+    assert response.attachments[0].type == "image"
+    assert response.attachments[0].previewUrl == "/media/attachments/TSK00000007/logo.png"
+    assert response.attachments[0].url == "/media/attachments/TSK00000007/logo.png"

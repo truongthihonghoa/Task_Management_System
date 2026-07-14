@@ -242,6 +242,28 @@ class TaskAttachmentResponse(BaseModel):
     uploaded_by: str
     uploaded_at: datetime
     deleted_at: Optional[datetime]
+    type: Optional[str] = None
+    previewUrl: Optional[str] = None
+    url: Optional[str] = None
+    name: Optional[str] = None
+    size: Optional[str] = None
+
+    @model_validator(mode="after")
+    def hydrate_frontend_fields(self) -> "TaskAttachmentResponse":
+        is_image = (self.mime_type or "").startswith("image/")
+        file_url = self.storage_url or (f"/media/{self.file_path}" if self.file_path else None)
+        self.type = self.type or ("image" if is_image else "file")
+        self.url = self.url or file_url
+        self.previewUrl = self.previewUrl or (file_url if is_image else None)
+        self.name = self.name or self.file_name
+        if self.size is None and self.file_size is not None:
+            if self.file_size >= 1024 * 1024:
+                self.size = f"{self.file_size / (1024 * 1024):.1f} MB"
+            elif self.file_size >= 1024:
+                self.size = f"{self.file_size / 1024:.1f} KB"
+            else:
+                self.size = f"{self.file_size} B"
+        return self
 
     model_config = {"from_attributes": True}
 
@@ -297,6 +319,7 @@ class TaskListItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     sprint: Optional[SprintSummaryResponse] = None
+    attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -448,6 +471,10 @@ class TaskDetailResponse(TaskListItemResponse):
     description: Optional[str]
     creator_id: str
     deleted_at: Optional[datetime]
+    task_status_label: Optional[str] = None
+    sprint_name: Optional[str] = None
+    creator_name: Optional[str] = None
+    primary_assignee: Optional[TaskAssigneeResponse] = None
     creator: Optional[UserSummaryResponse] = None
     assignees: list[TaskAssigneeResponse] = Field(default_factory=list)
     comments: list[TaskCommentResponse] = Field(default_factory=list)

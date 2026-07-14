@@ -90,6 +90,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDemoUser, setSelectedDemoUser] = useState(currentUserId);
+  const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && selectedDemoUser !== 'alex-morgan';
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
   
@@ -182,7 +183,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
           <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
-        {(isSuperAdmin || currentRole === 'USER') && (
+        {canCreateSpace && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
@@ -318,13 +319,15 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
             Create your first space to start organizing your projects and collaborating with your team.
           </p>
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
-          >
-            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
-            Create Space
-          </button>
+          {canCreateSpace && (
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+            >
+              <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+              Create Space
+            </button>
+          )}
         </div>
       )}
 
@@ -399,6 +402,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
         onClose={() => setIsCreateModalOpen(false)}
         currentUser={currentUser}
         onCreate={(data) => {
+          if (!canCreateSpace) return;
           const createdSpace = {
             id: `SP-${String(spaces.length + 1).padStart(3, '0')}`,
             title: data?.name || data?.title || 'New Space',
