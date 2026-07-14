@@ -75,6 +75,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     return auth_service.login(db, payload.email, payload.password)
 
 
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="Bearer",
+        user=user,
+    )
+
+
 @router.post("/forgot-password", response_model=MessageResponse, status_code=200)
 def forgot_password(payload: EmailRequest, db: Session = Depends(get_db)) -> MessageResponse:
     return auth_service.forgot_password(db, payload.email)
@@ -93,6 +101,39 @@ def resend_reset_code(payload: EmailRequest, db: Session = Depends(get_db)) -> M
 @router.post("/reset-password", response_model=MessageResponse, status_code=200)
 def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
     return auth_service.reset_password(db, payload.email, payload.password)
+
+
+    try:
+        user.password_hash = hash_password(payload.password)
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        was_locked = user.status_user == "Locked"
+        if user.status_user == "Locked":
+            user.status_user = "Active"
+        user.updated_at = now
+        verification_token.expires_at = now
+        create_audit_log(
+            db,
+            user_id=user.user_id,
+            action="RESET_PASSWORD",
+            label_title="USER",
+            entity_id=user.user_id,
+            payload={"email": email},
+        )
+        if was_locked:
+            notification_service.create_super_admin_notification(
+                db,
+                notification_type="user_verified",
+                title="Locked account restored",
+                message=f"Account {user.email} reset password and was restored to Active.",
+                metadata={"user_id": user.user_id, "email": user.email},
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return MessageResponse(message="Password reset successfully.")
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)

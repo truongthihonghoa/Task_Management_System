@@ -1,3 +1,4 @@
+"""Database operations and rules for spaces."""
 """
 space_repository.py — Database operations and space business logic.
 
@@ -56,6 +57,44 @@ def _ensure_active_owner(owner: User) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Owner is not active",
+        )
+
+
+def _is_active_space_member(db: Session, space_id: str, user_id: str) -> bool:
+    return (
+        db.query(SpaceMember)
+        .filter(
+            SpaceMember.space_id == space_id,
+            SpaceMember.user_id == user_id,
+            SpaceMember.status == "Active",
+            SpaceMember.removed_at.is_(None),
+        )
+        .first()
+        is not None
+    )
+
+
+def _can_view_space(db: Session, space: Space, current_user: User) -> bool:
+    if current_user.role == "SUPER_ADMIN":
+        return True
+    if space.owner_id == current_user.user_id:
+        return True
+    return _is_active_space_member(db, space.space_id, current_user.user_id)
+
+
+def _ensure_can_view_space(db: Session, space: Space, current_user: User) -> None:
+    if not _can_view_space(db, space, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied",
+        )
+
+
+def _ensure_space_owner(space: Space, current_user: User) -> None:
+    if space.owner_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the space owner can perform this action",
         )
 
 
@@ -166,14 +205,32 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
     return _space_response(space)
 
 
-def list_spaces(db: Session, include_deleted: bool = False) -> List[SpaceResponse]:
+def list_spaces(db: Session, include_deleted: bool = False, current_user: User | None = None) -> List[SpaceResponse]:
     query = db.query(Space).order_by(Space.created_at.desc())
     if not include_deleted:
         query = query.filter(Space.deleted_at.is_(None), Space.status_space != "Deleted")
+    if current_user is not None and current_user.role != "SUPER_ADMIN":
+        query = (
+            query.outerjoin(
+                SpaceMember,
+                (SpaceMember.space_id == Space.space_id)
+                & (SpaceMember.user_id == current_user.user_id)
+                & (SpaceMember.status == "Active")
+                & (SpaceMember.removed_at.is_(None)),
+            )
+            .filter((Space.owner_id == current_user.user_id) | (SpaceMember.space_member_id.isnot(None)))
+            .distinct()
+        )
     return [_space_response(space) for space in query.all()]
 
 
-def list_owner_trash(db: Session, owner_id: str) -> List[SpaceResponse]:
+def list_owner_trash(db: Session, owner_id: str, current_user: User | None = None) -> List[SpaceResponse]:
+    if current_user is not None and current_user.role != "SUPER_ADMIN" and owner_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied",
+        )
+
     owner = db.query(User).filter(User.user_id == owner_id).first()
     if not owner:
         raise HTTPException(
@@ -196,12 +253,17 @@ def list_owner_trash(db: Session, owner_id: str) -> List[SpaceResponse]:
     return [_space_response(space) for space in spaces]
 
 
-def get_space(db: Session, space_id: str) -> SpaceResponse:
-    return _space_response(get_space_or_404(db, space_id))
-
-
-def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceResponse:
+def get_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_can_view_space(db, space, current_user)
+    return _space_response(space)
+
+
+def update_space(db: Session, space_id: str, payload: SpaceUpdate, current_user: User | None = None) -> SpaceResponse:
+    space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_space_owner(space, current_user)
     if space.status_space == "Deleted" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -242,8 +304,10 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceRespo
     return _space_response(space)
 
 
-def archive_space(db: Session, space_id: str) -> SpaceResponse:
+def archive_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_space_owner(space, current_user)
     if space.status_space == "Deleted" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -268,8 +332,10 @@ def archive_space(db: Session, space_id: str) -> SpaceResponse:
     return _space_response(space)
 
 
-def restore_space(db: Session, space_id: str) -> SpaceResponse:
+def restore_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_space_owner(space, current_user)
     if space.status_space != "Deleted" or space.deleted_at is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -313,8 +379,10 @@ def restore_space(db: Session, space_id: str) -> SpaceResponse:
     return _space_response(space)
 
 
-def delete_space(db: Session, space_id: str) -> SpaceResponse:
+def delete_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_space_owner(space, current_user)
     now = datetime.utcnow()
     space.status_space = "Deleted"
     space.deleted_at = now
@@ -335,8 +403,10 @@ def delete_space(db: Session, space_id: str) -> SpaceResponse:
     return _space_response(space)
 
 
-def list_space_members(db: Session, space_id: str) -> List[SpaceMemberResponse]:
+def list_space_members(db: Session, space_id: str, current_user: User | None = None) -> List[SpaceMemberResponse]:
     space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_can_view_space(db, space, current_user)
     if space.status_space == "Deleted" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

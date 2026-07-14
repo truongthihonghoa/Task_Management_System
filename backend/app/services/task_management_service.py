@@ -88,8 +88,18 @@ def _get_task_or_404(db: Session, task_id: str) -> Task:
     return task
 
 
+def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
+    response = TaskListItemResponse.model_validate(task)
+    response.attachments = sorted(
+        [attachment for attachment in response.attachments if attachment.deleted_at is None],
+        key=lambda attachment: attachment.uploaded_at,
+        reverse=True,
+    )
+    return response
+
+
 def _serialize_task_list_items(tasks: Iterable[Task]) -> list[TaskListItemResponse]:
-    return [TaskListItemResponse.model_validate(task) for task in tasks]
+    return [_build_task_list_item_response(task) for task in tasks]
 
 
 def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_size: int) -> TaskListResponse:
@@ -103,9 +113,24 @@ def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_
 
 def _build_task_detail_response(task: Task) -> TaskDetailResponse:
     response = TaskDetailResponse.model_validate(task)
+    response.task_status_label = task.task_status.replace("_", " ").upper()
+    response.sprint_name = task.sprint.name if task.sprint else None
+    response.creator_name = task.creator.full_name if task.creator else None
+    response.assignees = sorted(response.assignees, key=lambda assignee: assignee.assignee_at)
+    response.primary_assignee = response.assignees[0] if response.assignees else None
+    response.comments = sorted(
+        [comment for comment in response.comments if comment.deleted_at is None],
+        key=lambda comment: comment.created_at,
+    )
     response.attachments = [
         attachment for attachment in response.attachments if attachment.deleted_at is None
     ]
+    response.attachments = sorted(response.attachments, key=lambda attachment: attachment.uploaded_at, reverse=True)
+    response.assignment_history = sorted(
+        response.assignment_history,
+        key=lambda history: history.changed_at,
+        reverse=True,
+    )
     return response
 
 
@@ -200,7 +225,7 @@ def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardR
 
     grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
     for task in task_repository.list_board_task_records(db, space_id):
-        grouped.setdefault(task.task_status, []).append(TaskListItemResponse.model_validate(task))
+        grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
     return TaskBoardResponse(**grouped)
 
 
@@ -247,7 +272,7 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
 
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_active(space)
-    _ensure_can_modify_space_tasks(db, space, current_user)
+    _ensure_space_owner(space, current_user)
 
     now = datetime.utcnow()
     task.deleted_at = now
