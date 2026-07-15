@@ -14,6 +14,18 @@ def get_sprint(db: Session, sprint_id: str) -> Sprint | None:
     return db.query(Sprint).filter(Sprint.sprint_id == sprint_id).first()
 
 
+def get_active_sprint_by_space(db: Session, space_id: str) -> Sprint | None:
+    return (
+        db.query(Sprint)
+        .filter(
+            Sprint.space_id == space_id,
+            Sprint.status == "Active",
+        )
+        .order_by(Sprint.created_at.desc(), Sprint.sprint_id.desc())
+        .first()
+    )
+
+
 def get_active_space_member(db: Session, space_id: str, user_id: str) -> SpaceMember | None:
     return (
         db.query(SpaceMember)

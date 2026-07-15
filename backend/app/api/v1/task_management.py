@@ -81,6 +81,7 @@ def list_tasks(
     task_status: TaskStatus | None = Query(default=None),
     priority: TaskPriority | None = Query(default=None),
     sort: TaskSort = Query(default="newest"),
+    active_sprint_only: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TaskListResponse:
@@ -94,6 +95,7 @@ def list_tasks(
         task_status=task_status,
         priority=priority,
         sort=sort,
+        active_sprint_only=active_sprint_only,
     )
 
 

@@ -101,6 +101,7 @@ def test_list_task_endpoints_delegate_filters_to_service(monkeypatch):
         task_status="new",
         priority="HIGH",
         sort="oldest",
+        active_sprint_only=True,
         db=db,
         current_user=user,
     )
@@ -131,6 +132,7 @@ def test_list_task_endpoints_delegate_filters_to_service(monkeypatch):
                 "task_status": "new",
                 "priority": "HIGH",
                 "sort": "oldest",
+                "active_sprint_only": True,
             },
         ),
         (
