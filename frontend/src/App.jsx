@@ -22,7 +22,7 @@ import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 import { LanguageProvider } from "./context/LanguageContext";
-
+import HelpGuide from "./pages/HelpGuide";
 /**
  * Redirect /dashboard → /dashboard/ while preserving the query string
  * (e.g. ?role=ADMIN is kept intact so the Dashboard can read the role param).
@@ -52,6 +52,7 @@ function AppRoutes() {
                 <Route path="users" element={<UserManagement />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="help" element={<HelpCenter />} />
+                <Route path="help/guides/:slug" element={<HelpGuide />} />
                 <Route path="notification-settings" element={<NotificationSettingsPage />} />
             </Route>
 
