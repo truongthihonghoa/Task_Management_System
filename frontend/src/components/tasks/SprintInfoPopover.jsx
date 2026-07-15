@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0, openTasksCount = 0 }) => {
@@ -22,16 +22,33 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
     }
   }, [isOpen, anchorRef]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleClickOutside = (event) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(event.target) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(event.target)
+      ) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onClose, anchorRef]);
+
   if (!isOpen || !anchorRef.current) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999]" onClick={onClose}>
-      <div 
-        ref={popoverRef}
-        className="absolute bg-white border border-outline-variant shadow-2xl rounded-xl p-5 w-64 animate-in fade-in slide-in-from-top-2 duration-200"
-        style={{ top: coords.top, left: coords.left }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      ref={popoverRef}
+      className="fixed bg-white border border-outline-variant shadow-2xl rounded-xl p-5 w-64 animate-in fade-in slide-in-from-top-2 duration-200"
+      style={{ top: coords.top, left: coords.left, zIndex: 9999 }}
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <h3 className="text-sm font-bold text-on-surface">SCRUM Sprint 1</h3>
@@ -70,7 +87,6 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
         <div 
           className="absolute -top-1.5 right-4 w-3 h-3 bg-white border-l border-t border-outline-variant rotate-45"
         />
-      </div>
     </div>,
     document.body
   );

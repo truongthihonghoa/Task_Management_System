@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 
 import ProfileTab from "../components/profile/ProfileTab";
-export default function Profile() {
+export default function Profile({ routeContext = null } = {}) {
   const [activeTab, setActiveTab] = useState("profile");
 
   // Tự động kích hoạt Lucide Icons khi component mount hoặc khi đổi tab
@@ -31,7 +31,7 @@ export default function Profile() {
 
       {/* Tab Content */}
       <div className="mt-8">
-        {activeTab === "profile" && <ProfileTab />}
+        {activeTab === "profile" && <ProfileTab routeContext={routeContext} />}
       </div>
     </main>
   );

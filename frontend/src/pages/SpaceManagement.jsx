@@ -29,7 +29,7 @@ export const DEMO_SPACES = [
     description: 'Legacy customer relationship management maintenance and data...',
     tasksCount: 12,
     date: '2026-04-20',
-    status: 'Archived',
+    status: 'Active',
     ownerId: 'trang-nguyen',
     memberIds: ['pham-tien']
   },
@@ -45,10 +45,46 @@ export const DEMO_SPACES = [
   }
 ];
 
-const SpaceManagement = () => {
+const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+const getAccessToken = () => {
+  if (typeof window === 'undefined') return null;
+  return (
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('token')
+  );
+};
+
+const completeSpaceRequest = async (spaceId) => {
+  // Demo spaces use SP-* ids and are local-only. Real backend spaces use SPC* ids.
+  if (!String(spaceId).startsWith('SPC')) return null;
+
+  const token = getAccessToken();
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/complete`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    let message = 'Unable to complete this space.';
+    try {
+      const body = await response.json();
+      message = body.message || body.detail || message;
+    } catch {
+      // Keep the fallback message when the backend returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+};
+
+const SpaceManagement = ({ routeContext = null } = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentRole = 'ADMIN', currentUser = null } = useOutletContext() || {};
+  const outletContext = useOutletContext() || {};
+  const { currentRole = 'ADMIN', currentUser = null } = routeContext || outletContext;
   
   // Normalize name by removing accents and lowercasing
   const normalizeName = (value = '') => {
@@ -87,8 +123,12 @@ const SpaceManagement = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('Recently Created');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [spaceToComplete, setSpaceToComplete] = useState(null);
+  const [isCompletingSpace, setIsCompletingSpace] = useState(false);
+  const [completeSpaceError, setCompleteSpaceError] = useState('');
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDemoUser, setSelectedDemoUser] = useState(currentUserId);
+  const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && selectedDemoUser !== 'alex-morgan';
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
   
@@ -141,6 +181,50 @@ const SpaceManagement = () => {
     if ((space.memberIds || []).includes(userId)) return 'MEMBER';
     return null;
   };
+
+  const handleViewTasks = (space, isAssigned, isOwner) => {
+    if (isAssigned) {
+      const params = new URLSearchParams(location.search);
+      if (!isSuperAdmin) {
+        params.set('role', 'USER');
+        params.set('spaceRole', isOwner ? 'OWNER' : 'USER');
+      }
+      const query = params.toString();
+      navigate(`/dashboard/tasks/${space.id}${query ? `?${query}` : ''}`);
+    }
+  };
+
+  const openCompleteSpaceModal = (space) => {
+    setCompleteSpaceError('');
+    setSpaceToComplete(space);
+  };
+
+  const closeCompleteSpaceModal = () => {
+    if (isCompletingSpace) return;
+    setSpaceToComplete(null);
+    setCompleteSpaceError('');
+  };
+
+  const handleCompleteSpace = async () => {
+    if (!spaceToComplete) return;
+
+    setIsCompletingSpace(true);
+    setCompleteSpaceError('');
+
+    try {
+      const completedSpace = await completeSpaceRequest(spaceToComplete.id);
+      setSpaces(prev => prev.map(space => (
+        space.id === spaceToComplete.id
+          ? { ...space, status: completedSpace?.status_space || 'Archived' }
+          : space
+      )));
+      setSpaceToComplete(null);
+    } catch (error) {
+      setCompleteSpaceError(error.message || 'Unable to complete this space.');
+    } finally {
+      setIsCompletingSpace(false);
+    }
+  };
  
   const filteredAndSortedSpaces = spaces
     .filter(space => {
@@ -181,7 +265,7 @@ const SpaceManagement = () => {
           <h1 className="text-2xl font-bold text-[#4C2B74]">Space Management</h1>
           <p className="text-sm text-gray-500">Manage and organize your team's project ecosystems.</p>
           </div>
-        {(isSuperAdmin || currentRole === 'USER') && (
+        {canCreateSpace && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-[#4C2B74] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
@@ -317,13 +401,15 @@ const SpaceManagement = () => {
           <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
             Create your first space to start organizing your projects and collaborating with your team.
           </p>
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
-          >
-            <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
-            Create Space
-          </button>
+          {canCreateSpace && (
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
+            >
+              <i data-lucide="plus" className="w-4 h-4 mr-2"></i>
+              Create Space
+            </button>
+          )}
         </div>
       )}
 
@@ -333,6 +419,8 @@ const SpaceManagement = () => {
           const isAssigned = canAccessSpace(space, selectedDemoUser);
           const userSpaceRole = getUserRoleInSpace(space, selectedDemoUser);
           const isOwner = userSpaceRole === 'OWNER';
+          const isArchived = space.status === 'Archived';
+          const canCompleteSpace = isAssigned && isOwner && space.status === 'Active';
           return (
             <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
               <div className="p-6 flex-1">
@@ -363,34 +451,90 @@ const SpaceManagement = () => {
               </div>
    
               <div className="p-4 bg-gray-50/50 border-t border-gray-100">
-                <button
-                  disabled={!isAssigned}
-                  onClick={() => {
-                    if (isAssigned) {
-                      const params = new URLSearchParams(location.search);
-                      if (!isSuperAdmin) {
-                        params.set('role', 'USER');
-                        params.set('spaceRole', isOwner ? 'OWNER' : 'USER');
-                      }
-                      const query = params.toString();
-                      navigate(`/dashboard/tasks/${space.id}${query ? `?${query}` : ''}`);
-                    }
-                  }}
-                  className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
-                    !isAssigned
-                      ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] opacity-50 cursor-not-allowed'
-                      : space.status === 'Active'
-                        ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                        : 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] hover:bg-[#e6e1ff]'
-                  }`}
-                >
-                  View Tasks
-                </button>
+                <div className={`${canCompleteSpace ? 'grid grid-cols-2' : 'flex'} items-center gap-3`}>
+                  <button
+                    disabled={!isAssigned}
+                    onClick={() => handleViewTasks(space, isAssigned, isOwner)}
+                    className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
+                      !isAssigned
+                        ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] opacity-50 cursor-not-allowed'
+                        : isArchived
+                          ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] hover:bg-[#e6e1ff]'
+                          : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                    }`}
+                  >
+                    View Tasks
+                  </button>
+
+                  {canCompleteSpace && (
+                    <button
+                      type="button"
+                      onClick={() => openCompleteSpaceModal(space)}
+                      className="w-full py-2.5 rounded-lg border border-[#4C2B74] text-[#4C2B74] bg-white font-bold text-[12px] transition-all shadow-sm hover:bg-[#f0edff] active:scale-95"
+                    >
+                      Complete
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {spaceToComplete && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={closeCompleteSpaceModal}
+          />
+
+          <div className="relative w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
+              <h2 className="text-base font-bold text-on-surface">Complete Space</h2>
+              <button
+                type="button"
+                onClick={closeCompleteSpaceModal}
+                disabled={isCompletingSpace}
+                className="rounded-full p-1 transition-colors hover:bg-surface-container disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[20px] text-outline">close</span>
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              <p className="text-[13px] leading-relaxed text-on-surface-variant">
+                Are you sure you want to complete <span className="font-bold text-on-surface">{spaceToComplete.title}</span>? This space will be archived and its tasks will become read-only.
+              </p>
+
+              {completeSpaceError && (
+                <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700">
+                  {completeSpaceError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-outline-variant bg-surface-container-low/50 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeCompleteSpaceModal}
+                disabled={isCompletingSpace}
+                className="rounded-lg px-4 py-2 text-[13px] font-bold text-outline transition-colors hover:bg-surface-container disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCompleteSpace}
+                disabled={isCompletingSpace}
+                className="rounded-lg bg-[#5e4db2] px-5 py-2 text-[13px] font-bold text-white shadow-md transition-all hover:bg-[#4d3e9c] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isCompletingSpace ? 'Completing...' : 'Complete Space'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   
  
       <CreateSpaceModal
@@ -398,6 +542,7 @@ const SpaceManagement = () => {
         onClose={() => setIsCreateModalOpen(false)}
         currentUser={currentUser}
         onCreate={(data) => {
+          if (!canCreateSpace) return;
           const createdSpace = {
             id: `SP-${String(spaces.length + 1).padStart(3, '0')}`,
             title: data?.name || data?.title || 'New Space',

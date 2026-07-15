@@ -1,0 +1,349 @@
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from app.api.v1 import spaces
+from app.repository import space as space_repository
+from app.schemas.pydantic_models import SpaceCreate, SpaceUpdate
+from app.services import space_service
+
+
+def test_space_crud_routes_delegate_to_repository(monkeypatch):
+    db = object()
+    current_user = SimpleNamespace(user_id="USR00000003", role="USER")
+    create_payload = SpaceCreate(
+        name_space="Task Management",
+        owner_id="USR00000003",
+        description="Task management workspace",
+    )
+    update_payload = SpaceUpdate(name_space="Updated Space", description="Updated description")
+    calls = []
+
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "create_space",
+        lambda received_db, payload: calls.append(("create", received_db, payload)) or {"space_id": "SPC00000002"},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "list_spaces",
+        lambda received_db, **kwargs: calls.append(("list", received_db, kwargs)) or [],
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "get_space",
+        lambda received_db, space_id, **kwargs: calls.append(("get", received_db, space_id, kwargs))
+        or {"space_id": space_id},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "update_space",
+        lambda received_db, space_id, payload, **kwargs: calls.append(("update", received_db, space_id, payload, kwargs))
+        or {"space_id": space_id},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "archive_space",
+        lambda received_db, space_id, **kwargs: calls.append(("archive", received_db, space_id, kwargs))
+        or {"space_id": space_id},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "restore_space",
+        lambda received_db, space_id, **kwargs: calls.append(("restore", received_db, space_id, kwargs))
+        or {"space_id": space_id},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "delete_space",
+        lambda received_db, space_id, **kwargs: calls.append(("delete", received_db, space_id, kwargs))
+        or {"space_id": space_id},
+    )
+
+    assert spaces.create_space(create_payload, db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.list_spaces(include_deleted=True, db=db, current_user=current_user) == []
+    assert spaces.get_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.update_space("SPC00000002", update_payload, db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.archive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.complete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.restore_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.delete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+
+    assert calls == [
+        ("create", db, create_payload),
+        ("list", db, {"include_deleted": True, "current_user": current_user}),
+        ("get", db, "SPC00000002", {"current_user": current_user}),
+        ("update", db, "SPC00000002", update_payload, {"current_user": current_user}),
+        ("archive", db, "SPC00000002", {"current_user": current_user}),
+        ("archive", db, "SPC00000002", {"current_user": current_user}),
+        ("restore", db, "SPC00000002", {"current_user": current_user}),
+        ("delete", db, "SPC00000002", {"current_user": current_user}),
+    ]
+
+
+def test_create_space_requires_user_role():
+    db = object()
+    payload = SpaceCreate(
+        name_space="Task Management",
+        owner_id="USR00000001",
+        description="Task management workspace",
+    )
+    current_user = SimpleNamespace(user_id="USR00000001", role="SUPER_ADMIN")
+
+    with pytest.raises(HTTPException) as exc_info:
+        spaces.create_space(payload, db, current_user)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Only users can create spaces"
+
+
+def test_create_space_requires_current_user_as_owner():
+    db = object()
+    payload = SpaceCreate(
+        name_space="Task Management",
+        owner_id="USR00000099",
+        description="Task management workspace",
+    )
+    current_user = SimpleNamespace(user_id="USR00000003", role="USER")
+
+    with pytest.raises(HTTPException) as exc_info:
+        spaces.create_space(payload, db, current_user)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Users can only create spaces for themselves"
+
+
+def test_space_trash_and_members_routes_delegate_to_repository(monkeypatch):
+    db = object()
+    current_user = SimpleNamespace(user_id="USR00000003", role="USER")
+    calls = []
+
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "list_owner_trash",
+        lambda received_db, owner_id, **kwargs: calls.append(("trash", received_db, owner_id, kwargs)) or [],
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
+        "list_space_members",
+        lambda received_db, space_id, **kwargs: calls.append(("members", received_db, space_id, kwargs)) or [],
+    )
+
+    assert spaces.list_owner_trash("USR00000003", db, current_user) == []
+    assert spaces.list_space_members("SPC00000002", db, current_user) == []
+
+    assert calls == [
+        ("trash", db, "USR00000003", {"current_user": current_user}),
+        ("members", db, "SPC00000002", {"current_user": current_user}),
+    ]
+
+
+def test_space_service_normalizes_space_name():
+    assert space_service._normalize_space_name("  Product Team  ") == "Product Team"
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_service._normalize_space_name("   ")
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Space name is required"
+
+
+def test_archived_space_is_read_only():
+    archived_space = SimpleNamespace(status_space="Archived", deleted_at=None)
+
+    with pytest.raises(HTTPException) as repo_exc:
+        space_repository._ensure_space_mutable(archived_space)
+
+    assert repo_exc.value.status_code == 400
+    assert repo_exc.value.detail == "Space is archived"
+
+    with pytest.raises(HTTPException) as service_exc:
+        space_service._ensure_space_mutable(archived_space)
+
+    assert service_exc.value.status_code == 400
+    assert service_exc.value.detail == "Space is archived"
+
+
+def test_invitation_acceptance_notifies_original_inviter(monkeypatch):
+    inviter = SimpleNamespace(user_id="USR00000003", full_name="Inviter", email="inviter@example.com")
+    invitee = SimpleNamespace(user_id="USR00000004", full_name="Invitee", email="invitee@example.com")
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team")
+    member_request = SimpleNamespace(
+        requester_id=inviter.user_id,
+        owner_id=inviter.user_id,
+        requested_email=invitee.email,
+        requested_name=invitee.full_name,
+    )
+
+    class FakeQuery:
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return inviter
+
+    class FakeDB:
+        def query(self, _model):
+            return FakeQuery()
+
+    notifications = []
+
+    class FakeNotificationService:
+        def create_notification(self, *args, **kwargs):
+            notifications.append(kwargs)
+
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    space_repository._notify_inviter_invitation_accepted(
+        FakeDB(),
+        space=space,
+        request=member_request,
+        invitee=invitee,
+    )
+
+    assert notifications == [
+        {
+            "user_id": inviter.user_id,
+            "actor_id": invitee.user_id,
+            "space_id": space.space_id,
+            "notification_type": "space_member_added",
+            "title": "Invitation accepted",
+            "message": "Invitee accepted your invitation to join Product Team.",
+            "audience": "USER",
+            "metadata": {
+                "space_name": space.name_space,
+                "invitee_email": invitee.email,
+                "event": "space_invitation_accepted",
+            },
+            "allow_self_notification": True,
+        }
+    ]
+
+
+def test_invitation_acceptance_notifies_owner_and_requester(monkeypatch):
+    owner = SimpleNamespace(user_id="USR00000001", full_name="Owner", email="owner@example.com")
+    requester = SimpleNamespace(user_id="USR00000003", full_name="Requester", email="requester@example.com")
+    invitee = SimpleNamespace(user_id="USR00000004", full_name="Invitee", email="invitee@example.com")
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team")
+    member_request = SimpleNamespace(
+        requester_id=requester.user_id,
+        owner_id=owner.user_id,
+        requested_email=invitee.email,
+        requested_name=invitee.full_name,
+    )
+
+    users = {
+        owner.user_id: owner,
+        requester.user_id: requester,
+    }
+
+    class FakeQuery:
+        def __init__(self):
+            self.user_id = None
+
+        def filter(self, condition):
+            self.user_id = condition.right.value
+            return self
+
+        def first(self):
+            return users.get(self.user_id)
+
+    class FakeDB:
+        def query(self, _model):
+            return FakeQuery()
+
+    notifications = []
+
+    class FakeNotificationService:
+        def create_notification(self, *args, **kwargs):
+            notifications.append(kwargs)
+
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    space_repository._notify_inviter_invitation_accepted(
+        FakeDB(),
+        space=space,
+        request=member_request,
+        invitee=invitee,
+    )
+
+    assert [notification["user_id"] for notification in notifications] == [
+        requester.user_id,
+        owner.user_id,
+    ]
+    assert all(
+        notification["title"] == "Invitation accepted"
+        and notification["message"] == "Invitee accepted your invitation to join Product Team."
+        and notification["metadata"]["invitee_email"] == invitee.email
+        for notification in notifications
+    )
+
+
+def test_owner_approval_sends_invitation_from_original_requester(monkeypatch):
+    owner = SimpleNamespace(
+        user_id="USR00000001",
+        full_name="Owner User",
+        email="owner@example.com",
+    )
+    requester = SimpleNamespace(
+        user_id="USR00000002",
+        full_name="Member User",
+        email="member@example.com",
+    )
+    member_request = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=owner.user_id,
+        requester_id=requester.user_id,
+        requested_email="invitee@example.com",
+        requested_name="Invitee",
+        status="PENDING_OWNER",
+        review_token="owner-review-token",
+        reviewed_at=None,
+    )
+    space = SimpleNamespace(space_id="SPC00000002", name_space="Product Team", status_space="Active", deleted_at=None)
+
+    class FakeQuery:
+        def __init__(self, result):
+            self.result = result
+
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return self.result
+
+    class FakeDB:
+        def __init__(self):
+            self.user_results = [owner, requester]
+            self.committed = False
+
+        def query(self, model):
+            if model is space_repository.SpaceMemberRequest:
+                return FakeQuery(member_request)
+            if model is space_repository.User:
+                return FakeQuery(self.user_results.pop(0))
+            raise AssertionError(f"Unexpected model: {model}")
+
+        def commit(self):
+            self.committed = True
+
+    sent_invitations = []
+
+    def fake_send_member_invitation_email(*, inviter, space, request):
+        sent_invitations.append((inviter, space, request))
+        return True
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: space)
+    monkeypatch.setattr(space_repository, "_ensure_space_active", lambda _space: None)
+    monkeypatch.setattr(space_repository, "_send_member_invitation_email", fake_send_member_invitation_email)
+    monkeypatch.setattr(space_repository.secrets, "token_urlsafe", lambda _size: "invitee-token")
+
+    message = space_repository.review_space_member_request(db, "owner-review-token", approve=True)
+
+    assert message == "Owner approved. Invitation email sent to the invitee."
+    assert member_request.status == "PENDING_INVITEE"
+    assert member_request.review_token == "invitee-token"
+    assert db.committed is True
+    assert sent_invitations == [(requester, space, member_request)]

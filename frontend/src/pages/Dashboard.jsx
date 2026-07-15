@@ -1270,7 +1270,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
                         setModalPage(1);
                         setTimeout(() => setIsRefreshing(false), 500);
                       }}
-                      className="flex items-center justify-center gap-2 px-5 py-2 text-white rounded-lg active:scale-[0.98] transition-all font-label-md shadow-sm w-full lg:w-auto bg-[#2D1B4E] hover:bg-[#2D1B4E]/90 cursor-pointer"
+                      className="flex min-w-[128px] items-center justify-center gap-2 whitespace-nowrap px-5 py-2 text-white rounded-lg active:scale-[0.98] transition-all font-label-md shadow-sm w-full lg:w-auto bg-[#2D1B4E] hover:bg-[#2D1B4E]/90 cursor-pointer"
                     >
                       <span className={`material-symbols-outlined text-[20px] ${isRefreshing ? 'animate-spin' : ''}`}>refresh</span>
                       Refresh
