@@ -58,6 +58,61 @@ class SpaceMemberUpdate(BaseModel):
     role: Literal["MEMBER", "OWNER"]
 
 
+class SpaceAddPeopleRequest(BaseModel):
+    user_id: Optional[str] = Field(default=None, max_length=15)
+    email: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        email = normalize_email(value)
+        if not EMAIL_PATTERN.fullmatch(email):
+            raise ValueError("Invalid email format.")
+        return email
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        name = value.strip()
+        return name or None
+
+    @model_validator(mode="after")
+    def validate_identifier(self) -> "SpaceAddPeopleRequest":
+        if not self.user_id and not self.email and not self.name:
+            raise ValueError("Provide user_id, email, or name.")
+        return self
+
+
+class SpaceMemberRequestResponse(BaseModel):
+    space_member_request_id: str
+    space_id: str
+    requester_id: str
+    requested_user_id: Optional[str]
+    requested_email: str
+    requested_name: Optional[str]
+    owner_id: str
+    status: str
+    requested_at: datetime
+    reviewed_at: Optional[datetime]
+    requester: Optional[UserSummaryResponse] = None
+    requested_user: Optional[UserSummaryResponse] = None
+    owner: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceAddPeopleResponse(BaseModel):
+    status: Literal["PENDING_OWNER", "PENDING_INVITEE", "APPROVED", "REJECTED"]
+    message: str
+    member: Optional[SpaceMemberResponse] = None
+    request: Optional[SpaceMemberRequestResponse] = None
+
+
 class AssignTaskAssigneesRequest(BaseModel):
     assignee_ids: list[str] = Field(..., min_length=1)
     reason: str | None = Field(default=None, max_length=1000)

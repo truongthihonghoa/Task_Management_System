@@ -25,6 +25,45 @@ const projectPeopleDirectory = [
   { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
 
+const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+const getAccessToken = () => {
+  if (typeof window === 'undefined') return null;
+  return (
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('token')
+  );
+};
+
+const addPeopleRequest = async (spaceId, person) => {
+  const token = getAccessToken();
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      email: person.email,
+      name: person.name,
+    }),
+  });
+
+  if (!response.ok) {
+    let message = 'Unable to add this person.';
+    try {
+      const body = await response.json();
+      message = body.message || body.detail || message;
+    } catch {
+      // Keep fallback for non-JSON errors.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+};
+
 const assigneeProfiles = {
   'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
   'Hoang Hoa': { initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
@@ -203,10 +242,24 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
   const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
+  const [addPeopleFeedback, setAddPeopleFeedback] = useState('');
+  const [addingPeopleEmail, setAddingPeopleEmail] = useState('');
   const [isAddPeopleOpen, setIsAddPeopleOpen] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState('');
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
+  const isSpaceOwner = currentSpaceRole === 'OWNER';
+  const canDirectAddPeople = isSpaceOwner || isAdmin;
+  const projectAssigneeOptions = [
+    availableAssignees[0],
+    ...projectPeople.map(person => ({
+      name: person.name,
+      initials: person.initials || getInitials(person.name),
+      color: person.color || '#5E4DB2',
+      textColor: person.textColor || '#FFFFFF',
+    })),
+  ];
 
   const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
     const normalizedSearch = peopleSearch.trim().toLowerCase();
@@ -217,14 +270,42 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const trimmedPeopleSearch = peopleSearch.trim();
   const canAddEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedPeopleSearch);
 
-  const handleAddProjectPerson = (person) => {
-    setProjectPeople(prev => {
-      if (prev.some(member => member.id === person.id)) return prev;
-      return [...prev, person];
-    });
+  const handleAddProjectPerson = async (person) => {
+    if (!person?.email || addingPeopleEmail) return;
+
+    const normalizedEmail = person.email.toLowerCase();
+    setAddPeopleFeedback('');
+    setAddingPeopleEmail(normalizedEmail);
+
+    try {
+      if (spaceId && String(spaceId).startsWith('SPC')) {
+        const result = await addPeopleRequest(spaceId, person);
+        if (result.status === 'APPROVED') {
+          setProjectPeople(prev => {
+            if (prev.some(member => member.email?.toLowerCase() === normalizedEmail || member.id === person.id)) return prev;
+            return [...prev, person];
+          });
+        } else {
+          setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+        }
+        setAddPeopleFeedback(result.message || 'Request created.');
+      } else {
+        setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+        setAddPeopleFeedback(
+          canDirectAddPeople
+            ? `Invitation email sent to ${person.email}. Waiting for them to accept.`
+            : `Approval request sent to the owner for ${person.email}.`
+        );
+      }
+      setPeopleSearch('');
+    } catch (error) {
+      setAddPeopleFeedback(error.message || 'Unable to add this person.');
+    } finally {
+      setAddingPeopleEmail('');
+    }
   };
 
-  const handleAddEmailPerson = () => {
+  const handleAddEmailPerson = async () => {
     if (!canAddEmail) return;
 
     const email = trimmedPeopleSearch.toLowerCase();
@@ -242,15 +323,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       textColor: '#FFFFFF'
     };
 
-    setProjectPeople(prev => {
-      if (prev.some(member => member.email?.toLowerCase() === email)) return prev;
-      return [...prev, person];
-    });
-    setPeopleSearch('');
+    await handleAddProjectPerson(person);
   };
 
   useEffect(() => {
     setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setPendingPeopleEmails([]);
+    setAddPeopleFeedback('');
     setSelectedAssigneeFilter('All');
   }, [selectedSpace?.id]);
 
@@ -532,7 +611,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
       >
         <div className="flex -space-x-1">
-          {(selectedAssigneeFilter === 'All' ? availableAssignees.slice(1, 4) : availableAssignees.filter(user => user.name === selectedAssigneeFilter)).map(user => (
+          {(selectedAssigneeFilter === 'All' ? projectAssigneeOptions.slice(1, 4) : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter)).map(user => (
             <div
               key={user.name}
               className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-[9px] font-bold"
@@ -556,7 +635,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           >
             All members
           </button>
-          {availableAssignees.slice(1).map(user => (
+          {projectAssigneeOptions.slice(1).map(user => (
             <button
               key={user.name}
               type="button"
@@ -615,10 +694,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
                       />
                     </div>
+                    {addPeopleFeedback && (
+                      <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
+                        {addPeopleFeedback}
+                      </div>
+                    )}
                   </div>
                   <div className="max-h-64 overflow-y-auto py-1">
                     {filteredPeopleDirectory.map(person => {
                       const isAdded = projectPeople.some(member => member.id === person.id);
+                      const normalizedEmail = person.email.toLowerCase();
+                      const isPending = pendingPeopleEmails.includes(normalizedEmail);
+                      const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
                       const isOwner = projectOwnerId === person.id;
                       return (
                         <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
@@ -641,15 +728,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           ) : (
                             <button
                               type="button"
-                              disabled={isAdded}
+                              disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
                               onClick={() => handleAddProjectPerson(person)}
                               className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${
                                 isAdded
                                   ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
+                                  : isPending
+                                    ? 'bg-[#EEF2FF] text-[#003d9b] cursor-default'
                                   : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                               }`}
                             >
-                              {isAdded ? 'Added' : 'Add'}
+                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : 'Invite'}
                             </button>
                           )}
                         </div>
@@ -660,7 +749,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
                           <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
                           <div className="text-[10px] text-outline">
-                            {canAddEmail ? 'Add this email to the project' : 'Enter a valid email address'}
+                            {canAddEmail ? 'Send an invitation to this email' : 'Enter a valid email address'}
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
@@ -673,15 +762,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           </button>
                           <button
                             type="button"
-                            disabled={!canAddEmail}
+                            disabled={!canAddEmail || Boolean(addingPeopleEmail)}
                             onClick={handleAddEmailPerson}
                             className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${
-                              canAddEmail
+                              canAddEmail && !addingPeopleEmail
                                 ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                             }`}
                           >
-                            Add
+                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : 'Invite'}
                           </button>
                         </div>
                       </div>
@@ -802,7 +891,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               className="flex items-center ml-1 hover:opacity-70 transition-opacity"
             >
               <div className="flex -space-x-1">
-                {availableAssignees.slice(1).map(user => (
+                {projectAssigneeOptions.slice(1).map(user => (
                   <div
                     key={user.name}
                     className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
@@ -822,7 +911,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 >
                   All assignees
                 </button>
-                {availableAssignees.map(user => (
+                {projectAssigneeOptions.map(user => (
                   <button
                     key={user.name}
                     type="button"
@@ -1028,6 +1117,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   onOpenDetail={setSelectedTaskDetail}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
+                  assigneeOptions={projectAssigneeOptions}
                 />
               ))}
             </div>
@@ -1137,6 +1227,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         onToggle={() => toggleTask(task.id)}
                         onOpenDetail={() => setSelectedTaskDetail(task)}
                         onDelete={() => setTaskToDelete(task)}
+                        assigneeOptions={projectAssigneeOptions}
                         onUpdateAssignee={(newAssignee) => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t))}
                       />
                     ))}
@@ -1255,6 +1346,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                             })));
                             setTaskToDelete(null);
                           }}
+                          assigneeOptions={projectAssigneeOptions}
                           onUpdateAssignee={(newAssignee) => {
                             setExtraSprints(prev => prev.map(s => ({
                               ...s,
@@ -1467,7 +1559,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -1488,7 +1580,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
@@ -1505,7 +1597,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const [isEditing, setIsEditing] = React.useState(false);
@@ -1796,7 +1888,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                   className="absolute right-0 top-full mt-2 w-40 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {availableAssignees.map(user => (
+                  {assigneeOptions.map(user => (
                     <button
                       key={user.name}
                       type="button"
@@ -1825,7 +1917,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true }) {
+function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, assigneeOptions = availableAssignees }) {
   const statusClass = status === 'Need Revision'
     ? 'bg-[#FFF0F0] text-[#BA1A1A]'
     : status === 'Done'
@@ -1901,7 +1993,7 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
                     className="absolute left-0 top-full mt-2 w-44 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {availableAssignees.map(user => (
+                    {assigneeOptions.map(user => (
                       <button
                         key={user.name}
                         type="button"

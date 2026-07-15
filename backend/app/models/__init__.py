@@ -4,6 +4,7 @@ from app.models.notification_preference import NotificationPreference
 from app.models.recent_view import RecentView
 from app.models.space import Space
 from app.models.space_member import SpaceMember
+from app.models.space_member_request import SpaceMemberRequest
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
@@ -22,6 +23,7 @@ __all__ = [
     "RecentView",
     "Space",
     "SpaceMember",
+    "SpaceMemberRequest",
     "Sprint",
     "Task",
     "TaskAssignee",
