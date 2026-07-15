@@ -6,11 +6,16 @@ from sqlalchemy.orm import Session
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.core.media import MEDIA_ROOT, ensure_media_dirs
 from app.db.session import get_db
 
 app = FastAPI(title="Task Management System API")
+
+ensure_media_dirs()
+app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
 
 
 @app.get("/")

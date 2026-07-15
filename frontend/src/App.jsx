@@ -21,6 +21,7 @@ import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import { LanguageProvider } from "./context/LanguageContext";
 
 /**
  * Redirect /dashboard → /dashboard/ while preserving the query string
@@ -31,37 +32,42 @@ function DashboardRedirect() {
     return <Navigate to={`/dashboard/${location.search}`} replace />;
 }
 
+function AppRoutes() {
+    const location = useLocation();
+
+    return (
+        <Routes location={location} key={location.pathname}>
+            {/* Authentication */}
+            <Route path="/" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* Protected layout */}
+            <Route path="/dashboard/*" element={<MainLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="spaces" element={<SpaceManagement />} />
+                <Route path="tasks/:spaceId?" element={<TaskManagement />} />
+                <Route path="users" element={<UserManagement />} />
+                <Route path="profile" element={<ProfilePage />} />
+                <Route path="help" element={<HelpCenter />} />
+                <Route path="notification-settings" element={<NotificationSettingsPage />} />
+            </Route>
+
+            <Route path="/dashboard" element={<DashboardRedirect />} />
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+    );
+}
+
 export default function App() {
     return (
-        <BrowserRouter>
-            <Routes>
-
-                {/* Authentication */}
-                <Route path="/" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-
-                {/* Protected layout — role guard is handled inside each page */}
-                <Route path="/dashboard/*" element={<MainLayout />}>
-                    <Route index element={<Dashboard />} />
-                    <Route path="spaces" element={<SpaceManagement />} />
-                    <Route path="tasks/:spaceId?" element={<TaskManagement />} />
-                    <Route path="tasks" element={<TaskManagement />} />
-                    <Route path="users" element={<UserManagement />} />
-                    <Route path="profile" element={<ProfilePage />} />
-                    <Route path="help" element={<HelpCenter />} />
-                    <Route path="notification-settings" element={<NotificationSettingsPage />} />
-                </Route>
-
-                {/* /dashboard (no trailing slash) → /dashboard/ preserving ?role= param */}
-                <Route path="/dashboard" element={<DashboardRedirect />} />
-
-                {/* Catch-all → back to login */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-
-            </Routes>
-        </BrowserRouter>
+        <LanguageProvider>
+            <BrowserRouter>
+                <AppRoutes />
+            </BrowserRouter>
+        </LanguageProvider>
     );
 }

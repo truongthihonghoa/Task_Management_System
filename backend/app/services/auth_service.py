@@ -18,6 +18,7 @@ import os
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -42,6 +43,8 @@ from app.repository.auth import (
     upsert_email_verification_token,
     upsert_verification_token,
 )
+from app.models.space_member import SpaceMember
+from app.models.space_member_request import SpaceMemberRequest
 from app.schemas.pydantic_models import (
     LoginResponse,
     MessageResponse,
@@ -121,6 +124,48 @@ def _get_verified_password_reset_token(db: Session, *, email: str, now: datetime
             detail={"message": "The verification code has expired."},
         )
     return token
+
+
+def _materialize_accepted_space_invitations(db: Session, user, now: datetime) -> None:
+    accepted_requests = (
+        db.query(SpaceMemberRequest)
+        .filter(
+            func.lower(SpaceMemberRequest.requested_email) == user.email.lower(),
+            SpaceMemberRequest.status == "APPROVED",
+        )
+        .all()
+    )
+
+    for request in accepted_requests:
+        request.requested_user_id = user.user_id
+        existing_member = (
+            db.query(SpaceMember)
+            .filter(
+                SpaceMember.space_id == request.space_id,
+                SpaceMember.user_id == user.user_id,
+            )
+            .first()
+        )
+        role = "OWNER" if request.owner_id == user.user_id else "MEMBER"
+
+        if existing_member:
+            if existing_member.status == "Active" and existing_member.removed_at is None:
+                continue
+            existing_member.role = role
+            existing_member.status = "Active"
+            existing_member.removed_at = None
+            existing_member.joined_at = now
+            continue
+
+        db.add(
+            SpaceMember(
+                space_id=request.space_id,
+                user_id=user.user_id,
+                role=role,
+                status="Active",
+                joined_at=now,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -583,6 +628,7 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
             now=now,
         )
         db.flush()
+        _materialize_accepted_space_invitations(db, user, now)
 
         token_payload = {"user_id": user.user_id, "email": user.email, "role": user.role}
         access_token, access_expires_at = create_access_token(token_payload)
