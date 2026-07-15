@@ -73,6 +73,11 @@ def test_get_main_layout_uses_current_user_and_existing_notification_count(monke
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 12)
     monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: make_preference("vi"))
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 4)
+    monkeypatch.setattr(
+        main_layout_service.help_service,
+        "list_guides",
+        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started"), SimpleNamespace(slug="dashboard-overview")]),
+    )
 
     response = main_layout_service.get_main_layout(object(), user)
 
@@ -83,8 +88,15 @@ def test_get_main_layout_uses_current_user_and_existing_notification_count(monke
     assert response.sidebar.can_view_dashboard is True
     assert response.sidebar.can_view_users is True
     assert response.sidebar.can_create_task is False
+    assert response.sidebar.can_view_help is True
+    assert response.sidebar.help_path == "/dashboard/help"
     assert response.preferences.language == "vi"
     assert response.notification.unread_count == 4
+    assert response.help.can_view is True
+    assert response.help.guides_endpoint == "/api/v1/help/guides"
+    assert response.help.guide_detail_endpoint == "/api/v1/help/guides/{slug}"
+    assert response.help.default_guide_slug == "getting-started"
+    assert response.help.guide_count == 2
 
 
 def test_get_main_layout_regular_user_sidebar(monkeypatch):
@@ -93,6 +105,11 @@ def test_get_main_layout_regular_user_sidebar(monkeypatch):
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 7)
     monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 2)
+    monkeypatch.setattr(
+        main_layout_service.help_service,
+        "list_guides",
+        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started")]),
+    )
 
     response = main_layout_service.get_main_layout(object(), user)
 
@@ -101,8 +118,10 @@ def test_get_main_layout_regular_user_sidebar(monkeypatch):
     assert response.sidebar.can_view_dashboard is False
     assert response.sidebar.can_view_users is False
     assert response.sidebar.can_create_task is True
+    assert response.sidebar.can_view_help is True
     assert response.preferences.language == "en"
     assert response.notification.unread_count == 2
+    assert response.help.default_guide_slug == "getting-started"
 
 
 def test_sidebar_summary_matches_main_layout(monkeypatch):
@@ -111,11 +130,40 @@ def test_sidebar_summary_matches_main_layout(monkeypatch):
     monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 3)
     monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
     monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 0)
+    monkeypatch.setattr(main_layout_service.help_service, "list_guides", lambda: SimpleNamespace(guides=[]))
 
     response = main_layout_service.get_sidebar_summary(object(), user)
 
     assert response.task_count == 3
     assert response.can_create_task is True
+    assert response.can_view_help is True
+    assert response.help_path == "/dashboard/help"
+
+
+def test_help_navigation_uses_available_guides(monkeypatch):
+    monkeypatch.setattr(
+        main_layout_service.help_service,
+        "list_guides",
+        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started")]),
+    )
+
+    response = main_layout_service.get_help_navigation()
+
+    assert response.can_view is True
+    assert response.guides_endpoint == "/api/v1/help/guides"
+    assert response.guide_detail_endpoint == "/api/v1/help/guides/{slug}"
+    assert response.default_guide_slug == "getting-started"
+    assert response.guide_count == 1
+
+
+def test_help_navigation_handles_empty_guide_list(monkeypatch):
+    monkeypatch.setattr(main_layout_service.help_service, "list_guides", lambda: SimpleNamespace(guides=[]))
+
+    response = main_layout_service.get_help_navigation()
+
+    assert response.can_view is True
+    assert response.default_guide_slug is None
+    assert response.guide_count == 0
 
 
 def test_get_preferences_uses_default_when_missing(monkeypatch):

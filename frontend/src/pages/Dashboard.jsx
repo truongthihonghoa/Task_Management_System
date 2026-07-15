@@ -755,7 +755,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   // Modal specific filters
   const [modalSearch, setModalSearch] = useState("");
   const [modalEventType, setModalEventType] = useState("All Events");
-  const [modalTimeRange, setModalTimeRange] = useState("Last 7 days");
+  const [modalTimeRange, setModalTimeRange] = useState("All time");
   const [modalSortOrder, setModalSortOrder] = useState("Newest First");
   const [selectedOperation, setSelectedOperation] = useState("User Management");
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -1010,7 +1010,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
     const matchType = modalEventType === "All Events" || log.labelTitle.toLowerCase() === modalEventType.toLowerCase();
 
     // Time range filtering (simplified for mock)
-    const matchTime = modalTimeRange === "All Time" ||
+    const matchTime = modalTimeRange === "All time" ||
       (modalTimeRange === "Today" && log.group === "Today") ||
       (modalTimeRange === "Yesterday" && log.group === "Yesterday");
 
@@ -1037,10 +1037,6 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
     } else if (modalTimeRange === "Last 7 days") {
       const dateVal = new Date(log.createdAt.replace(' ', 'T')).getTime();
       const cutoff = new Date("2026-06-18T00:00:00").getTime();
-      matchDate = dateVal >= cutoff;
-    } else if (modalTimeRange === "Last 30 days") {
-      const dateVal = new Date(log.createdAt.replace(' ', 'T')).getTime();
-      const cutoff = new Date("2026-05-26T00:00:00").getTime();
       matchDate = dateVal >= cutoff;
     }
 
@@ -1264,7 +1260,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
                         setIsRefreshing(true);
                         setModalSearch("");
                         setModalEventType("All Events");
-                        setModalTimeRange("Last 7 days");
+                        setModalTimeRange("All time");
                         setModalSortOrder("Newest First");
                         setModalLabelTitle("All Labels");
                         setModalPage(1);
@@ -1289,10 +1285,10 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
                           onChange={(e) => { setModalTimeRange(e.target.value); setModalPage(1); }}
                           className="w-full appearance-none bg-white border border-outline-variant rounded-lg py-2 pl-10 pr-10 font-body-md focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100"
                         >
-                          <option value="Last 7 days">Last 7 days</option>
+                          <option value="All time">All time</option>
                           <option value="Today">Today</option>
                           <option value="Yesterday">Yesterday</option>
-                          <option value="Last 30 days">Last 30 days</option>
+                          <option value="Last 7 days">Last 7 days</option>
                         </select>
                         <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] pointer-events-none">expand_more</span>
                       </div>
