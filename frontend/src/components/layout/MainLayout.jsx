@@ -11,6 +11,7 @@ import TaskManagement from '../../pages/TaskManagement';
 import UserManagement from '../../pages/UserManagement';
 import ProfilePage from '../../pages/ProfilePage';
 import HelpCenter from '../../pages/HelpCenter';
+import HelpGuide from '../../pages/HelpGuide';
 import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
 import { useLanguage } from '../../context/LanguageContext';
 const INITIAL_NOTIFICATIONS = [
@@ -324,6 +325,7 @@ export default function MainLayout() {
   const isNotificationsActive = location.pathname === '/dashboard/notifications';
   const isSettingsActive = location.pathname === '/dashboard/notification-settings';
   const isHelpActive = location.pathname === '/dashboard/help';
+  const isHelpGuideActive = location.pathname === '/dashboard/help-guide';
 
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
@@ -466,6 +468,9 @@ export default function MainLayout() {
 
     if (pathname === '/dashboard/help') {
       return <HelpCenter />;
+    }
+    if (pathname === '/dashboard/help-guide') {
+      return <HelpGuide />;
     }
 
     if (pathname === '/dashboard/notification-settings') {
