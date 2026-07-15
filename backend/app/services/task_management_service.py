@@ -194,6 +194,7 @@ def list_tasks(
     task_status: str | None,
     priority: str | None,
     sort: str,
+    active_sprint_only: bool = True,
 ) -> TaskListResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
@@ -209,6 +210,7 @@ def list_tasks(
         task_status=task_status,
         priority=priority,
         sort=sort,
+        active_sprint_only=active_sprint_only,
     )
     return _build_task_list_response(tasks, total, page=page, page_size=page_size)
 
@@ -249,7 +251,7 @@ def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardR
     _ensure_can_view_space_tasks(db, space, current_user)
 
     grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
-    for task in task_repository.list_board_task_records(db, space_id):
+    for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
         grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
     return TaskBoardResponse(**grouped)
 
