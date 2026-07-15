@@ -124,6 +124,19 @@ const formatTaskDate = (dateValue) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 
+const isTaskOverdue = (dateValue, status, apiOverdue = undefined) => {
+  if (typeof apiOverdue === 'boolean') return apiOverdue;
+  if (!dateValue || ['Done', 'Cancelled'].includes(status)) return false;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const dueDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return dueDate < todayDate;
+};
+
 const SPRINT_NAME_PREFIX = 'SCRUM Sprint';
 
 const getSprintNumber = (sprintName) => {
@@ -375,7 +388,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       pts: Number(taskData.storyPoints) || 0,
       status: taskData.status,
       priority: taskData.priority,
-      date: formatTaskDate(taskData.createdAt),
+      completed_at: taskData.completed_at || '',
+      date: formatTaskDate(taskData.completed_at || taskData.createdAt),
       description: taskData.description || ""
     };
 
@@ -1600,6 +1614,8 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
 function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
+  const isOverdue = isTaskOverdue(task.completed_at || date, status, task.is_overdue);
+  const displayDate = task.completed_at ? formatTaskDate(task.completed_at) : date;
   const [isEditing, setIsEditing] = React.useState(false);
   const [tempPts, setTempPts] = React.useState(pts);
   const [showMenu, setShowMenu] = React.useState(false);
@@ -1822,9 +1838,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
 
 
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-surface-container text-on-surface-variant">
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${isOverdue ? 'bg-[#FFF0F0] text-[#BA1A1A]' : 'bg-surface-container text-on-surface-variant'}`}>
               <span className="material-symbols-outlined text-[14px]">calendar_month</span>
-              <span className="text-[11px] font-semibold">{date}</span>
+              <span className="text-[11px] font-semibold">{displayDate}</span>
             </div>
           </div>
           {previewImage ? (
@@ -1917,7 +1933,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, assigneeOptions = availableAssignees }) {
+  const isOverdue = isTaskOverdue(completed_at || date, status, is_overdue);
+  const displayDate = completed_at ? formatTaskDate(completed_at) : date;
   const statusClass = status === 'Need Revision'
     ? 'bg-[#FFF0F0] text-[#BA1A1A]'
     : status === 'Done'
@@ -2031,7 +2049,7 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
       <td className="px-4 py-2">
         <span className={`px-3 py-1 rounded-full ${statusClass} text-[9px] font-bold uppercase`}>{status}</span>
       </td>
-      <td className="px-4 py-2 text-[11px] text-outline">{date}</td>
+      <td className={`px-4 py-2 text-[11px] font-semibold ${isOverdue ? 'text-[#BA1A1A]' : 'text-outline'}`}>{displayDate}</td>
       {isAdmin && (
         <td className="px-4 py-2 text-center">
           <span
