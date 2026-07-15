@@ -12,6 +12,7 @@ from app.models.task_assignment_history import TaskAssignmentHistory
 from app.models.task_attachment import TaskAttachment
 from app.models.task_comment import TaskComment
 from app.models.user import User
+from app.models.user_preference import UserPreference
 from app.models.user_token import UserToken
 from app.models.verification_token import VerificationToken
 
@@ -30,6 +31,7 @@ __all__ = [
     "TaskAttachment",
     "TaskComment",
     "User",
+    "UserPreference",
     "UserToken",
     "VerificationToken",
 ]

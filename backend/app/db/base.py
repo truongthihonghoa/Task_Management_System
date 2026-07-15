@@ -17,6 +17,7 @@ from app.models import (  # noqa: E402,F401
     TaskAttachment,
     TaskComment,
     User,
+    UserPreference,
     UserToken,
     VerificationToken,
 )
