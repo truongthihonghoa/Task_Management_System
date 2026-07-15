@@ -314,3 +314,39 @@ def test_reset_password_validates_password_strength_and_match():
             password="Password@123",
             confirm_password="Password@124",
         )
+
+
+def test_logout_revokes_refresh_token_for_current_access_token(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    calls = []
+
+    monkeypatch.setattr(
+        auth_service,
+        "revoke_refresh_token_for_access_token",
+        lambda received_db, access_token: calls.append(("revoke_refresh", received_db, access_token)),
+    )
+    monkeypatch.setattr(
+        auth_service,
+        "create_audit_log",
+        lambda received_db, **kwargs: calls.append(("audit", received_db, kwargs)),
+    )
+
+    response = auth_service.logout(db, user, "access-token")
+
+    assert response.message == "Successfully logged out."
+    assert calls == [
+        ("revoke_refresh", db, "access-token"),
+        (
+            "audit",
+            db,
+            {
+                "user_id": user.user_id,
+                "action": "LOGOUT",
+                "label_title": "Logout user",
+                "entity_id": user.user_id,
+            },
+        ),
+    ]
+    assert db.commits == 1
+    assert db.rollbacks == 0

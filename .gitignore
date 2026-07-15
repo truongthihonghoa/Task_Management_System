@@ -4,5 +4,6 @@ backend/.env
 frontend/.env
 __pycache__/
 *.py[cod]
+*.log
 dist/
 node_modules/

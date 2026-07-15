@@ -5,16 +5,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Task Manager</title>
-  <link rel="icon" type="image/png" href="./src/assets/title.png" />
+  <link rel="icon" type="image/png" href="/src/assets/title.png" />
   <!-- Google Fonts & Material Symbols -->
   <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <!-- Tailwind CSS Play CDN (since the user wrote Tailwind classes but Tailwind is not installed) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+    media="print" onload="this.media='all'" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet" media="print" onload="this.media='all'" />
   <script>
-    tailwind.config = {
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
@@ -42,6 +42,10 @@
       }
     }
   </script>
+  <!-- Load visual helper CDNs asynchronously so React can mount even if the network is slow. -->
+  <script async src="https://cdn.tailwindcss.com"></script>
+  <script async src="https://unpkg.com/lucide@latest"
+    onload="window.lucide && window.lucide.createIcons && window.lucide.createIcons()"></script>
 </head>
 
 <body>
