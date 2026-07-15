@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.user_token import UserToken
+from app.repository.audit_retention import cleanup_expired_audit_logs
 
 
 def get_user_by_id(db: Session, user_id: str) -> User | None:
@@ -30,6 +31,7 @@ def create_user_audit_log(
     payload: dict[str, Any] | None = None,
     ip_address: str | None = None,
 ) -> AuditLog:
+    cleanup_expired_audit_logs(db)
     audit_payload = payload.copy() if payload else {}
     if ip_address is not None:
         audit_payload["ip_address"] = ip_address

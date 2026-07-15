@@ -678,3 +678,4 @@ class ChangePasswordRequest(BaseModel):
         if self.current_password == self.new_password:
             raise ValueError("New password must not be the same as current password.")
         return self
+    

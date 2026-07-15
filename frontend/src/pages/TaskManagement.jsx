@@ -412,7 +412,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setCreateTaskHandler(() => handleCreateTask);
     return () => setCreateTaskHandler(null);
   }, [handleCreateTask, setCreateTaskHandler]);
- 
+
   // Keep selected task detail in sync with the latest task state
   useEffect(() => {
     if (selectedTaskDetail) {
@@ -439,7 +439,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     nextParams.delete('taskId');
     setTaskSearchParams(nextParams, { replace: true });
   };
- 
+
   const toggleAll = () => {
     if (selectedTasks.length === tasks.length) {
       setSelectedTasks([]);
@@ -744,13 +744,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                               type="button"
                               disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
                               onClick={() => handleAddProjectPerson(person)}
-                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${
-                                isAdded
+                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
                                   ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
                                   : isPending
                                     ? 'bg-[#EEF2FF] text-[#003d9b] cursor-default'
-                                  : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                              }`}
+                                    : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                                }`}
                             >
                               {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : 'Invite'}
                             </button>
@@ -778,11 +777,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                             type="button"
                             disabled={!canAddEmail || Boolean(addingPeopleEmail)}
                             onClick={handleAddEmailPerson}
-                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${
-                              canAddEmail && !addingPeopleEmail
+                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
                                 ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
+                              }`}
                           >
                             {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : 'Invite'}
                           </button>
@@ -831,289 +829,289 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       {/* Filters Section */}
       {view !== 'summary' && (
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search Input */}
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3 text-outline text-[20px]">search</span>
-            <input
-              className="pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded text-[11px] w-[220px] focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2] outline-none text-[#32275E]"
-              placeholder="Filter by ID or title..."
-              type="text"
-            />
-          </div>
-          {/* Status Filter */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedStatusFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="text-xs font-bold text-[#5e4db2]">{selectedStatusFilter === 'All' ? 'Status' : selectedStatusFilter}</span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] left-0 pt-1 w-48 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedStatusFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                >
-                  All statuses
-                </button>
-                {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
-                  <button 
-                    key={status} 
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search Input */}
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3 text-outline text-[20px]">search</span>
+              <input
+                className="pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded text-[11px] w-[220px] focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2] outline-none text-[#32275E]"
+                placeholder="Filter by ID or title..."
+                type="text"
+              />
+            </div>
+            {/* Status Filter */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedStatusFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="text-xs font-bold text-[#5e4db2]">{selectedStatusFilter === 'All' ? 'Status' : selectedStatusFilter}</span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] left-0 pt-1 w-48 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <button
                     type="button"
-                    onClick={() => setSelectedStatusFilter(status)}
+                    onClick={() => setSelectedStatusFilter('All')}
                     className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
                   >
-                    {status}
+                    All statuses
                   </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* Priority Filter */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedPriorityFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="text-xs font-bold text-[#5e4db2]">{selectedPriorityFilter === 'All' ? 'Priority' : selectedPriorityFilter}</span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] left-0 pt-1 w-40 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPriorityFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                >
-                  All priorities
-                </button>
-                {['High', 'Medium', 'Low'].map(priority => (
-                  <button
-                    key={priority}
-                    type="button"
-                    onClick={() => setSelectedPriorityFilter(priority)}
-                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                  >
-                    {priority}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* Assignee Filter */}
-          <div className="relative group">
-            <button
-              type="button"
-              className="flex items-center ml-1 hover:opacity-70 transition-opacity"
-            >
-              <div className="flex -space-x-1">
-                {projectAssigneeOptions.slice(1).map(user => (
-                  <div
-                    key={user.name}
-                    className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
-                    style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
-                  >
-                    {user.initials}
-                  </div>
-                ))}
-              </div>
-            </button>
-            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
-              <div className="py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedAssigneeFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
-                >
-                  All assignees
-                </button>
-                {projectAssigneeOptions.map(user => (
-                  <button
-                    key={user.name}
-                    type="button"
-                    onClick={() => setSelectedAssigneeFilter(user.name)}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
-                  >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                      style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                    >
-                      {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                    </div>
-                    <span>{user.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Sort Dropdown */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">sort</span>
-              <span className="text-xs font-bold text-[#5e4db2]">
-                {sortOption === 'created-newest' ? 'Newest First'
-                  : sortOption === 'created-oldest' ? 'Oldest First'
-                  : sortOption === 'name-az' ? 'Name A→Z'
-                  : 'Name Z→A'}
-              </span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] right-0 pt-1 w-52 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-outline-variant">Created Time</div>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('created-newest')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-newest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Newest First</span>
-                  {sortOption === 'created-newest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('created-oldest')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-oldest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Oldest First</span>
-                  {sortOption === 'created-oldest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-t border-outline-variant mt-1">Task Name</div>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('name-az')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-az' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>A → Z</span>
-                  {sortOption === 'name-az' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('name-za')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-za' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Z → A</span>
-                  {sortOption === 'name-za' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Sprint Actions */}
-          {view === 'board' && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsCompleteSprintOpen(true)}
-                disabled={filteredTasks.length === 0}
-                className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-              >
-                Complete sprint
-              </button>
-              <button
-                ref={sprintInfoAnchorRef}
-                onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
-                className="flex items-center justify-center w-[36px] h-[36px] border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
-              >
-                <span className="material-symbols-outlined text-[20px] text-on-surface">insights</span>
-              </button>
-            </div>
-          )}
-
-          {/* Date Filter */}
-          <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
-              <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
-              <span className="text-[11px] font-bold text-[#5e4db2]">
-                {selectedDate
-                  ? selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                  : 'Date'}
-              </span>
-            </button>
-
-            {/* Calendar Dropdown */}
-            <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
-                  <div className="flex gap-1">
+                  {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
                     <button
+                      key={status}
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewMonth(m => {
-                          if (m === 0) {
-                            setViewYear(y => y - 1);
-                            return 11;
-                          }
-                          return m - 1;
-                        });
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded"
+                      onClick={() => setSelectedStatusFilter(status)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
                     >
-                      <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                      {status}
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewMonth(m => {
-                          if (m === 11) {
-                            setViewYear(y => y + 1);
-                            return 0;
-                          }
-                          return m + 1;
-                        });
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                    <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
                   ))}
                 </div>
+              </div>
+            </div>
+            {/* Priority Filter */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedPriorityFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="text-xs font-bold text-[#5e4db2]">{selectedPriorityFilter === 'All' ? 'Priority' : selectedPriorityFilter}</span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] left-0 pt-1 w-40 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPriorityFilter('All')}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                  >
+                    All priorities
+                  </button>
+                  {['High', 'Medium', 'Low'].map(priority => (
+                    <button
+                      key={priority}
+                      type="button"
+                      onClick={() => setSelectedPriorityFilter(priority)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                    >
+                      {priority}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Assignee Filter */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="flex items-center ml-1 hover:opacity-70 transition-opacity"
+              >
+                <div className="flex -space-x-1">
+                  {projectAssigneeOptions.slice(1).map(user => (
+                    <div
+                      key={user.name}
+                      className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
+                      style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
+                    >
+                      {user.initials}
+                    </div>
+                  ))}
+                </div>
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAssigneeFilter('All')}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                  >
+                    All assignees
+                  </button>
+                  {projectAssigneeOptions.map(user => (
+                    <button
+                      key={user.name}
+                      type="button"
+                      onClick={() => setSelectedAssigneeFilter(user.name)}
+                      className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                      >
+                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
+                      </div>
+                      <span>{user.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Sort Dropdown */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">sort</span>
+                <span className="text-xs font-bold text-[#5e4db2]">
+                  {sortOption === 'created-newest' ? 'Newest First'
+                    : sortOption === 'created-oldest' ? 'Oldest First'
+                      : sortOption === 'name-az' ? 'Name A→Z'
+                        : 'Name Z→A'}
+                </span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] right-0 pt-1 w-52 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-outline-variant">Created Time</div>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('created-newest')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-newest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Newest First</span>
+                    {sortOption === 'created-newest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('created-oldest')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-oldest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Oldest First</span>
+                    {sortOption === 'created-oldest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-t border-outline-variant mt-1">Task Name</div>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('name-az')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-az' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>A → Z</span>
+                    {sortOption === 'name-az' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('name-za')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-za' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Z → A</span>
+                    {sortOption === 'name-za' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* Sprint Actions */}
+            {view === 'board' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsCompleteSprintOpen(true)}
+                  disabled={filteredTasks.length === 0}
+                  className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                >
+                  Complete sprint
+                </button>
+                <button
+                  ref={sprintInfoAnchorRef}
+                  onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
+                  className="flex items-center justify-center w-[36px] h-[36px] border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[20px] text-on-surface">insights</span>
+                </button>
+              </div>
+            )}
 
-                <div className="grid grid-cols-7 gap-1">
-                  {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
-                    if (day === null) {
-                      return <div key={`empty-${i}`} className="h-7 w-7" />;
-                    }
-                    const isSelected = selectedDate &&
-                      selectedDate.getDate() === day &&
-                      selectedDate.getMonth() === viewMonth &&
-                      selectedDate.getFullYear() === viewYear;
-                    const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
-                    return (
+            {/* Date Filter */}
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
+                <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
+                <span className="text-[11px] font-bold text-[#5e4db2]">
+                  {selectedDate
+                    ? selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Date'}
+                </span>
+              </button>
+
+              {/* Calendar Dropdown */}
+              <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
+                    <div className="flex gap-1">
                       <button
-                        key={day}
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isSelected) {
-                            setSelectedDate(null);
-                          } else {
-                            setSelectedDate(new Date(viewYear, viewMonth, day));
-                          }
+                          setViewMonth(m => {
+                            if (m === 0) {
+                              setViewYear(y => y - 1);
+                              return 11;
+                            }
+                            return m - 1;
+                          });
                         }}
-                        className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
-                          ? 'bg-[#5e4db2] text-white font-bold'
-                          : isToday
-                            ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
-                            : 'hover:bg-surface-container text-on-surface'
-                          }`}
+                        className="p-1 hover:bg-gray-100 rounded"
                       >
-                        {day}
+                        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
                       </button>
-                    );
-                  })}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewMonth(m => {
+                            if (m === 11) {
+                              setViewYear(y => y + 1);
+                              return 0;
+                            }
+                            return m + 1;
+                          });
+                        }}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                      <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
+                      if (day === null) {
+                        return <div key={`empty-${i}`} className="h-7 w-7" />;
+                      }
+                      const isSelected = selectedDate &&
+                        selectedDate.getDate() === day &&
+                        selectedDate.getMonth() === viewMonth &&
+                        selectedDate.getFullYear() === viewYear;
+                      const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isSelected) {
+                              setSelectedDate(null);
+                            } else {
+                              setSelectedDate(new Date(viewYear, viewMonth, day));
+                            }
+                          }}
+                          className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
+                            ? 'bg-[#5e4db2] text-white font-bold'
+                            : isToday
+                              ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
+                              : 'hover:bg-surface-container text-on-surface'
+                            }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* BOARD VIEW */}
@@ -1215,7 +1213,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 </div>
               </div>
             </div>
-              {/* selection toolbar moved to bottom-fixed container */}
+            {/* selection toolbar moved to bottom-fixed container */}
             {isSprintExpanded && (
               <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full text-left border-collapse">
@@ -1682,16 +1680,16 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
       const columnTasks = prev.filter(t => t.status === task.status);
       const globalIdx = prev.findIndex(t => t.id === task.id);
       if (globalIdx === -1) return prev;
-      
+
       const colIdx = columnTasks.findIndex(t => t.id === task.id);
       let newPrev = [...prev];
-      
+
       if (direction === 'up' && colIdx > 0) {
         const taskAbove = columnTasks[colIdx - 1];
         newPrev.splice(globalIdx, 1);
         const newAboveGlobalIdx = newPrev.findIndex(t => t.id === taskAbove.id);
         newPrev.splice(newAboveGlobalIdx, 0, task);
-      } 
+      }
       else if (direction === 'down' && colIdx < columnTasks.length - 1) {
         const taskBelow = columnTasks[colIdx + 1];
         newPrev.splice(globalIdx, 1);
@@ -1710,7 +1708,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
         const newLastGlobalIdx = newPrev.findIndex(t => t.id === lastTask.id);
         newPrev.splice(newLastGlobalIdx + 1, 0, task);
       }
-      
+
       return newPrev;
     });
     setShowMenu(false);

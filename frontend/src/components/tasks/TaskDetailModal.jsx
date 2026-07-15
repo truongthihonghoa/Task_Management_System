@@ -1719,4 +1719,3 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     </div>
   );
 }
-

@@ -14,6 +14,7 @@ from app.api.v1.media import router as media_router
 from app.api.v1.task_management import router as task_management_router
 from app.api.v1.users import router as users_router
 from app.api.v1.help import router as help_router
+from app.api.v1.dashboard import router as dashboard_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -31,3 +32,4 @@ api_router.include_router(notifications_router)
 api_router.include_router(notification_preferences_router)
 api_router.include_router(users_router)
 api_router.include_router(help_router)
+api_router.include_router(dashboard_router)
