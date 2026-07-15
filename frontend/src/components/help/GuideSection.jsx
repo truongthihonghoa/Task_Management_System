@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const GuideItem = ({ icon, title, desc, onClick }) => (
   <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
@@ -24,42 +24,52 @@ const GuideItem = ({ icon, title, desc, onClick }) => (
 
 const GuideSection = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const guides = [
+    {
+      icon: 'sparkles',
+      title: 'Getting Started',
+      desc: 'A comprehensive 5-minute walk-through.',
+      slug: 'getting-started',
+    },
+    {
+      icon: 'users',
+      title: 'User Permissions',
+      desc: 'How to manage roles and groups.',
+      slug: 'user-permissions',
+    },
+    {
+      icon: 'layout-dashboard',
+      title: 'Dashboard Overview',
+      desc: 'Understanding your workspace.',
+      slug: 'dashboard-overview',
+    },
+    {
+      icon: 'clipboard-list',
+      title: 'Task Management',
+      desc: 'Create and manage tasks effectively.',
+      slug: 'task-management',
+    },
+  ];
+
+  const openGuide = (slug) => {
+    navigate(`/dashboard/help/guides/${slug}${location.search}`);
+  };
 
   return (
     <section className="space-y-4">
       <h2 className="text-2xl font-bold text-gray-900">System Guides</h2>
 
       <div className="flex flex-col gap-3">
-        <GuideItem
-          icon="sparkles"
-          title="Getting Started"
-          desc="A comprehensive 5-minute walk-through."
-          onClick={() => navigate("/dashboard/help-guide")}
-        />
-
-        <GuideItem
-          icon="users"
-          title="User Permissions"
-          desc="How to manage roles and groups."
-          onClick={() => navigate("/dashboard/help-guide")}
-        />
-
-        <GuideItem
-          icon="layout-dashboard"
-          title="Dashboard Overview"
-          desc="Understanding your workspace."
-          onClick={() => navigate("/dashboard/help-guide")}
-        />
-
-        <GuideItem
-          icon="clipboard-list"
-          title="Task Management"
-          desc="Create and manage tasks effectively."
-          onClick={() => {
-            console.log("Navigate");
-            navigate("/dashboard/help-guide");
-          }}
-        />
+        {guides.map((guide) => (
+          <GuideItem
+            key={guide.slug}
+            icon={guide.icon}
+            title={guide.title}
+            desc={guide.desc}
+            onClick={() => openGuide(guide.slug)}
+          />
+        ))}
       </div>
     </section>
   );

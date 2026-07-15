@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 function getSlugFromPathname(pathname) {
+  if (pathname.replace(/\/+$/, '') === '/dashboard/help-guide') {
+    return 'getting-started';
+  }
+
   // Extracts the slug from /dashboard/help/guides/:slug
   const match = pathname.match(/\/dashboard\/help\/guides\/([^/]+)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -189,6 +193,7 @@ const ErrorState = ({ message, onBack }) => (
 
 const HelpGuide = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const slug = getSlugFromPathname(location.pathname);
 
   const [guide, setGuide] = useState(null);
@@ -198,12 +203,12 @@ const HelpGuide = () => {
 
   // Navigate back to Help Center preserving query string
   const handleBack = () => {
-    window.location.assign(`/dashboard/help${location.search}`);
+    navigate(`/dashboard/help${location.search}`);
   };
 
   // Navigate to a related guide preserving query string
   const handleRelatedGuide = (targetSlug) => {
-    window.location.assign(`/dashboard/help/guides/${targetSlug}${location.search}`);
+    navigate(`/dashboard/help/guides/${targetSlug}${location.search}`);
   };
 
   // Scroll to a section by id
@@ -226,7 +231,7 @@ const HelpGuide = () => {
     setLoading(true);
     setError(null);
 
-    fetch(`${API_BASE}/api/v1/help/guides/${encodeURIComponent(slug)}`)
+    fetch(`${API_BASE_URL}/help/guides/${encodeURIComponent(slug)}`)
       .then((res) => {
         if (!res.ok) {
           if (res.status === 404) {

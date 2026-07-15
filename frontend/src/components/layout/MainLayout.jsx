@@ -1,18 +1,10 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
-import Dashboard from '../../pages/Dashboard';
-import SpaceManagement from '../../pages/SpaceManagement';
-import TaskManagement from '../../pages/TaskManagement';
-import UserManagement from '../../pages/UserManagement';
-import ProfilePage from '../../pages/ProfilePage';
-import HelpCenter from '../../pages/HelpCenter';
-import HelpGuide from '../../pages/HelpGuide';
-import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
 import { useLanguage } from '../../context/LanguageContext';
 const INITIAL_NOTIFICATIONS = [
   {
@@ -324,8 +316,11 @@ export default function MainLayout() {
   const isProfileActive = location.pathname === '/dashboard/profile';
   const isNotificationsActive = location.pathname === '/dashboard/notifications';
   const isSettingsActive = location.pathname === '/dashboard/notification-settings';
-  const isHelpActive = location.pathname === '/dashboard/help';
-  const isHelpGuideActive = location.pathname === '/dashboard/help-guide';
+  const isHelpActive = (
+    location.pathname === '/dashboard/help'
+    || location.pathname === '/dashboard/help-guide'
+    || location.pathname.startsWith('/dashboard/help/guides/')
+  );
 
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
@@ -389,6 +384,11 @@ export default function MainLayout() {
     return query ? `?${query}` : '';
   };
 
+  const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
+  const openDashboardPath = (path, updates = {}) => {
+    navigate(dashboardPath(path, updates));
+  };
+
   const handleSearchSpaceClick = (taskId) => {
     openDashboardPath(`/dashboard/tasks/${taskId}`);
     setSearchQuery('');
@@ -447,52 +447,6 @@ export default function MainLayout() {
     isSuperAdmin
   };
 
-  const renderMainContent = () => {
-    const pathname = location.pathname.replace(/\/+$/, '') || '/dashboard';
-
-    if (pathname === '/dashboard') {
-      return <Dashboard />;
-    }
-
-    if (pathname === '/dashboard/spaces') {
-      return <SpaceManagement routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/users') {
-      return <UserManagement />;
-    }
-
-    if (pathname === '/dashboard/profile') {
-      return <ProfilePage routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/help') {
-      return <HelpCenter />;
-    }
-    if (pathname === '/dashboard/help-guide') {
-      return <HelpGuide />;
-    }
-
-    if (pathname === '/dashboard/notification-settings') {
-      return <NotificationSettingsPage />;
-    }
-
-    if (pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/')) {
-      const spaceId = pathname.startsWith('/dashboard/tasks/')
-        ? decodeURIComponent(pathname.slice('/dashboard/tasks/'.length))
-        : undefined;
-
-      return (
-        <TaskManagement
-          routeContext={layoutContext}
-          spaceIdOverride={spaceId}
-        />
-      );
-    }
-
-    return <Dashboard />;
-  };
-
   return (
     <div className="h-screen flex overflow-hidden font-['Inter'] bg-[#F5F7FA]">
 
@@ -529,13 +483,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isDashboardActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
                 <span className="text-sm font-bold">Dashboard</span>
               </Link>
             </div>
           ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
               <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
               <span className="text-sm font-medium">Dashboard</span>
             </Link>
@@ -545,7 +499,7 @@ export default function MainLayout() {
           {isTasksActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
                 <div className="flex items-center">
                   <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
                   <span className="text-sm font-bold">Tasks</span>
@@ -554,7 +508,7 @@ export default function MainLayout() {
               </Link>
             </div>
           ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
               <div className="flex items-center">
                 <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
                 <span className="text-sm font-medium">Tasks</span>
@@ -567,13 +521,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isUsersActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
                 <span className="text-sm font-bold">Users</span>
               </Link>
             </div>
           ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
               <i className="w-5 h-5 mr-3" data-lucide="users"></i>
               <span className="text-sm font-medium">Users</span>
             </Link>
@@ -586,13 +540,13 @@ export default function MainLayout() {
           {isHelpActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
                 <span className="text-sm font-bold">Help</span>
               </Link>
             </div>
           ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
               <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
               <span className="text-sm font-medium">Help</span>
             </Link>
@@ -948,7 +902,7 @@ export default function MainLayout() {
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
           <React.Fragment key={location.pathname}>
-            {renderMainContent()}
+            <Outlet context={layoutContext} />
           </React.Fragment>
         </main>
         {/* END: MainContentArea */}

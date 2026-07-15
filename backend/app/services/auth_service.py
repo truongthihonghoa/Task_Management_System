@@ -36,9 +36,9 @@ from app.repository.auth import (
     create_audit_log,
     create_user,
     create_user_token,
-    delete_user_token,
     get_user_by_email,
     get_verification_token,
+    revoke_refresh_token_for_access_token,
     reset_resend_window_if_needed,
     upsert_email_verification_token,
     upsert_verification_token,
@@ -671,9 +671,9 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
 
 
 def logout(db: Session, current_user, access_token: str) -> MessageResponse:
-    """Logout the user by deleting their access token."""
+    """Logout the user by revoking the refresh token for the current session."""
     try:
-        delete_user_token(db, access_token)
+        revoke_refresh_token_for_access_token(db, access_token)
         create_audit_log(
             db,
             user_id=current_user.user_id,
