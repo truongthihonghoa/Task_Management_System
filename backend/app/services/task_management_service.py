@@ -91,8 +91,19 @@ def _get_task_or_404(db: Session, task_id: str) -> Task:
     return task
 
 
+def _is_task_overdue(task: Task, *, now: datetime | None = None) -> bool:
+    if task.completed_at is None:
+        return False
+    if task.task_status in {"done", "cancelled"}:
+        return False
+
+    current_time = now or datetime.utcnow()
+    return task.completed_at.date() < current_time.date()
+
+
 def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     response = TaskListItemResponse.model_validate(task)
+    response.is_overdue = _is_task_overdue(task)
     response.attachments = sorted(
         [attachment for attachment in response.attachments if attachment.deleted_at is None],
         key=lambda attachment: attachment.uploaded_at,

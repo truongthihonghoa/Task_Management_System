@@ -2,6 +2,33 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import '../../styles/CreateTaskModal.css';
 import RichTextEditor from './RichTextEditor';
 
+const getCompletedDateValue = (task = {}) => task.completed_at || task.completedAt || task.date;
+
+const formatCompletedDate = (value, fallback = 'Jun 26, 2026') => {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const isCompletedDateOverdue = (value, status, apiOverdue = undefined) => {
+  if (typeof apiOverdue === 'boolean') return apiOverdue;
+  if (!value) return false;
+
+  const normalizedStatus = String(status || '').toLowerCase();
+  if (['done', 'cancelled'].includes(normalizedStatus)) return false;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const completedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return completedDate < todayDate;
+};
+
 
 export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTask, currentRole = 'ADMIN', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
   const [activeTab, setActiveTab] = useState('comments');
@@ -284,8 +311,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
       setIsTitleEditing(false);
 
 
-      if (task.date) {
-        const d = new Date(task.date);
+      const completedDateValue = getCompletedDateValue(task);
+      if (completedDateValue) {
+        const d = new Date(completedDateValue);
         if (!isNaN(d.getTime())) {
           setCompletedMonth(d.getMonth());
           setCompletedYear(d.getFullYear());
@@ -325,6 +353,14 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
 
 
   if (!task) return null;
+
+  const completedDateValue = getCompletedDateValue(localTask);
+  const completedDateLabel = formatCompletedDate(completedDateValue);
+  const isCompletedOverdue = isCompletedDateOverdue(
+    completedDateValue,
+    localTask.status || localTask.task_status,
+    localTask.is_overdue
+  );
 
 
   // Get initials from name
@@ -1362,11 +1398,16 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 <div className="relative">
                   <div
                     className={`flex items-center gap-1.5 ${canManageAdminFields ? 'cursor-pointer hover:bg-[#F4F5F7]' : ''} rounded px-2 py-1 transition-colors`}
-                    style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: isCompletedOverdue ? '#BA1A1A' : '#172B4D',
+                      backgroundColor: isCompletedOverdue ? '#FFF0F0' : 'transparent'
+                    }}
                     onClick={() => { if (canManageAdminFields) setIsCompletedOpen(!isCompletedOpen); }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: '#6B778C' }}>calendar_today</span>
-                    {localTask.date || 'Jun 26, 2026'}
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: isCompletedOverdue ? '#BA1A1A' : '#6B778C' }}>calendar_today</span>
+                    {completedDateLabel}
                   </div>
 
 
@@ -1435,8 +1476,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                           {getDaysInMonth(completedYear, completedMonth).map((day, i) => {
                             if (day === null) return <div key={`empty-${i}`} style={{ height: '32px' }} />;
                             // Check if current day is selected
-                            const isSelected = localTask.date && (() => {
-                              const d = new Date(localTask.date);
+                            const selectedCompletedDate = getCompletedDateValue(localTask);
+                            const isSelected = selectedCompletedDate && (() => {
+                              const d = new Date(selectedCompletedDate);
                               return !isNaN(d.getTime()) &&
                                 d.getDate() === day &&
                                 d.getMonth() === completedMonth &&
@@ -1461,8 +1503,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                                 }}
                                 onClick={() => {
                                   const formatted = `${monthAbbrs[completedMonth]} ${day}, ${completedYear}`;
-                                  setLocalTask(prev => ({ ...prev, date: formatted }));
-                                  syncTask({ date: formatted });
+                                  const completedAt = `${completedYear}-${String(completedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                  setLocalTask(prev => ({ ...prev, date: formatted, completed_at: completedAt }));
+                                  syncTask({ date: formatted, completed_at: completedAt });
                                   setIsCompletedOpen(false);
                                 }}
                               >
