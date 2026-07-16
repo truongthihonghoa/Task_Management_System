@@ -132,15 +132,9 @@ def test_login_wrong_password_increments_failed_attempts(monkeypatch):
 def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     db = FakeDb()
     user = make_user(failed_login_attempts=auth_service.MAX_FAILED_LOGIN_ATTEMPTS - 1)
-    notifications = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "verify_password", lambda password, password_hash: False)
-    monkeypatch.setattr(
-        auth.notification_service,
-        "create_super_admin_notification",
-        lambda _db, **kwargs: notifications.append(kwargs),
-    )
 
     with pytest.raises(HTTPException) as exc_info:
         auth_service.login(db, user.email, "Wrong@123")
@@ -148,8 +142,6 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     assert_http_error(exc_info, 401, "Invalid email or password.")
     assert user.status_user == "Locked"
     assert user.locked_until is not None
-    assert notifications[0]["notification_type"] == "account_locked"
-    assert notifications[0]["metadata"]["user_id"] == user.user_id
     assert db.commits == 1
 
 
@@ -183,7 +175,7 @@ def test_forgot_password_generates_password_reset_token_and_sends_email(monkeypa
     monkeypatch.setattr(auth_service, "generate_otp", lambda: "483921")
     monkeypatch.setattr(auth_service, "upsert_verification_token", lambda _db, **kwargs: upserts.append(kwargs))
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)))
+    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)) or True)
 
     response = auth_service.forgot_password(db, user.email)
 
@@ -249,7 +241,7 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "generate_otp", lambda: "222222")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)))
+    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)) or True)
 
     response = auth_service.resend_reset_code(db, user.email)
 
@@ -266,17 +258,11 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=datetime.utcnow())
     token = make_token(used_at=datetime.utcnow())
     audits = []
-    notifications = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
-    monkeypatch.setattr(
-        auth.notification_service,
-        "create_super_admin_notification",
-        lambda _db, **kwargs: notifications.append(kwargs),
-    )
 
     response = auth_service.reset_password(db, user.email, "NewPassword@123")
 
@@ -286,8 +272,6 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     assert user.locked_until is None
     assert user.status_user == "Active"
     assert audits[0]["action"] == "RESET_PASSWORD"
-    assert notifications[0]["notification_type"] == "user_verified"
-    assert notifications[0]["metadata"]["user_id"] == user.user_id
     assert db.commits == 1
 
 

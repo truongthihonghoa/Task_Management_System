@@ -10,6 +10,7 @@ from app.models.user import User
 from app.repository import main_layout as main_layout_repository
 from app.repository import recent_view as recent_view_repository
 from app.repository.notification import get_unread_count
+from app.services import help_service
 from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileResponse
 from app.schemas.main_layout import (
     CurrentUserLayoutResponse,
@@ -22,6 +23,7 @@ from app.schemas.main_layout import (
     MainLayoutNotificationResponse,
     MainLayoutPreferencesResponse,
     MainLayoutResponse,
+    MainLayoutHelpResponse,
     SidebarSummaryResponse,
     SpaceContextResponse,
     SpacePermissionResponse,
@@ -30,6 +32,8 @@ from app.schemas.main_layout import (
 SEARCH_TYPES = {"spaces", "tasks", "users"}
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = {"en", "vi"}
+HELP_GUIDES_ENDPOINT = "/api/v1/help/guides"
+HELP_GUIDE_DETAIL_ENDPOINT = "/api/v1/help/guides/{slug}"
 
 
 def initials_for_name(full_name: str) -> str:
@@ -141,11 +145,23 @@ def get_main_layout(db: Session, user: User) -> MainLayoutResponse:
         ),
         preferences=get_preferences(db, user),
         notification=MainLayoutNotificationResponse(unread_count=get_unread_count(db, user.user_id)),
+        help=get_help_navigation(),
     )
 
 
 def get_sidebar_summary(db: Session, user: User) -> SidebarSummaryResponse:
     return get_main_layout(db, user).sidebar
+
+
+def get_help_navigation() -> MainLayoutHelpResponse:
+    guides = help_service.list_guides().guides
+    return MainLayoutHelpResponse(
+        can_view=True,
+        guides_endpoint=HELP_GUIDES_ENDPOINT,
+        guide_detail_endpoint=HELP_GUIDE_DETAIL_ENDPOINT,
+        default_guide_slug=guides[0].slug if guides else None,
+        guide_count=len(guides),
+    )
 
 
 def get_preferences(db: Session, user: User) -> MainLayoutPreferencesResponse:
