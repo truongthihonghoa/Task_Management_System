@@ -371,6 +371,7 @@ class TaskListItemResponse(BaseModel):
     task_status: str
     completed_at: Optional[datetime]
     is_overdue: bool = False
+    is_due_today: bool = False
     story_points: Optional[float]
     created_at: datetime
     updated_at: datetime

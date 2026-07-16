@@ -338,6 +338,26 @@ def test_task_overdue_flag_is_calculated_from_completed_at():
     assert task_management_service._is_task_overdue(future_task, now=now) is False
 
 
+def test_task_due_today_flag_is_calculated_from_completed_at():
+    now = datetime(2026, 7, 15, 9, 0, 0)
+    due_today_task = SimpleNamespace(
+        completed_at=now.replace(hour=17),
+        task_status="in_progress",
+    )
+    done_task = SimpleNamespace(
+        completed_at=now,
+        task_status="done",
+    )
+    future_task = SimpleNamespace(
+        completed_at=now + timedelta(days=1),
+        task_status="new",
+    )
+
+    assert task_management_service._is_task_due_today(due_today_task, now=now) is True
+    assert task_management_service._is_task_due_today(done_task, now=now) is False
+    assert task_management_service._is_task_due_today(future_task, now=now) is False
+
+
 def test_task_list_item_response_includes_overdue_flag():
     now = datetime.utcnow()
     task = SimpleNamespace(
@@ -358,3 +378,26 @@ def test_task_list_item_response_includes_overdue_flag():
     response = task_management_service._build_task_list_item_response(task)
 
     assert response.is_overdue is True
+
+
+def test_task_list_item_response_includes_due_today_flag():
+    now = datetime.utcnow()
+    task = SimpleNamespace(
+        task_id="TSK00000007",
+        space_id="SPC00000002",
+        sprint_id="SPR00000003",
+        title="Database Migration Script",
+        priority="HIGH",
+        task_status="new",
+        completed_at=now,
+        story_points=5,
+        created_at=now,
+        updated_at=now,
+        sprint=None,
+        attachments=[],
+    )
+
+    response = task_management_service._build_task_list_item_response(task)
+
+    assert response.is_due_today is True
+    assert response.is_overdue is False

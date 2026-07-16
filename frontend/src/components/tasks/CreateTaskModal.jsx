@@ -104,8 +104,8 @@ function CalendarDropdown({ value, onSelect, onClose }) {
   );
 }
 
-const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSprint = '', onCreateTask, currentRole = 'ADMIN', currentUser }) => {
-  const statusOptions = currentRole === 'ADMIN'
+const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSprint = '', onCreateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser }) => {
+  const statusOptions = currentSpaceRole === 'OWNER'
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
   const [formData, setFormData] = useState(getInitialFormData());
