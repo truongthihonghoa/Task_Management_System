@@ -124,9 +124,14 @@ const formatTaskDate = (dateValue) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 
+const isCompletedTaskStatus = (status) => {
+  const normalizedStatus = String(status || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  return ['done', 'cancelled'].includes(normalizedStatus);
+};
+
 const isTaskOverdue = (dateValue, status, apiOverdue = undefined) => {
+  if (!dateValue || isCompletedTaskStatus(status)) return false;
   if (typeof apiOverdue === 'boolean') return apiOverdue;
-  if (!dateValue || ['Done', 'Cancelled'].includes(status)) return false;
 
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return false;
@@ -136,6 +141,23 @@ const isTaskOverdue = (dateValue, status, apiOverdue = undefined) => {
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   return dueDate < todayDate;
 };
+
+const isTaskDueToday = (dateValue, status, apiDueToday = undefined) => {
+  if (!dateValue || isCompletedTaskStatus(status)) return false;
+  if (typeof apiDueToday === 'boolean') return apiDueToday;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const dueDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return dueDate.getTime() === todayDate.getTime();
+};
+
+const DUE_TODAY_TEXT_CLASS = 'text-[#92400E]';
+const DUE_TODAY_BADGE_CLASS = 'bg-[#FEF3C7] text-[#92400E]';
+const DUE_TODAY_BORDER_CLASS = 'border-[#FCD34D]';
 
 const SPRINT_NAME_PREFIX = 'SCRUM Sprint';
 
@@ -263,7 +285,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
   const isSpaceOwner = currentSpaceRole === 'OWNER';
-  const canDirectAddPeople = isSpaceOwner || isAdmin;
+  const canModifyTasks = !isAdmin;
+  const canManageTasks = isSpaceOwner;
+  const canManagePeople = isSpaceOwner;
+  const canSelectTasks = canModifyTasks || canManageTasks;
+  const canDirectAddPeople = canManagePeople;
   const projectAssigneeOptions = [
     availableAssignees[0],
     ...projectPeople.map(person => ({
@@ -381,6 +407,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   }, [sprint1Data, extraSprints, setSprintsForModal]);
 
   const handleCreateTask = useCallback((taskData) => {
+    if (!canModifyTasks) return;
+
     const isSprint1 = !taskData.sprint || taskData.sprint === sprint1Data.name;
     const newTask = {
       title: taskData.summary,
@@ -404,7 +432,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         return s;
       }));
     }
-  }, [sprint1Data.name]);
+  }, [canModifyTasks, sprint1Data.name]);
 
   useEffect(() => {
     if (!setCreateTaskHandler) return undefined;
@@ -441,16 +469,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const toggleAll = () => {
-    if (selectedTasks.length === tasks.length) {
+    if (!canSelectTasks) return;
+    if (selectedTasks.length === filteredTasks.length) {
       setSelectedTasks([]);
     } else {
-      setSelectedTasks(tasks.map(t => t.id));
+      setSelectedTasks(filteredTasks.map(t => t.id));
     }
   };
 
   const handleDeleteSelectedTasks = () => {
     if (selectedTasks.length === 0) return;
-    if (!isAdmin) {
+    if (!canManageTasks) {
       alert('You do not have permission to delete selected tasks.');
       return;
     }
@@ -465,12 +494,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSelectedTasks([]);
   };
 
-  const toolbarStatuses = isAdmin
+  const toolbarStatuses = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
 
   const changeStatusForSelected = (newStatus) => {
     if (!newStatus) return;
+    if (!canModifyTasks) return;
     setTasks(prev => prev.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t));
     setExtraSprints(prev => prev.map(s => ({
       ...s,
@@ -480,12 +510,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const toggleTask = (id) => {
+    if (!canSelectTasks) return;
     setSelectedTasks(prev =>
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
     );
   };
 
   const onDragEnd = (result) => {
+    if (!canModifyTasks) return;
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
@@ -512,6 +544,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const handleCreateSprint = () => {
+    if (!canModifyTasks) return;
+
     const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
     // Start date = 2 weeks after previous sprint starts (rough estimate)
     const startDate = new Date();
@@ -610,7 +644,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   });
 
+  const visibleStatuses = isSpaceOwner
+    ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
+    : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
+
   const handleUpdateTask = (updatedTask) => {
+    if (!canModifyTasks) return;
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     setSelectedTaskDetail(updatedTask);
   };
@@ -682,17 +721,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-[#4C2B74]">{pageTitle}</h1>
-            <div className="relative">
-              <button
-                ref={addPeopleButtonRef}
-                type="button"
-                onClick={() => setIsAddPeopleOpen(prev => !prev)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
-              >
-                <span className="material-symbols-outlined text-[18px]">person_add</span>
-                Add people
-              </button>
-              {isAddPeopleOpen && (
+            {canManagePeople && (
+              <div className="relative">
+                <button
+                  ref={addPeopleButtonRef}
+                  type="button"
+                  onClick={() => setIsAddPeopleOpen(prev => !prev)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[18px]">person_add</span>
+                  Add people
+                </button>
+                {isAddPeopleOpen && (
                 <div
                   ref={addPeoplePanelRef}
                   className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
@@ -792,8 +832,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -855,7 +896,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   >
                     All statuses
                   </button>
-                  {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
+                  {visibleStatuses.map(status => (
                     <button
                       key={status}
                       type="button"
@@ -998,13 +1039,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             {/* Sprint Actions */}
             {view === 'board' && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsCompleteSprintOpen(true)}
-                  disabled={filteredTasks.length === 0}
-                  className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                >
-                  Complete sprint
-                </button>
+                {canModifyTasks && (
+                  <button
+                    onClick={() => setIsCompleteSprintOpen(true)}
+                    disabled={filteredTasks.length === 0}
+                    className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                  >
+                    Complete sprint
+                  </button>
+                )}
                 <button
                   ref={sprintInfoAnchorRef}
                   onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
@@ -1119,16 +1162,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
-              {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
+              {visibleStatuses.map(status => (
                 <KanbanColumn
                   key={status}
                   title={status}
                   tasks={filteredTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
-                  onCreateTask={setShowCreateModal ? () => setShowCreateModal(true) : undefined}
+                  onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
                   onOpenDetail={setSelectedTaskDetail}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
+                  canModifyTasks={canModifyTasks}
+                  canUseCancelledStatus={isSpaceOwner}
                   assigneeOptions={projectAssigneeOptions}
                 />
               ))}
@@ -1143,12 +1188,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
             <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
-                  checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
-                  onChange={toggleAll}
-                />
+                {canSelectTasks && (
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
+                    checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
+                    onChange={toggleAll}
+                  />
+                )}
                 <span
                   className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                   style={{ transform: isSprintExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -1170,7 +1217,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               <div className="flex items-center gap-4">
                 <div className="flex gap-1">
                   <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
-                    {filteredTasks.filter(t => t.status === 'New' || (isAdmin && t.status === 'Cancelled')).length}
+                    {filteredTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
                   </span>
                   <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
                     {filteredTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
@@ -1179,14 +1226,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     {filteredTasks.filter(t => t.status === 'Done').length}
                   </span>
                 </div>
-                <button
-                  onClick={() => setIsCompleteSprintOpen(true)}
-                  disabled={filteredTasks.length === 0}
-                  className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                >
-                  Complete sprint
-                </button>
+                {canModifyTasks && (
+                  <button
+                    onClick={() => setIsCompleteSprintOpen(true)}
+                    disabled={filteredTasks.length === 0}
+                    className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                  >
+                    Complete sprint
+                  </button>
+                )}
                 {/* Sprint 1 ... dropdown menu */}
+                {canModifyTasks && (
                 <div className="relative" data-sprint-menu>
                   <button
                     onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
@@ -1211,6 +1261,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     </div>
                   )}
                 </div>
+                )}
               </div>
             </div>
             {/* selection toolbar moved to bottom-fixed container */}
@@ -1225,7 +1276,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <th className="px-6 py-3 font-bold text-center">Priority</th>
                       <th className="px-6 py-3 font-bold">Status</th>
                       <th className="px-6 py-3 font-bold">Completed</th>
-                      {isAdmin && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                      {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
@@ -1233,7 +1284,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <TaskRow
                         key={task.id}
                         {...task}
-                        isAdmin={isAdmin}
+                        isAdmin={canManageTasks}
+                        canSelect={canSelectTasks}
+                        canModifyTasks={canModifyTasks}
                         isSelected={selectedTasks.includes(task.id)}
                         isAnySelected={selectedTasks.length > 0}
                         onToggle={() => toggleTask(task.id)}
@@ -1248,7 +1301,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             )}
             {/* + Create button below Sprint 1 table */}
-            {isSprintExpanded && (
+            {isSprintExpanded && canModifyTasks && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
                   onClick={() => {
@@ -1270,7 +1323,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               {/* Sprint Header */}
               <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
                 <div className="flex items-center gap-3">
-                  <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />
+                  {canSelectTasks && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
                   <span
                     className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                     style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -1291,14 +1344,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">0</span>
                     <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">0</span>
                   </div>
-                  <button
-                    onClick={() => setIsCompleteSprintOpen(true)}
-                    disabled={sprint.tasks.length === 0}
-                    className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprint.tasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                  >
-                    Complete sprint
-                  </button>
+                  {canModifyTasks && (
+                    <button
+                      onClick={() => setIsCompleteSprintOpen(true)}
+                      disabled={sprint.tasks.length === 0}
+                      className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprint.tasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                    >
+                      Complete sprint
+                    </button>
+                  )}
                   {/* Extra sprint ... dropdown menu */}
+                  {canModifyTasks && (
                   <div className="relative" data-sprint-menu>
                     <button
                       onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
@@ -1323,6 +1379,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
 
@@ -1338,7 +1395,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <th className="px-6 py-3 font-bold text-center">Priority</th>
                         <th className="px-6 py-3 font-bold">Status</th>
                         <th className="px-6 py-3 font-bold">Completed</th>
-                        {isAdmin && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                        {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant">
@@ -1346,7 +1403,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <TaskRow
                           key={task.id}
                           {...task}
-                          isAdmin={isAdmin}
+                          isAdmin={canManageTasks}
+                          canSelect={canSelectTasks}
+                          canModifyTasks={canModifyTasks}
                           isSelected={selectedTasks.includes(task.id)}
                           isAnySelected={selectedTasks.length > 0}
                           onToggle={() => toggleTask(task.id)}
@@ -1381,7 +1440,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               )}
 
               {/* + Create button below sprint body */}
-              {expandedSprints[sprint.id] && (
+              {expandedSprints[sprint.id] && canModifyTasks && (
                 <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                   <button
                     onClick={() => {
@@ -1399,7 +1458,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           ))}
 
           {/* CREATE SPRINT BUTTON */}
-          <div className="mt-4 flex justify-end" id="backlog-section">
+          {canModifyTasks && <div className="mt-4 flex justify-end" id="backlog-section">
             <button
               onClick={handleCreateSprint}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded-lg text-[12px] font-bold hover:bg-[#e6e1ff] hover:shadow-md transition-all shadow-sm"
@@ -1407,13 +1466,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               <span className="material-symbols-outlined text-[18px]">add</span>
               Create Sprint
             </button>
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Popovers & Modals */}
       {/* Bottom-fixed selection toolbar */}
-      {selectedTasks.length > 0 && (
+      {selectedTasks.length > 0 && canSelectTasks && (
         <div className="fixed left-6 right-6 bottom-4 z-50 flex justify-center pointer-events-none">
           <div className="w-full max-w-[620px] pointer-events-auto rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 text-slate-700 shadow-sm ring-1 ring-gray-400/80 relative">
             <div className="flex items-center justify-between">
@@ -1426,40 +1485,42 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 >
                   {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
                 </button>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
-                    className="px-2 py-1 text-[12px] rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
-                  >
-                    Change status
-                  </button>
-                  {showToolbarStatusMenu && (
-                    <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
-                      {toolbarStatuses.map(s => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => changeStatusForSelected(s)}
-                          className="w-full px-4 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {canModifyTasks && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
+                      className="px-2 py-1 text-[12px] rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                    >
+                      Change status
+                    </button>
+                    {showToolbarStatusMenu && (
+                      <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                        {toolbarStatuses.map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => changeStatusForSelected(s)}
+                            className="w-full px-4 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedTasks}
-                  disabled={!isAdmin}
-                  title={!isAdmin ? 'Only Super Admin can delete tasks' : ''}
-                  className={`px-3 py-1 text-[12px] font-semibold rounded-md ${isAdmin ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'} shadow-sm transition`}
-                >
-                  Delete
-                </button>
+                {canManageTasks && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelectedTasks}
+                    className="px-3 py-1 text-[12px] font-semibold rounded-md bg-red-600 hover:bg-red-700 text-white shadow-sm transition"
+                  >
+                    Delete
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedTasks([]); }}
@@ -1554,11 +1615,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         onClose={handleCloseTaskDetail}
         tasks={tasks}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
-        onUpdateTask={(updatedTask) => {
-          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-          setSelectedTaskDetail(updatedTask);
-        }}
+        onUpdateTask={handleUpdateTask}
       />
 
       <DeleteTaskModal
@@ -1571,7 +1630,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole, assigneeOptions = availableAssignees }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -1592,28 +1651,36 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} assigneeOptions={assigneeOptions} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
         )}
       </Droppable>
-      <button
-        onClick={onCreateTask}
-        className="hidden group-hover:flex items-center gap-2 px-3 py-2 mt-2 text-outline hover:text-on-surface transition-all w-full rounded hover:bg-surface-container/50"
-      >
-        <span className="material-symbols-outlined text-[20px]">add</span>
-        <span className="text-[13px] tracking-wide">Create</span>
-      </button>
+      {canModifyTasks && (
+        <button
+          onClick={onCreateTask}
+          className="hidden group-hover:flex items-center gap-2 px-3 py-2 mt-2 text-outline hover:text-on-surface transition-all w-full rounded hover:bg-surface-container/50"
+        >
+          <span className="material-symbols-outlined text-[20px]">add</span>
+          <span className="text-[13px] tracking-wide">Create</span>
+        </button>
+      )}
     </div>
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole, assigneeOptions = availableAssignees }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const isOverdue = isTaskOverdue(task.completed_at || date, status, task.is_overdue);
+  const isDueToday = !isOverdue && isTaskDueToday(task.completed_at || date, status, task.is_due_today);
   const displayDate = task.completed_at ? formatTaskDate(task.completed_at) : date;
+  const taskCardDateClass = isOverdue
+    ? 'bg-[#FFF0F0] text-[#BA1A1A]'
+    : isDueToday
+      ? DUE_TODAY_BADGE_CLASS
+      : 'bg-surface-container text-on-surface-variant';
   const [isEditing, setIsEditing] = React.useState(false);
   const [tempPts, setTempPts] = React.useState(pts);
   const [showMenu, setShowMenu] = React.useState(false);
@@ -1626,7 +1693,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
 
-  const statuses = currentRole === 'ADMIN'
+  const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
 
@@ -1716,14 +1783,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   };
 
   return (
-    <Draggable draggableId={id} index={index}>
+    <Draggable draggableId={id} index={index} isDragDisabled={!canModifyTasks}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{ ...provided.draggableProps.style }}
-          className={`relative bg-surface-container-lowest p-2.5 border border-outline-variant rounded shadow-sm hover:bg-surface-container-low transition-all group ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
+          className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${isDueToday ? DUE_TODAY_BORDER_CLASS : ''} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
           onClick={(e) => {
             if (e.defaultPrevented) return;
             onOpenDetail && onOpenDetail(task);
@@ -1732,9 +1799,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
           <div className="flex justify-between items-start mb-2 gap-2">
             <div className={`text-[11px] leading-snug flex items-center gap-1.5 flex-wrap ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
               {title}
-              <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+              {canModifyTasks && (
+                <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+              )}
             </div>
-            <div>
+            {canModifyTasks && <div>
               <button
                 ref={btnRef}
                 onClick={handleMenuToggle}
@@ -1742,7 +1811,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
               >
                 <span className="material-symbols-outlined text-[18px] text-outline">more_horiz</span>
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* Portal Menu - nổi lên trên mọi thứ với position:fixed */}
@@ -1836,7 +1905,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
 
 
           <div className="flex items-center gap-2 mb-4">
-            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${isOverdue ? 'bg-[#FFF0F0] text-[#BA1A1A]' : 'bg-surface-container text-on-surface-variant'}`}>
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${taskCardDateClass}`}>
               <span className="material-symbols-outlined text-[14px]">calendar_month</span>
               <span className="text-[11px] font-semibold">{displayDate}</span>
             </div>
@@ -1851,8 +1920,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
               <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{id}</span>
               {!isEditing ? (
                 <span
-                  className="px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline cursor-pointer hover:bg-primary/10 hover:text-primary"
-                  onClick={() => setIsEditing(true)}
+                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : ''}`}
+                  onClick={() => { if (canModifyTasks) setIsEditing(true); }}
                 >
                   {pts} pts
                 </span>
@@ -1889,9 +1958,10 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!canModifyTasks) return;
                   setShowAssigneeMenu(prev => !prev);
                 }}
-                className="w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold"
+                className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
                 style={{ backgroundColor: getAssigneeProfile(task.assignee).color, color: getAssigneeProfile(task.assignee).textColor || '#111' }}
               >
                 {getAssigneeProfile(task.assignee).initials || <span className="material-symbols-outlined">person</span>}
@@ -1931,9 +2001,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
   const isOverdue = isTaskOverdue(completed_at || date, status, is_overdue);
+  const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status, is_due_today);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;
+  const dateTextClass = isOverdue ? 'text-[#BA1A1A]' : isDueToday ? DUE_TODAY_TEXT_CLASS : 'text-outline';
   const statusClass = status === 'Need Revision'
     ? 'bg-[#FFF0F0] text-[#BA1A1A]'
     : status === 'Done'
@@ -1965,16 +2037,18 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
     >
       <td className="px-2 py-2">
         <div className="flex items-center justify-center gap-3">
-          <input
-            type="checkbox"
-            className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
-            checked={isSelected}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-          />
+          {canSelect && (
+            <input
+              type="checkbox"
+              className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
+              checked={isSelected}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+            />
+          )}
           <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{id}</span>
           <span className="px-1 py-0.5 bg-surface-container rounded text-[9px] font-bold text-outline">{pts}</span>
         </div>
@@ -1991,9 +2065,10 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!canModifyTasks) return;
                     setShowAssigneeMenu(prev => !prev);
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] hover:bg-[#F4F5F7] transition-colors"
+                  className={`flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] transition-colors ${canModifyTasks ? 'hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                 >
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
@@ -2003,7 +2078,7 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                   </div>
                   <span>{assignee || 'Unassigned'}</span>
                 </button>
-                {showAssigneeMenu && (
+                {showAssigneeMenu && canModifyTasks && (
                   <div
                     ref={assigneeMenuRef}
                     className="absolute left-0 top-full mt-2 w-44 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
@@ -2047,7 +2122,7 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
       <td className="px-4 py-2">
         <span className={`px-3 py-1 rounded-full ${statusClass} text-[9px] font-bold uppercase`}>{status}</span>
       </td>
-      <td className={`px-4 py-2 text-[11px] font-semibold ${isOverdue ? 'text-[#BA1A1A]' : 'text-outline'}`}>{displayDate}</td>
+      <td className={`px-4 py-2 text-[11px] font-semibold ${dateTextClass}`}>{displayDate}</td>
       {isAdmin && (
         <td className="px-4 py-2 text-center">
           <span
