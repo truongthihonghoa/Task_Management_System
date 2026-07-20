@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -85,6 +86,35 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+def _patch_upload_file_schemas(schema_part):
+    if isinstance(schema_part, dict):
+        if schema_part.get("type") == "string" and schema_part.get("contentMediaType") == "application/octet-stream":
+            schema_part.pop("contentMediaType", None)
+            schema_part["format"] = "binary"
+        for value in schema_part.values():
+            _patch_upload_file_schemas(value)
+    elif isinstance(schema_part, list):
+        for item in schema_part:
+            _patch_upload_file_schemas(item)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    _patch_upload_file_schemas(openapi_schema)
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 @app.exception_handler(HTTPException)
 def http_exception_handler(_request, exc: HTTPException) -> JSONResponse:

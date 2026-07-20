@@ -403,7 +403,23 @@ export default function MainLayout() {
 
   const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
   const openDashboardPath = (path, updates = {}) => {
-    navigate(dashboardPath(path, updates));
+    const targetPath = dashboardPath(path, updates);
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+
+    if (isLeavingTaskPage && typeof window !== 'undefined') {
+      window.location.assign(targetPath);
+      return;
+    }
+
+    navigate(targetPath);
+  };
+
+  const handleDashboardLinkClick = (event, path, updates = {}) => {
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+    if (!isLeavingTaskPage) return;
+
+    event.preventDefault();
+    openDashboardPath(path, updates);
   };
 
   const handleSearchSpaceClick = (taskId) => {
@@ -421,7 +437,7 @@ export default function MainLayout() {
 
   const handleSearchUserClick = (user) => {
     if (!isSuperAdmin || !user?.id) return;
-    navigate(`/dashboard/users${buildSearchParams({ userId: user.id, mode: 'edit' })}`);
+    openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -496,77 +512,125 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 space-y-1 mt-4">
-          {primaryNavigationItems.map((item) => {
-            const isActive = item.match(location.pathname);
-            const linkContent = (
-              <>
-                <div className="flex items-center min-w-0">
-                  <i
-                    className={`w-5 h-5 mr-3 shrink-0 ${isActive ? 'text-[#2D1B4E]' : ''}`}
-                    data-lucide={item.icon}
-                  ></i>
-                  <span className={`text-sm ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
-                </div>
-                {item.badge !== undefined && (
-                  <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-              </>
-            );
+<nav className="flex-1 px-3 space-y-1 mt-4">
+  {primaryNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
 
-            return isActive ? (
-              <div className="relative flex items-center" key={item.key}>
-                <div className="sidebar-active-indicator"></div>
-                <Link
-                  className={`flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 ${item.badge !== undefined ? 'justify-between' : ''}`}
-                  to={dashboardPath(item.path)}
-                >
-                  {linkContent}
-                </Link>
-              </div>
-            ) : (
-              <Link
-                className={`flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors ${item.badge !== undefined ? 'justify-between' : ''}`}
-                key={item.key}
-                to={dashboardPath(item.path)}
-              >
-                {linkContent}
-              </Link>
-            );
-          })}
-        </nav>
+    const linkContent = (
+      <>
+        <div className="flex items-center min-w-0">
+          <i
+            className={`w-5 h-5 mr-3 shrink-0 ${
+              isActive ? 'text-[#2D1B4E]' : ''
+            }`}
+            data-lucide={item.icon}
+          ></i>
 
-        {/* Bottom Navigation */}
-        <div className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${showSettings ? '-translate-y-[100px]' : ''}`}>
-          {supportNavigationItems.map((item) => {
-            const isActive = item.match(location.pathname);
-            return isActive ? (
-              <div className="relative flex items-center" key={item.key} ref={item.key === 'settings' ? settingsRef : undefined}>
-                <div className="sidebar-active-indicator"></div>
-                <Link
-                  className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2"
-                  to={dashboardPath(item.path)}
-                >
-                  <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide={item.icon}></i>
-                  <span className="text-sm font-bold">{item.label}</span>
-                </Link>
-              </div>
-            ) : (
-              <Link
-                className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors"
-                key={item.key}
-                ref={item.key === 'settings' ? settingsRef : undefined}
-                to={dashboardPath(item.path)}
-              >
-                <i className="w-5 h-5 mr-3" data-lucide={item.icon}></i>
-                <span className="text-sm font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
+          <span
+            className={`text-sm ${
+              isActive ? 'font-bold' : 'font-medium'
+            }`}
+          >
+            {item.label}
+          </span>
         </div>
+
+        {item.badge !== undefined && (
+          <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </>
+    );
+
+    return isActive ? (
+      <div className="relative flex items-center" key={item.key}>
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className={`flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 ${
+            item.badge !== undefined ? 'justify-between' : ''
+          }`}
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          {linkContent}
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className={`flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors ${
+          item.badge !== undefined ? 'justify-between' : ''
+        }`}
+        key={item.key}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        {linkContent}
+      </Link>
+    );
+  })}
+</nav>
+        {/* Bottom Navigation */}
+<div
+  className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${
+    showSettings ? '-translate-y-[100px]' : ''
+  }`}
+>
+  {supportNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
+
+    return isActive ? (
+      <div
+        className="relative flex items-center"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+      >
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2"
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          <i
+            className="w-5 h-5 mr-3 text-[#2D1B4E]"
+            data-lucide={item.icon}
+          ></i>
+
+          <span className="text-sm font-bold">
+            {item.label}
+          </span>
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        <i
+          className="w-5 h-5 mr-3"
+          data-lucide={item.icon}
+        ></i>
+
+        <span className="text-sm font-medium">
+          {item.label}
+        </span>
+      </Link>
+    );
+  })}
+</div>
       </aside>
       {/* END: LeftSidebar */}
 

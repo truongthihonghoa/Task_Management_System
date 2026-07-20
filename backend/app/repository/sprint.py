@@ -68,3 +68,15 @@ def count_active_tasks_by_sprint(db: Session, sprint_id: str) -> int:
         )
         .count()
     )
+
+
+def count_incomplete_tasks_by_sprint(db: Session, sprint_id: str) -> int:
+    return (
+        db.query(Task)
+        .filter(
+            Task.sprint_id == sprint_id,
+            Task.deleted_at.is_(None),
+            Task.task_status != "done",
+        )
+        .count()
+    )
