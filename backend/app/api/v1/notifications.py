@@ -23,11 +23,9 @@ from app.schemas.notification import (
     NotificationResponse,
     NotificationUnreadCountResponse,
 )
-from app.services.notification_service import NotificationService
 
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
-notification_service = NotificationService()
 
 
 @router.get(
@@ -85,25 +83,6 @@ def get_unread_count(
 
 
 @router.patch(
-    "/read-all",
-    response_model=NotificationBulkUpdateResponse,
-    summary="Mark all notifications as read",
-    include_in_schema=False,
-)
-def mark_all_read(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationBulkUpdateResponse:
-    try:
-        updated_count = notification_repository.mark_all_read(db, user_id=current_user.user_id, read_at=datetime.utcnow())
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationBulkUpdateResponse(updated_count=updated_count)
-
-
-@router.patch(
     "/read-state",
     response_model=NotificationBulkUpdateResponse,
     summary="Update notification read state",
@@ -129,31 +108,6 @@ def update_read_state(
                 is_read=payload.is_read,
                 read_at=datetime.utcnow() if payload.is_read else None,
             )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationBulkUpdateResponse(updated_count=updated_count)
-
-
-@router.patch(
-    "/read",
-    response_model=NotificationBulkUpdateResponse,
-    summary="Bulk mark notifications as read",
-    include_in_schema=False,
-)
-def bulk_mark_read(
-    payload: NotificationBulkIdsRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationBulkUpdateResponse:
-    try:
-        updated_count = notification_repository.bulk_mark_read(
-            db,
-            user_id=current_user.user_id,
-            notification_ids=payload.notification_ids,
-            read_at=datetime.utcnow(),
-        )
         db.commit()
     except Exception:
         db.rollback()
@@ -225,60 +179,6 @@ def get_notification(
         except Exception:
             db.rollback()
             raise
-    return notification
-
-
-@router.patch(
-    "/{notification_id}/read",
-    response_model=NotificationResponse,
-    summary="Mark one notification as read",
-    responses={404: {"description": "Notification not found"}},
-    include_in_schema=False,
-)
-def mark_notification_read(
-    notification_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationResponse:
-    try:
-        notification = notification_service.mark_read(db, user_id=current_user.user_id, notification_id=notification_id)
-        if notification is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-        db.commit()
-        db.refresh(notification)
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        raise
-    return notification
-
-
-@router.patch(
-    "/{notification_id}/unread",
-    response_model=NotificationResponse,
-    summary="Mark one notification as unread",
-    responses={404: {"description": "Notification not found"}},
-    include_in_schema=False,
-)
-def mark_notification_unread(
-    notification_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationResponse:
-    try:
-        notification = notification_service.mark_unread(db, user_id=current_user.user_id, notification_id=notification_id)
-        if notification is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-        db.commit()
-        db.refresh(notification)
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        raise
     return notification
 
 

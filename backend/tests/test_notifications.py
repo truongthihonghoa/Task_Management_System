@@ -212,7 +212,7 @@ def test_list_filters_are_forwarded_to_repository(monkeypatch):
     assert captured["sort_order"] == "asc"
 
 
-def test_openapi_documents_page_size_limit_read_state_and_hidden_legacy_patch_endpoints():
+def test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoints():
     schema = notification_api.router.routes[0].body_field
     app = __import__("app.main", fromlist=["app"]).app
     app.openapi_schema = None
@@ -230,11 +230,11 @@ def test_openapi_documents_page_size_limit_read_state_and_hidden_legacy_patch_en
     assert "post" not in notifications_path
     assert page_size_param["schema"]["maximum"] == 100
     assert "patch" in openapi["paths"]["/api/v1/notifications/read-state"]
-    assert "patch" not in openapi["paths"].get("/api/v1/notifications/read-all", {})
+    assert "/api/v1/notifications/read-all" not in openapi["paths"]
     assert "patch" not in read_path
     assert "patch" not in detail_path
-    assert "patch" not in openapi["paths"].get("/api/v1/notifications/{notification_id}/read", {})
-    assert "patch" not in openapi["paths"].get("/api/v1/notifications/{notification_id}/unread", {})
+    assert "/api/v1/notifications/{notification_id}/read" not in openapi["paths"]
+    assert "/api/v1/notifications/{notification_id}/unread" not in openapi["paths"]
 
 
 def test_get_notification_marks_unread_notification_as_read(monkeypatch):
@@ -269,44 +269,6 @@ def test_get_notification_keeps_read_notification_without_commit(monkeypatch):
     assert response.notification_id == "NTF00000001"
     assert db.commits == 0
     assert db.refreshed == []
-
-
-def test_mark_read_is_idempotent_and_commits(monkeypatch):
-    db = FakeDb()
-    notification = make_notification(is_read=True, read_at=datetime.utcnow())
-    monkeypatch.setattr(notification_api.notification_service, "mark_read", lambda _db, user_id, notification_id: notification)
-
-    response = notification_api.mark_notification_read("NTF00000001", db=db, current_user=make_user())
-
-    assert response.notification_id == "NTF00000001"
-    assert db.commits == 1
-
-
-def test_mark_unread_clears_read_state(monkeypatch):
-    db = FakeDb()
-    notification = make_notification(is_read=False, read_at=None)
-    monkeypatch.setattr(notification_api.notification_service, "mark_unread", lambda _db, user_id, notification_id: notification)
-
-    response = notification_api.mark_notification_unread("NTF00000001", db=db, current_user=make_user())
-
-    assert response.is_read is False
-    assert response.read_at is None
-    assert db.commits == 1
-
-
-def test_mark_all_read_updates_only_current_user(monkeypatch):
-    captured = {}
-
-    def fake_mark_all_read(_db, **kwargs):
-        captured.update(kwargs)
-        return 4
-
-    monkeypatch.setattr(notification_api.notification_repository, "mark_all_read", fake_mark_all_read)
-
-    response = notification_api.mark_all_read(db=FakeDb(), current_user=make_user("USR00000077"))
-
-    assert captured["user_id"] == "USR00000077"
-    assert response.updated_count == 4
 
 
 def test_update_read_state_marks_all_read_for_current_user(monkeypatch):
@@ -382,26 +344,6 @@ def test_bulk_ids_deduplicate_and_empty_request_rejected():
 def test_bulk_ids_have_maximum_size():
     with pytest.raises(ValidationError):
         NotificationBulkIdsRequest(notification_ids=[f"NTF{i:08d}" for i in range(101)])
-
-
-def test_bulk_mark_read_uses_current_user_and_deduped_ids(monkeypatch):
-    captured = {}
-
-    def fake_bulk_mark_read(_db, **kwargs):
-        captured.update(kwargs)
-        return 2
-
-    monkeypatch.setattr(notification_api.notification_repository, "bulk_mark_read", fake_bulk_mark_read)
-
-    response = notification_api.bulk_mark_read(
-        NotificationBulkIdsRequest(notification_ids=["NTF00000001", "NTF00000001"]),
-        db=FakeDb(),
-        current_user=make_user("USR00000001"),
-    )
-
-    assert response.updated_count == 2
-    assert captured["user_id"] == "USR00000001"
-    assert captured["notification_ids"] == ["NTF00000001"]
 
 
 def test_delete_single_returns_204_and_other_user_returns_404(monkeypatch):

@@ -86,41 +86,10 @@ def create_notification(db: Session, **values) -> Notification:
     return notification
 
 
-def mark_notification_read_state(
-    db: Session,
-    *,
-    notification_id: str,
-    user_id: str,
-    is_read: bool,
-    read_at,
-) -> Notification | None:
-    notification = get_notification_for_user(db, notification_id, user_id)
-    if notification is None:
-        return None
-    notification.is_read = is_read
-    notification.read_at = read_at
-    db.flush()
-    return notification
-
-
 def mark_all_read(db: Session, *, user_id: str, read_at) -> int:
     updated = (
         db.query(Notification)
         .filter(Notification.user_id == user_id, Notification.is_read.is_(False))
-        .update({Notification.is_read: True, Notification.read_at: read_at}, synchronize_session=False)
-    )
-    db.flush()
-    return int(updated)
-
-
-def bulk_mark_read(db: Session, *, user_id: str, notification_ids: list[str], read_at) -> int:
-    updated = (
-        db.query(Notification)
-        .filter(
-            Notification.user_id == user_id,
-            Notification.notification_id.in_(notification_ids),
-            Notification.is_read.is_(False),
-        )
         .update({Notification.is_read: True, Notification.read_at: read_at}, synchronize_session=False)
     )
     db.flush()
