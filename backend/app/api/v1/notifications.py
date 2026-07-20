@@ -25,12 +25,17 @@ from app.schemas.notification import (
 )
 
 
-router = APIRouter(prefix="/notifications", tags=["Notifications"])
+router = APIRouter(prefix="/notifications")
+
+NOTIFICATION_QUERY_TAG = "Notifications"
+NOTIFICATION_READ_STATE_TAG = "Notifications - Read State"
+NOTIFICATION_DELETE_TAG = "Notifications - Delete"
 
 
 @router.get(
     "",
     response_model=NotificationListResponse,
+    tags=[NOTIFICATION_QUERY_TAG],
     summary="Get current user's notifications",
     description="Returns paginated notifications belonging to the authenticated user.",
 )
@@ -73,6 +78,7 @@ def list_notifications(
 @router.get(
     "/unread-count",
     response_model=NotificationUnreadCountResponse,
+    tags=[NOTIFICATION_QUERY_TAG],
     summary="Get unread notification count",
 )
 def get_unread_count(
@@ -85,6 +91,7 @@ def get_unread_count(
 @router.patch(
     "/read-state",
     response_model=NotificationBulkUpdateResponse,
+    tags=[NOTIFICATION_READ_STATE_TAG],
     summary="Update notification read state",
     description="Marks all notifications as read, or selected notifications as read/unread for the authenticated user.",
 )
@@ -118,6 +125,7 @@ def update_read_state(
 @router.delete(
     "/read",
     response_model=NotificationDeleteResponse,
+    tags=[NOTIFICATION_DELETE_TAG],
     summary="Delete read notifications",
 )
 def delete_read_notifications(
@@ -136,6 +144,7 @@ def delete_read_notifications(
 @router.delete(
     "",
     response_model=NotificationDeleteResponse,
+    tags=[NOTIFICATION_DELETE_TAG],
     summary="Bulk delete notifications",
 )
 def bulk_delete_notifications(
@@ -159,6 +168,7 @@ def bulk_delete_notifications(
 @router.get(
     "/{notification_id}",
     response_model=NotificationResponse,
+    tags=[NOTIFICATION_QUERY_TAG],
     summary="Get notification details",
     responses={404: {"description": "Notification not found"}},
 )
@@ -185,6 +195,7 @@ def get_notification(
 @router.delete(
     "/{notification_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    tags=[NOTIFICATION_DELETE_TAG],
     summary="Delete a notification",
     responses={404: {"description": "Notification not found"}},
 )
