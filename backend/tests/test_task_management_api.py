@@ -9,6 +9,35 @@ from app.schemas.pydantic_models import TaskCreate, TaskListItemResponse, TaskUp
 from app.services import task_management_service
 
 
+def test_assignment_routes_are_documented_under_task_management():
+    app = __import__("app.main", fromlist=["app"]).app
+    app.openapi_schema = None
+    openapi = app.openapi()
+
+    task_management_operations = []
+    for path, path_item in openapi["paths"].items():
+        for method, operation in path_item.items():
+            if operation["tags"] == ["task-management"]:
+                task_management_operations.append((method, path, operation["summary"]))
+
+    assert task_management_operations == [
+        ("post", "/api/v1/spaces/{space_id}/tasks", "Create Task"),
+        ("get", "/api/v1/spaces/{space_id}/tasks", "List Tasks"),
+        ("post", "/api/v1/spaces/{space_id}/tasks/with-attachments", "Create Task With Attachments"),
+        ("post", "/api/v1/tasks/{task_id}/assignees", "Assign Task Assignees"),
+        ("get", "/api/v1/tasks/{task_id}/assignees", "Get Task Assignees"),
+        ("put", "/api/v1/tasks/{task_id}/assignees", "Reassign Task Assignee"),
+        ("delete", "/api/v1/tasks/{task_id}/assignees/{assignee_id}", "Remove Task Assignee"),
+        ("get", "/api/v1/tasks/{task_id}/assignment-history", "Get Task Assignment History"),
+        ("get", "/api/v1/spaces/{space_id}/tasks/deleted", "List Deleted Tasks"),
+        ("get", "/api/v1/spaces/{space_id}/tasks/board", "Get Task Board"),
+        ("get", "/api/v1/tasks/{task_id}", "Get Task Detail"),
+        ("patch", "/api/v1/tasks/{task_id}", "Update Task"),
+        ("delete", "/api/v1/tasks/{task_id}", "Delete Task"),
+        ("post", "/api/v1/tasks/{task_id}/restore", "Restore Task"),
+    ]
+
+
 def test_create_task_delegates_to_service(monkeypatch):
     db = object()
     user = SimpleNamespace(user_id="USR00000003")
