@@ -12,13 +12,21 @@ from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.email import get_email_service
+from app.models.notification import Notification
+from app.models.recent_view import RecentView
 from app.models.space import Space
 from app.models.space_member import SpaceMember
 from app.models.space_member_request import SpaceMemberRequest
+from app.models.sprint import Sprint
+from app.models.task import Task
+from app.models.task_assignee import TaskAssignee
+from app.models.task_assignment_history import TaskAssignmentHistory
+from app.models.task_attachment import TaskAttachment
+from app.models.task_comment import TaskComment
 from app.models.user import User
 from app.services.notification_service import NotificationService
 
@@ -117,6 +125,14 @@ def _ensure_space_mutable(space: Space) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Space is deleted",
+        )
+
+
+def _ensure_space_can_be_deleted(space: Space) -> None:
+    if space.status_space == "Deleted" or space.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is already deleted",
         )
 
 
@@ -737,7 +753,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     space = get_space_or_404(db, space_id)
     if current_user is not None:
         _ensure_space_owner(space, current_user)
-    _ensure_space_mutable(space)
+    _ensure_space_can_be_deleted(space)
     now = datetime.utcnow()
     space.status_space = "Deleted"
     space.deleted_at = now
@@ -756,6 +772,80 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     db.commit()
     db.refresh(space)
     return _space_response(space)
+
+
+def list_expired_deleted_space_records(db: Session, *, now: datetime | None = None) -> list[Space]:
+    cutoff = (now or datetime.utcnow()) - timedelta(days=TRASH_RETENTION_DAYS)
+    return (
+        db.query(Space)
+        .filter(
+            Space.status_space == "Deleted",
+            Space.deleted_at.isnot(None),
+            Space.deleted_at <= cutoff,
+        )
+        .order_by(Space.deleted_at.asc(), Space.space_id.asc())
+        .all()
+    )
+
+
+def hard_delete_space(db: Session, space_id: str, *, commit: bool = True) -> bool:
+    space = db.query(Space).filter(Space.space_id == space_id).first()
+    if not space:
+        return False
+
+    task_ids = [task_id for (task_id,) in db.query(Task.task_id).filter(Task.space_id == space_id).all()]
+
+    if task_ids:
+        db.query(RecentView).filter(
+            RecentView.entity_type == "task",
+            RecentView.entity_id.in_(task_ids),
+        ).delete(synchronize_session=False)
+        db.query(Notification).filter(
+            or_(Notification.task_id.in_(task_ids), Notification.space_id == space_id)
+        ).delete(synchronize_session=False)
+        db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).update(
+            {TaskComment.parent_comment_id: None},
+            synchronize_session=False,
+        )
+        db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskAttachment).filter(TaskAttachment.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskAssignee).filter(TaskAssignee.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskAssignmentHistory).filter(TaskAssignmentHistory.task_id.in_(task_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Task).filter(Task.task_id.in_(task_ids)).delete(synchronize_session=False)
+    else:
+        db.query(Notification).filter(Notification.space_id == space_id).delete(synchronize_session=False)
+
+    db.query(RecentView).filter(
+        RecentView.entity_type == "space",
+        RecentView.entity_id == space_id,
+    ).delete(synchronize_session=False)
+    db.query(SpaceMemberRequest).filter(SpaceMemberRequest.space_id == space_id).delete(synchronize_session=False)
+    db.query(SpaceMember).filter(SpaceMember.space_id == space_id).delete(synchronize_session=False)
+    db.query(Sprint).filter(Sprint.space_id == space_id).delete(synchronize_session=False)
+    db.query(Space).filter(Space.space_id == space_id).delete(synchronize_session=False)
+
+    if commit:
+        db.commit()
+    return True
+
+
+def cleanup_expired_deleted_spaces(db: Session, *, now: datetime | None = None) -> int:
+    expired_spaces = list_expired_deleted_space_records(db, now=now)
+    deleted_count = 0
+
+    try:
+        for space in expired_spaces:
+            if hard_delete_space(db, space.space_id, commit=False):
+                deleted_count += 1
+        if deleted_count:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return deleted_count
 
 
 def list_space_members(db: Session, space_id: str, current_user: User | None = None) -> List[SpaceMemberResponse]:

@@ -29,20 +29,6 @@ router = APIRouter(tags=["task-management"])
 )
 def create_task(
     space_id: str,
-    payload: TaskCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskDetailResponse:
-    return task_management_service.create_task(db, space_id, payload, current_user)
-
-
-@router.post(
-    "/spaces/{space_id}/tasks/with-attachments",
-    response_model=TaskDetailResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_task_with_attachments(
-    space_id: str,
     title: str = Form(...),
     sprint_id: str = Form(...),
     priority: TaskPriority = Form(...),
@@ -50,7 +36,7 @@ def create_task_with_attachments(
     task_status: TaskStatus = Form(default="new"),
     story_points: float = Form(default=0),
     completed_at: datetime | None = Form(default=None),
-    attachments: list[UploadFile] | None = File(default=None),
+    attachments: list[UploadFile] = File(default_factory=list),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
@@ -63,7 +49,7 @@ def create_task_with_attachments(
         story_points=story_points,
         completed_at=completed_at,
     )
-    return task_management_service.create_task_with_attachments(
+    return task_management_service.create_task(
         db,
         space_id,
         payload,
@@ -159,12 +145,3 @@ def delete_task(
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
     return task_management_service.delete_task(db, task_id, current_user)
-
-
-@router.post("/tasks/{task_id}/restore", response_model=TaskDetailResponse)
-def restore_task(
-    task_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskDetailResponse:
-    return task_management_service.restore_task(db, task_id, current_user)
