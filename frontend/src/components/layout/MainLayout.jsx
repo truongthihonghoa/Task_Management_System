@@ -386,7 +386,23 @@ export default function MainLayout() {
 
   const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
   const openDashboardPath = (path, updates = {}) => {
-    navigate(dashboardPath(path, updates));
+    const targetPath = dashboardPath(path, updates);
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+
+    if (isLeavingTaskPage && typeof window !== 'undefined') {
+      window.location.assign(targetPath);
+      return;
+    }
+
+    navigate(targetPath);
+  };
+
+  const handleDashboardLinkClick = (event, path, updates = {}) => {
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+    if (!isLeavingTaskPage) return;
+
+    event.preventDefault();
+    openDashboardPath(path, updates);
   };
 
   const handleSearchSpaceClick = (taskId) => {
@@ -404,7 +420,7 @@ export default function MainLayout() {
 
   const handleSearchUserClick = (user) => {
     if (!isSuperAdmin || !user?.id) return;
-    navigate(`/dashboard/users${buildSearchParams({ userId: user.id, mode: 'edit' })}`);
+    openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -483,13 +499,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isDashboardActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
                 <span className="text-sm font-bold">Dashboard</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard')}>
               <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
               <span className="text-sm font-medium">Dashboard</span>
             </Link>
@@ -499,7 +515,7 @@ export default function MainLayout() {
           {isTasksActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/spaces')}>
                 <div className="flex items-center">
                   <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
                   <span className="text-sm font-bold">Tasks</span>
@@ -508,7 +524,7 @@ export default function MainLayout() {
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/spaces')}>
               <div className="flex items-center">
                 <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
                 <span className="text-sm font-medium">Tasks</span>
@@ -521,13 +537,13 @@ export default function MainLayout() {
           {isSuperAdmin && (isUsersActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/users')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
                 <span className="text-sm font-bold">Users</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/users')}>
               <i className="w-5 h-5 mr-3" data-lucide="users"></i>
               <span className="text-sm font-medium">Users</span>
             </Link>
@@ -540,13 +556,13 @@ export default function MainLayout() {
           {isHelpActive ? (
             <div className="relative flex items-center">
               <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
+              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/help')}>
                 <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
                 <span className="text-sm font-bold">Help</span>
               </Link>
             </div>
           ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
+            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')} onClick={(event) => handleDashboardLinkClick(event, '/dashboard/help')}>
               <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
               <span className="text-sm font-medium">Help</span>
             </Link>
