@@ -22,7 +22,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.email import send_verification_email
+from app.core.email import EmailService
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -42,6 +42,10 @@ from app.repository.auth import (
     reset_resend_window_if_needed,
     upsert_email_verification_token,
     upsert_verification_token,
+    get_user_token_by_refresh_token,
+    update_user_token,
+    revoke_all_user_tokens,
+    get_user_by_id,
 )
 from app.models.space_member import SpaceMember
 from app.models.space_member_request import SpaceMemberRequest
@@ -410,7 +414,7 @@ def login(db: Session, email: str, password: str) -> LoginResponse:
 
 
 def forgot_password(db: Session, email: str) -> MessageResponse:
-    """Send a PASSWORD_RESET OTP to the user's email."""
+    """Send a password reset link to the user's email."""
     now = datetime.utcnow()
     user = get_user_by_email(db, email)
 
@@ -420,13 +424,13 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             detail={"message": "Email does not exist."},
         )
 
-    otp_code = generate_otp()
-
+    # Generate a token (using OTP for simplicity) and store it
+    token_code = generate_otp()
     try:
         upsert_verification_token(
             db,
             email=email,
-            otp_code=otp_code,
+            otp_code=token_code,
             token_type=PASSWORD_RESET,
             expires_at=_otp_expires_at(now),
             resend_count=0,
@@ -441,16 +445,15 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
-        
-        # Send email and check if successful
-        email_sent = send_verification_email(email, otp_code)
+        # Send password reset email with link
+        email_service = EmailService()
+        email_sent = email_service.send_password_reset_email(email, token_code)
         if not email_sent:
             db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"message": "Failed to send verification email. Please try again later."},
+                detail={"message": "Failed to send password reset email. Please try again later."},
             )
-        
         db.commit()
     except HTTPException:
         raise
@@ -458,7 +461,7 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
         db.rollback()
         raise
 
-    return MessageResponse(message="Verification code sent successfully.")
+    return MessageResponse(message="Password reset link sent successfully.")
 
 
 def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse:
@@ -554,8 +557,8 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
     return MessageResponse(message="Verification code has been resent.")
 
 
-def reset_password(db: Session, email: str, new_password: str) -> MessageResponse:
-    """Hash and save new password after verifying the reset token."""
+def reset_password(db: Session, email: str, token: str, new_password: str) -> MessageResponse:
+    """Reset password using a token from the reset link."""
     now = datetime.utcnow()
     user = get_user_by_email(db, email)
 
@@ -565,16 +568,21 @@ def reset_password(db: Session, email: str, new_password: str) -> MessageRespons
             detail={"message": "Email does not exist."},
         )
 
-    token = _get_verified_password_reset_token(db, email=email, now=now)
+    # Validate token (must be valid, not used, not expired)
+    token_obj = _get_valid_verification_token(
+        db, email=email, code=token, token_type=PASSWORD_RESET, now=now
+    )
 
     try:
+        # Mark token as used
+        token_obj.used_at = now
+        # Update password
         user.password_hash = hash_password(new_password)
         user.failed_login_attempts = 0
         user.locked_until = None
         if user.status_user == "Locked":
             user.status_user = "Active"
         user.updated_at = now
-        token.expires_at = now  # invalidate token immediately after use
         create_audit_log(
             db,
             user_id=user.user_id,
@@ -663,11 +671,13 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
         raise
 
     return RegisterResponse(
-        message="Registration successful.",
-        user=user,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
+    message="Registration successful.",
+    email=user.email,
+    full_name=user.full_name,
+    role=user.role,
+    access_token=access_token,
+    refresh_token=refresh_token,
+)
 
 
 def logout(db: Session, current_user, access_token: str) -> MessageResponse:
@@ -687,3 +697,89 @@ def logout(db: Session, current_user, access_token: str) -> MessageResponse:
         raise
 
     return MessageResponse(message="Successfully logged out.")
+
+
+def refresh_tokens(db: Session, refresh_token: str) -> LoginResponse:
+    """Validate a refresh token and return a new access token."""
+    from jose import jwt, JWTError
+    from app.core.security import JWT_SECRET_KEY, JWT_ALGORITHM
+    now = datetime.utcnow()
+
+    # 1. Decode and validate JWT refresh token
+    try:
+        payload = jwt.decode(refresh_token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"message": "Invalid token type."},
+            )
+        user_id = payload.get("user_id") or payload.get("sub")
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "Invalid or expired refresh token."},
+        )
+
+    # 2. Get UserToken record from db
+    stored_token = get_user_token_by_refresh_token(db, refresh_token)
+
+    if not stored_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "Refresh token is invalid."},
+        ) 
+
+    if stored_token.is_revoked:
+        raise HTTPException(
+            status_code=401,
+            detail={"message": "Refresh token has been revoked."},
+        ) 
+
+    if stored_token.refresh_expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "Refresh token has expired."},
+        )
+
+    # 3. Verify user status
+    user = get_user_by_id(db, user_id)
+    if not user or user.status_user != "Active":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"message": "User is inactive or suspended."},
+        )
+
+    try:
+        # 4. Generate new Access (rotation)
+        token_payload = {"user_id": user.user_id, "email": user.email, "role": user.role}
+        new_access_token, access_expires_at = create_access_token(token_payload)
+        
+        # 5. Rotate token (update stored user token)
+        update_user_token(
+            db,
+            stored_token,
+            new_access_token=new_access_token,
+            access_expires_at=access_expires_at,
+        )
+        
+        create_audit_log(
+            db,
+            user_id=user.user_id,
+            action="TOKEN_REFRESH",
+            label_title="USER",
+            entity_id=user.user_id,
+            payload={"email": user.email},
+        )
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        raise
+
+    return LoginResponse(
+        access_token=new_access_token,
+        refresh_token=stored_token.refresh_token,
+        token_type="Bearer",
+        user=user,
+    )
+

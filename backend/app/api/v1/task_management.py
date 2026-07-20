@@ -19,7 +19,7 @@ from app.schemas.pydantic_models import (
 from app.services import task_management_service
 
 
-router = APIRouter(tags=["task-management"])
+router = APIRouter(tags=["task management"])
 
 
 @router.post(

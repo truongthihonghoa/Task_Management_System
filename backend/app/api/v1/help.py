@@ -8,7 +8,7 @@ from app.models.user import User
 from app.schemas.help import GuideDetailResponse, GuideListResponse
 from app.services import help_service
 
-router = APIRouter(prefix="/help", tags=["Help"])
+router = APIRouter(prefix="/help", tags=["help"])
 
 
 @router.get(

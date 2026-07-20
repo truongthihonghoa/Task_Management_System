@@ -1,5 +1,3 @@
-from typing import Any
-
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 
@@ -17,6 +15,8 @@ from app.schemas.pydantic_models import (
     UserManagementResponse,
     UserManagementUpdateRequest,
     UserProfileResponse,
+    UserStatusUpdateRequest,
+    UserLockUpdateRequest,
 )
 
 
@@ -225,101 +225,73 @@ def update_user(
     return user
 
 
-@router.patch("/{user_id}/activate", response_model=UserManagementResponse)
-def activate_user(
+@router.patch("/{user_id}/status", response_model=UserManagementResponse)
+def update_user_status(
     user_id: str,
+    payload: UserStatusUpdateRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
+
     try:
-        user = user_service.activate_user(db, user_id)
+        user = user_service.update_user_status(
+            db,
+            user_id,
+            payload.status,
+        )
+
         user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
-            action="ACTIVATE_USER",
+            action="UPDATE_USER_STATUS",
             entity_id=user_id,
-            payload={"status": "Active"},
+            payload={"status": payload.status},
             ip_address=_get_client_ip(request),
         )
+
         db.commit()
+
     except Exception:
         db.rollback()
         raise
+
     return user
 
-
-@router.patch("/{user_id}/deactivate", response_model=UserManagementResponse)
-def deactivate_user(
+@router.patch("/{user_id}/lock-status", response_model=UserManagementResponse)
+def update_user_lock_status(
     user_id: str,
+    payload: UserLockUpdateRequest,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
+
     try:
-        user = user_service.deactivate_user(db, user_id)
+        user = user_service.update_user_lock_status(
+            db,
+            user_id,
+            payload.locked,
+        )
+
         user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
-            action="DEACTIVATE_USER",
+            action="UPDATE_USER_LOCK_STATUS",
             entity_id=user_id,
-            payload={"status": "Inactive"},
+            payload={
+                "locked": payload.locked,
+                "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+            },
             ip_address=_get_client_ip(request),
         )
+
         db.commit()
+
     except Exception:
         db.rollback()
         raise
-    return user
 
-
-@router.patch("/{user_id}/lock", response_model=UserManagementResponse)
-def lock_user(
-    user_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> UserManagementResponse:
-    _ensure_super_admin(current_user)
-    try:
-        user = user_service.lock_user(db, user_id)
-        user_repo.create_user_audit_log(
-            db,
-            actor_user_id=current_user.user_id,
-            action="LOCK_USER",
-            entity_id=user_id,
-            payload={"status": "Locked", "locked_until": user.locked_until.isoformat() if user.locked_until else None},
-            ip_address=_get_client_ip(request),
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return user
-
-
-@router.patch("/{user_id}/unlock", response_model=UserManagementResponse)
-def unlock_user(
-    user_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> UserManagementResponse:
-    _ensure_super_admin(current_user)
-    try:
-        user = user_service.unlock_user(db, user_id)
-        user_repo.create_user_audit_log(
-            db,
-            actor_user_id=current_user.user_id,
-            action="UNLOCK_USER",
-            entity_id=user_id,
-            payload={"status": "Active", "failed_login_attempts": 0, "locked_until": None},
-            ip_address=_get_client_ip(request),
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
     return user

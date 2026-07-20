@@ -20,7 +20,7 @@ from app.schemas.dashboard import (
 from app.services import dashboard_service
 
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/super-admin", response_model=SuperAdminDashboardResponse)

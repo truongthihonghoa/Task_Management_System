@@ -272,7 +272,7 @@ def test_activate_user_sets_status_active():
     user = make_user(status_user="Inactive")
     db = FakeDb(users=[user])
 
-    response = user_service.activate_user(db, user.user_id)
+    response = user_service.update_user_status(db, user.user_id, "Active")
 
     assert response.status_user == "Active"
     assert user.status_user == "Active"
@@ -282,7 +282,7 @@ def test_deactivate_user_sets_status_inactive():
     user = make_user(status_user="Active")
     db = FakeDb(users=[user])
 
-    response = user_service.deactivate_user(db, user.user_id)
+    response = user_service.update_user_status(db, user.user_id, "Inactive")
 
     assert response.status_user == "Inactive"
     assert user.status_user == "Inactive"
@@ -294,7 +294,7 @@ def test_lock_user_sets_status_and_locked_until(monkeypatch):
     db = FakeDb(users=[user])
     before = datetime.utcnow()
 
-    response = user_service.lock_user(db, user.user_id)
+    response = user_service.update_user_lock_status(db, user.user_id, True)
 
     after = datetime.utcnow()
     assert response.status_user == "Locked"
@@ -311,7 +311,7 @@ def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
     )
     db = FakeDb(users=[user])
 
-    response = user_service.unlock_user(db, user.user_id)
+    response = user_service.update_user_lock_status(db, user.user_id, False)
 
     assert response.status_user == "Active"
     assert response.failed_login_attempts == 0
@@ -361,6 +361,8 @@ def test_create_user_audit_log_stores_expected_fields():
         "DEACTIVATE_USER",
         "LOCK_USER",
         "UNLOCK_USER",
+        "UPDATE_USER_STATUS",
+        "UPDATE_USER_LOCK_STATUS",
     ],
 )
 def test_create_user_audit_log_supports_all_user_management_actions(action):

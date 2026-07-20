@@ -760,31 +760,207 @@ class EmailService:
 
         return False
 
-    def send_verification_email(
-        self,
-        to_email: str,
-        otp_code: str,
-    ) -> bool:
-        """Send an OTP verification email."""
-
-        subject = (
-            f"{self.app_name} - Email Verification Code"
+    def send_password_reset_email(self, to_email: str, token_code: str) -> bool:
+        """Send a password reset email containing a reset link and token."""
+        import urllib.parse
+        subject = f"{self.app_name} - Password Reset"
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        query = urllib.parse.urlencode({"email": to_email, "token": token_code})
+        reset_path = f"/reset-password?{query}"
+        reset_url = frontend_url.rstrip("/") + reset_path
+        text_content = (
+            f"Use the following link to reset your password: {reset_url}\n\n"
+            f"Your password reset code is: {token_code}\n\n"
+            f"This link and code expire in {self.otp_expire_minutes} minutes."
         )
-
-        text_content = self._verification_email_body(
-            otp_code
-        )
-
-        html_content = self._verification_email_html(
-            otp_code
-        )
-
+        html_content = self._password_reset_email_html(reset_url)
         return self.send_email(
             to_email=to_email,
             subject=subject,
             text_content=text_content,
             html_content=html_content,
         )
+
+    def _password_reset_email_html(self, reset_url: str) -> str:
+        """Create HTML content for password reset email with a button link."""
+        safe_app_name = html.escape(self.app_name)
+        safe_reset_url = html.escape(reset_url)
+
+        logo_url = os.getenv("EMAIL_LOGO_URL")
+        if logo_url:
+            logo_src = html.escape(logo_url)
+            logo_markup = (
+                f'<img src="{logo_src}" '
+                f'alt="{safe_app_name}" '
+                'width="44" height="44" '
+                'style="display:block;'
+                'border-radius:10px;'
+                'object-fit:contain;'
+                'background:#ffffff;">'
+            )
+        else:
+            logo_markup = (
+                '<div style="'
+                'font-size:22px;'
+                'line-height:1;'
+                'font-weight:900;'
+                'letter-spacing:0;'
+                'color:#4C2B74;'
+                '">TaskFlow</div>'
+            )
+
+        return f"""<!doctype html>
+<html>
+  <body style="
+      margin:0;
+      padding:0;
+      background:#ffffff;
+      font-family:Arial,Helvetica,sans-serif;
+      color:#111827;
+  ">
+    <table
+      role="presentation"
+      width="100%"
+      cellspacing="0"
+      cellpadding="0"
+      style="background:#ffffff;padding:18px 12px;"
+    >
+      <tr>
+        <td align="center">
+          <table
+            role="presentation"
+            width="100%"
+            cellspacing="0"
+            cellpadding="0"
+            style="
+              max-width:640px;
+              background:#ffffff;
+              border:1px solid #E0D7F0;
+              border-radius:14px;
+              overflow:hidden;
+              box-shadow:0 16px 42px rgba(76,43,116,0.12);
+            "
+          >
+            <tr>
+              <td style="
+                  background:#FAF8FF;
+                  padding:18px 28px;
+                  border-bottom:1px solid #E0D7F0;
+              ">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                >
+                  <tr>
+                    <td style="vertical-align:middle;">
+                      {logo_markup}
+                    </td>
+
+                    <td style="
+                        vertical-align:middle;
+                        text-align:right;
+                    ">
+                      <div style="
+                          display:inline-block;
+                          background:#F0EDFF;
+                          color:#4C2B74;
+                          font-size:11px;
+                          font-weight:800;
+                          padding:6px 10px;
+                          border-radius:999px;
+                      ">
+                        Password Reset
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 28px 10px;">
+                <h1 style="
+                    margin:0 0 10px;
+                    font-size:22px;
+                    line-height:1.3;
+                    color:#0f172a;
+                    font-weight:800;
+                ">
+                  Reset Your Password
+                </h1>
+
+                <div style="
+                    margin:0;
+                    font-size:14px;
+                    line-height:1.55;
+                    color:#334155;
+                ">
+                  We received a request to reset the password for your {safe_app_name} account. Use the button below to set a new password. This link will expire in {self.otp_expire_minutes} minutes.
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:14px 28px 20px;">
+                <a
+                  href="{safe_reset_url}"
+                  style="
+                    display:inline-block;
+                    background:#6B4A91;
+                    color:#ffffff;
+                    text-decoration:none;
+                    font-weight:700;
+                    font-size:14px;
+                    padding:12px 18px;
+                    border-radius:8px;
+                  "
+                >
+                  Reset Password
+                </a>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 28px 10px;">
+                <div style="
+                    margin:0;
+                    font-size:12px;
+                    line-height:1.5;
+                    color:#6E5A8A;
+                ">
+                  Or copy & paste the following URL into your browser:<br>
+                  <a href="{safe_reset_url}" style="color:#6B4A91; word-break:break-all;">{safe_reset_url}</a>
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:20px 28px 24px;">
+                <div style="
+                    height:1px;
+                    background:#E0D7F0;
+                    margin-bottom:12px;
+                "></div>
+
+                <p style="
+                    margin:0;
+                    font-size:12px;
+                    line-height:1.6;
+                    color:#6E5A8A;
+                ">
+                  If you did not request a password reset, you can safely ignore this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
 
     def send_notification_email(
         self,

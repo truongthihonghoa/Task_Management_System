@@ -25,7 +25,7 @@ from app.schemas.notification import (
 from app.services.notification_service import NotificationService
 
 
-router = APIRouter(prefix="/notifications", tags=["Notifications"])
+router = APIRouter(prefix="/notifications", tags=["notifications"])
 notification_service = NotificationService()
 
 

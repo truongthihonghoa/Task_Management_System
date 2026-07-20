@@ -547,18 +547,11 @@ class LoginResponse(BaseModel):
     user: LoginUserResponse
 
 
-class VerifyResetCodeRequest(EmailRequest):
-    code: str = Field(..., min_length=6, max_length=6)
 
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, value: str) -> str:
-        if not value.isdigit() or len(value) != 6:
-            raise ValueError("Code must be exactly 6 digits.")
-        return value
 
 
 class ResetPasswordRequest(EmailRequest):
+    token: str = Field(..., min_length=6, max_length=6)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
 
@@ -590,9 +583,17 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class RegisterUserResponse(BaseModel):
+    full_name: str
+    email: str
+    role: str
+
+    model_config = {"from_attributes": True}
 
 class RegisterResponse(MessageResponse):
-    user: UserResponse
+    email: str
+    full_name: str
+    role: str
     access_token: str
     refresh_token: str
 
@@ -633,6 +634,12 @@ class UserManagementUpdateRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+class UserStatusUpdateRequest(BaseModel):
+    status: Literal["Active", "Inactive"]
+
+
+class UserLockUpdateRequest(BaseModel):
+    locked: bool
 
 class UserProfileResponse(BaseModel):
     avatar_url: str | None
@@ -679,4 +686,9 @@ class ChangePasswordRequest(BaseModel):
         if self.current_password == self.new_password:
             raise ValueError("New password must not be the same as current password.")
         return self
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
     

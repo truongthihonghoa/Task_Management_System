@@ -14,7 +14,7 @@ from app.schemas.notification_preference import (
 from app.services.notification_preference_service import NotificationPreferenceService
 
 
-router = APIRouter(prefix="/notification-preferences", tags=["Notification Preferences"])
+router = APIRouter(prefix="/notification-preferences", tags=["notification preferences"])
 preference_service = NotificationPreferenceService()
 
 
