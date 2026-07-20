@@ -359,12 +359,10 @@ def test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoi
     assert notifications_path["get"]["tags"] == ["Notifications"]
     assert openapi["paths"]["/api/v1/notifications/unread-count"]["get"]["tags"] == ["Notifications"]
     assert detail_path["get"]["tags"] == ["Notifications"]
-    assert openapi["paths"]["/api/v1/notifications/read-state"]["patch"]["tags"] == [
-        "Notifications - Read State"
-    ]
-    assert notifications_path["delete"]["tags"] == ["Notifications - Delete"]
-    assert read_path["delete"]["tags"] == ["Notifications - Delete"]
-    assert detail_path["delete"]["tags"] == ["Notifications - Delete"]
+    assert openapi["paths"]["/api/v1/notifications/read-state"]["patch"]["tags"] == ["Notifications"]
+    assert notifications_path["delete"]["tags"] == ["Notifications"]
+    assert read_path["delete"]["tags"] == ["Notifications"]
+    assert detail_path["delete"]["tags"] == ["Notifications"]
 
 
 def test_get_notification_marks_unread_notification_as_read(monkeypatch):

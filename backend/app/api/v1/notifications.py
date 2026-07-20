@@ -27,15 +27,13 @@ from app.schemas.notification import (
 
 router = APIRouter(prefix="/notifications")
 
-NOTIFICATION_QUERY_TAG = "Notifications"
-NOTIFICATION_READ_STATE_TAG = "Notifications - Read State"
-NOTIFICATION_DELETE_TAG = "Notifications - Delete"
+NOTIFICATION_TAG = "Notifications"
 
 
 @router.get(
     "",
     response_model=NotificationListResponse,
-    tags=[NOTIFICATION_QUERY_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Get current user's notifications",
     description="Returns paginated notifications from the last 30 days belonging to the authenticated user.",
 )
@@ -78,7 +76,7 @@ def list_notifications(
 @router.get(
     "/unread-count",
     response_model=NotificationUnreadCountResponse,
-    tags=[NOTIFICATION_QUERY_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Get unread notification count",
     description="Counts unread notifications from the last 30 days.",
 )
@@ -92,7 +90,7 @@ def get_unread_count(
 @router.patch(
     "/read-state",
     response_model=NotificationBulkUpdateResponse,
-    tags=[NOTIFICATION_READ_STATE_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Update notification read state",
     description="Marks all visible notifications as read, or selected visible notifications as read/unread for the authenticated user.",
 )
@@ -124,29 +122,9 @@ def update_read_state(
 
 
 @router.delete(
-    "/read",
-    response_model=NotificationDeleteResponse,
-    tags=[NOTIFICATION_DELETE_TAG],
-    summary="Delete read notifications",
-    description="Deletes read notifications from the last 30 days for the authenticated user.",
-)
-def delete_read_notifications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationDeleteResponse:
-    try:
-        deleted_count = notification_repository.delete_read_notifications(db, user_id=current_user.user_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationDeleteResponse(message="Read notifications deleted.", deleted_count=deleted_count)
-
-
-@router.delete(
     "",
     response_model=NotificationDeleteResponse,
-    tags=[NOTIFICATION_DELETE_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Bulk delete notifications",
     description="Deletes selected notifications from the last 30 days for the authenticated user.",
 )
@@ -168,10 +146,30 @@ def bulk_delete_notifications(
     return NotificationDeleteResponse(message="Notifications deleted.", deleted_count=deleted_count)
 
 
+@router.delete(
+    "/read",
+    response_model=NotificationDeleteResponse,
+    tags=[NOTIFICATION_TAG],
+    summary="Delete read notifications",
+    description="Deletes read notifications from the last 30 days for the authenticated user.",
+)
+def delete_read_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationDeleteResponse:
+    try:
+        deleted_count = notification_repository.delete_read_notifications(db, user_id=current_user.user_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return NotificationDeleteResponse(message="Read notifications deleted.", deleted_count=deleted_count)
+
+
 @router.get(
     "/{notification_id}",
     response_model=NotificationResponse,
-    tags=[NOTIFICATION_QUERY_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Get notification details",
     description="Returns notification details only when the notification is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
@@ -199,7 +197,7 @@ def get_notification(
 @router.delete(
     "/{notification_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    tags=[NOTIFICATION_DELETE_TAG],
+    tags=[NOTIFICATION_TAG],
     summary="Delete a notification",
     description="Deletes one notification only when it is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
