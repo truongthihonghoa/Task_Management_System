@@ -19,6 +19,7 @@ from app.schemas.notification import (
     NotificationBulkUpdateResponse,
     NotificationDeleteResponse,
     NotificationListResponse,
+    NotificationReadStateRequest,
     NotificationResponse,
     NotificationUnreadCountResponse,
 )
@@ -87,6 +88,7 @@ def get_unread_count(
     "/read-all",
     response_model=NotificationBulkUpdateResponse,
     summary="Mark all notifications as read",
+    include_in_schema=False,
 )
 def mark_all_read(
     db: Session = Depends(get_db),
@@ -102,9 +104,43 @@ def mark_all_read(
 
 
 @router.patch(
+    "/read-state",
+    response_model=NotificationBulkUpdateResponse,
+    summary="Update notification read state",
+    description="Marks all notifications as read, or selected notifications as read/unread for the authenticated user.",
+)
+def update_read_state(
+    payload: NotificationReadStateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationBulkUpdateResponse:
+    try:
+        if payload.target == "all":
+            updated_count = notification_repository.mark_all_read(
+                db,
+                user_id=current_user.user_id,
+                read_at=datetime.utcnow(),
+            )
+        else:
+            updated_count = notification_repository.bulk_mark_read_state(
+                db,
+                user_id=current_user.user_id,
+                notification_ids=payload.notification_ids or [],
+                is_read=payload.is_read,
+                read_at=datetime.utcnow() if payload.is_read else None,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return NotificationBulkUpdateResponse(updated_count=updated_count)
+
+
+@router.patch(
     "/read",
     response_model=NotificationBulkUpdateResponse,
     summary="Bulk mark notifications as read",
+    include_in_schema=False,
 )
 def bulk_mark_read(
     payload: NotificationBulkIdsRequest,
@@ -180,6 +216,15 @@ def get_notification(
     notification = notification_repository.get_notification_for_user(db, notification_id, current_user.user_id)
     if notification is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
+    if not notification.is_read:
+        try:
+            notification.is_read = True
+            notification.read_at = datetime.utcnow()
+            db.commit()
+            db.refresh(notification)
+        except Exception:
+            db.rollback()
+            raise
     return notification
 
 
@@ -188,6 +233,7 @@ def get_notification(
     response_model=NotificationResponse,
     summary="Mark one notification as read",
     responses={404: {"description": "Notification not found"}},
+    include_in_schema=False,
 )
 def mark_notification_read(
     notification_id: str,
@@ -214,6 +260,7 @@ def mark_notification_read(
     response_model=NotificationResponse,
     summary="Mark one notification as unread",
     responses={404: {"description": "Notification not found"}},
+    include_in_schema=False,
 )
 def mark_notification_unread(
     notification_id: str,

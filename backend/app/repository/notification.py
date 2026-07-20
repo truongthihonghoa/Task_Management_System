@@ -127,6 +127,27 @@ def bulk_mark_read(db: Session, *, user_id: str, notification_ids: list[str], re
     return int(updated)
 
 
+def bulk_mark_read_state(
+    db: Session,
+    *,
+    user_id: str,
+    notification_ids: list[str],
+    is_read: bool,
+    read_at,
+) -> int:
+    updated = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == user_id,
+            Notification.notification_id.in_(notification_ids),
+            Notification.is_read.is_(not is_read),
+        )
+        .update({Notification.is_read: is_read, Notification.read_at: read_at}, synchronize_session=False)
+    )
+    db.flush()
+    return int(updated)
+
+
 def delete_notification_for_user(db: Session, *, notification_id: str, user_id: str) -> bool:
     notification = get_notification_for_user(db, notification_id, user_id)
     if notification is None:

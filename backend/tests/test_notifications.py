@@ -9,7 +9,7 @@ from app.api.v1 import notification_preferences as preference_api
 from app.api.v1 import notifications as notification_api
 from app.core.notification_constants import default_preference_values
 from app.repository.notification import NotificationListResult
-from app.schemas.notification import NotificationBulkIdsRequest, NotificationResponse
+from app.schemas.notification import NotificationBulkIdsRequest, NotificationReadStateRequest, NotificationResponse
 from app.schemas.notification_preference import (
     NotificationPreferencePatchRequest,
     NotificationPreferenceUpdateRequest,
@@ -212,10 +212,14 @@ def test_list_filters_are_forwarded_to_repository(monkeypatch):
     assert captured["sort_order"] == "asc"
 
 
-def test_openapi_documents_page_size_limit_and_no_create_notification_endpoint():
+def test_openapi_documents_page_size_limit_read_state_and_hidden_legacy_patch_endpoints():
     schema = notification_api.router.routes[0].body_field
-    openapi = __import__("app.main", fromlist=["app"]).app.openapi()
+    app = __import__("app.main", fromlist=["app"]).app
+    app.openapi_schema = None
+    openapi = app.openapi()
     notifications_path = openapi["paths"]["/api/v1/notifications"]
+    read_path = openapi["paths"]["/api/v1/notifications/read"]
+    detail_path = openapi["paths"]["/api/v1/notifications/{notification_id}"]
     page_size_param = next(
         param
         for param in notifications_path["get"]["parameters"]
@@ -225,6 +229,46 @@ def test_openapi_documents_page_size_limit_and_no_create_notification_endpoint()
     assert schema is None
     assert "post" not in notifications_path
     assert page_size_param["schema"]["maximum"] == 100
+    assert "patch" in openapi["paths"]["/api/v1/notifications/read-state"]
+    assert "patch" not in openapi["paths"].get("/api/v1/notifications/read-all", {})
+    assert "patch" not in read_path
+    assert "patch" not in detail_path
+    assert "patch" not in openapi["paths"].get("/api/v1/notifications/{notification_id}/read", {})
+    assert "patch" not in openapi["paths"].get("/api/v1/notifications/{notification_id}/unread", {})
+
+
+def test_get_notification_marks_unread_notification_as_read(monkeypatch):
+    db = FakeDb()
+    notification = make_notification(is_read=False, read_at=None)
+    monkeypatch.setattr(
+        notification_api.notification_repository,
+        "get_notification_for_user",
+        lambda _db, notification_id, user_id: notification,
+    )
+
+    response = notification_api.get_notification("NTF00000001", db=db, current_user=make_user())
+
+    assert response.notification_id == "NTF00000001"
+    assert response.is_read is True
+    assert response.read_at is not None
+    assert db.commits == 1
+    assert db.refreshed == [notification]
+
+
+def test_get_notification_keeps_read_notification_without_commit(monkeypatch):
+    db = FakeDb()
+    notification = make_notification(is_read=True, read_at=datetime(2026, 7, 10, 8, 0, 0))
+    monkeypatch.setattr(
+        notification_api.notification_repository,
+        "get_notification_for_user",
+        lambda _db, notification_id, user_id: notification,
+    )
+
+    response = notification_api.get_notification("NTF00000001", db=db, current_user=make_user())
+
+    assert response.notification_id == "NTF00000001"
+    assert db.commits == 0
+    assert db.refreshed == []
 
 
 def test_mark_read_is_idempotent_and_commits(monkeypatch):
@@ -263,6 +307,68 @@ def test_mark_all_read_updates_only_current_user(monkeypatch):
 
     assert captured["user_id"] == "USR00000077"
     assert response.updated_count == 4
+
+
+def test_update_read_state_marks_all_read_for_current_user(monkeypatch):
+    captured = {}
+
+    def fake_mark_all_read(_db, **kwargs):
+        captured.update(kwargs)
+        return 6
+
+    monkeypatch.setattr(notification_api.notification_repository, "mark_all_read", fake_mark_all_read)
+
+    response = notification_api.update_read_state(
+        NotificationReadStateRequest(target="all", is_read=True),
+        db=FakeDb(),
+        current_user=make_user("USR00000055"),
+    )
+
+    assert response.updated_count == 6
+    assert captured["user_id"] == "USR00000055"
+    assert captured["read_at"] is not None
+
+
+def test_update_read_state_marks_selected_notifications_read_or_unread(monkeypatch):
+    calls = []
+
+    def fake_bulk_mark_read_state(_db, **kwargs):
+        calls.append(kwargs)
+        return 2
+
+    monkeypatch.setattr(notification_api.notification_repository, "bulk_mark_read_state", fake_bulk_mark_read_state)
+
+    read_response = notification_api.update_read_state(
+        NotificationReadStateRequest(
+            target="selected",
+            is_read=True,
+            notification_ids=["NTF00000001", "NTF00000001", "NTF00000002"],
+        ),
+        db=FakeDb(),
+        current_user=make_user("USR00000044"),
+    )
+    unread_response = notification_api.update_read_state(
+        NotificationReadStateRequest(target="selected", is_read=False, notification_ids=["NTF00000001"]),
+        db=FakeDb(),
+        current_user=make_user("USR00000044"),
+    )
+
+    assert read_response.updated_count == 2
+    assert unread_response.updated_count == 2
+    assert calls[0]["user_id"] == "USR00000044"
+    assert calls[0]["notification_ids"] == ["NTF00000001", "NTF00000002"]
+    assert calls[0]["is_read"] is True
+    assert calls[0]["read_at"] is not None
+    assert calls[1]["notification_ids"] == ["NTF00000001"]
+    assert calls[1]["is_read"] is False
+    assert calls[1]["read_at"] is None
+
+
+def test_update_read_state_validation_rejects_selected_without_ids_and_all_unread():
+    with pytest.raises(ValidationError):
+        NotificationReadStateRequest(target="selected", is_read=True)
+    with pytest.raises(ValidationError):
+        NotificationReadStateRequest(target="all", is_read=False)
 
 
 def test_bulk_ids_deduplicate_and_empty_request_rejected():

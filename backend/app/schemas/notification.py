@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.notification_constants import NotificationAudience, NotificationType
 from app.schemas.pydantic_models import UserSummaryResponse
@@ -49,6 +49,30 @@ class NotificationBulkIdsRequest(BaseModel):
         if not normalized:
             raise ValueError("At least one notification id is required.")
         return list(dict.fromkeys(normalized))
+
+
+class NotificationReadStateRequest(BaseModel):
+    target: Literal["all", "selected"]
+    is_read: bool
+    notification_ids: list[str] | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("notification_ids")
+    @classmethod
+    def validate_notification_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [item.strip() for item in value if item and item.strip()]
+        if not normalized:
+            raise ValueError("At least one notification id is required.")
+        return list(dict.fromkeys(normalized))
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "NotificationReadStateRequest":
+        if self.target == "selected" and not self.notification_ids:
+            raise ValueError("notification_ids is required when target is selected.")
+        if self.target == "all" and self.is_read is False:
+            raise ValueError("Marking all notifications as unread is not supported.")
+        return self
 
 
 class NotificationBulkUpdateResponse(BaseModel):
