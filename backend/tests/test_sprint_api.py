@@ -2,10 +2,12 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.v1 import sprints
 from app.schemas.pydantic_models import SprintCreate, SprintUpdate
+from app.services import sprint_service
 
 
 def test_sprint_create_validates_date_range():
@@ -130,3 +132,29 @@ def test_sprint_detail_update_delete_activate_and_complete_delegate_to_service(m
         ("activate", db, "SPR00000003", user),
         ("complete", db, "SPR00000003", user),
     ]
+
+
+def test_complete_sprint_requires_all_tasks_done(monkeypatch):
+    db = object()
+    user = SimpleNamespace(user_id="USR00000003", role="USER")
+    space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=user.user_id,
+        status_space="Active",
+        deleted_at=None,
+    )
+    sprint = SimpleNamespace(
+        sprint_id="SPR00000003",
+        space_id=space.space_id,
+        status="Active",
+        space=space,
+    )
+
+    monkeypatch.setattr(sprint_service, "_get_sprint_or_404", lambda received_db, sprint_id: sprint)
+    monkeypatch.setattr(sprint_service.sprint_repository, "count_incomplete_tasks_by_sprint", lambda *_args: 2)
+
+    with pytest.raises(HTTPException) as exc_info:
+        sprint_service.complete_sprint(db, sprint.sprint_id, user)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Sprint can only be completed when all tasks are done"

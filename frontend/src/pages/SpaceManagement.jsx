@@ -56,6 +56,20 @@ const getAccessToken = () => {
   );
 };
 
+const formatSpaceDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toISOString().slice(0, 10);
+};
+
+const getSpaceDisplayDate = (space) => {
+  if (space.status === 'Deleted') {
+    return formatSpaceDate(space.deletedAt || space.deleted_at || space.date);
+  }
+  return formatSpaceDate(space.date);
+};
+
 const completeSpaceRequest = async (spaceId) => {
   // Demo spaces use SP-* ids and are local-only. Real backend spaces use SPC* ids.
   if (!String(spaceId).startsWith('SPC')) return null;
@@ -302,6 +316,9 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           ? {
               ...space,
               status: updatedSpace?.status_space || (spaceAction.type === 'delete' ? 'Deleted' : 'Active'),
+              deletedAt: spaceAction.type === 'delete'
+                ? formatSpaceDate(updatedSpace?.deleted_at || new Date())
+                : null,
             }
           : space
       )));
@@ -325,7 +342,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
         space.description.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
       if (selectedDate) {
-        const spaceDate = new Date(space.date);
+        const spaceDate = new Date(getSpaceDisplayDate(space));
         return spaceDate.getFullYear() === selectedDate.getFullYear() &&
                spaceDate.getMonth() === selectedDate.getMonth() &&
                spaceDate.getDate() === selectedDate.getDate();
@@ -337,10 +354,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
         return a.title.localeCompare(b.title);
       }
       if (sortOrder === 'Oldest') {
-        return new Date(a.date) - new Date(b.date);
+        return new Date(getSpaceDisplayDate(a)) - new Date(getSpaceDisplayDate(b));
       }
       // Recently Created
-      return new Date(b.date) - new Date(a.date);
+      return new Date(getSpaceDisplayDate(b)) - new Date(getSpaceDisplayDate(a));
     });
  
   useEffect(() => {
@@ -533,35 +550,40 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           const isArchived = space.status === 'Archived';
           const isDeleted = space.status === 'Deleted';
           const canCompleteSpace = isAssigned && isOwner && space.status === 'Active';
-          const canDeleteSpace = isAssigned && isOwner && space.status === 'Active';
+          const canDeleteSpace = isAssigned && isOwner && !isDeleted;
           const canRestoreSpace = isAssigned && isOwner && isDeleted;
           const footerActionCount = canCompleteSpace ? 1 : 0;
+          const displayDate = getSpaceDisplayDate(space);
           return (
-            <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-              <div className="p-6 flex-1">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-[15px] font-bold text-[#5e4db2] flex-1">{space.title}</h3>
+            <div key={space.id} className="group flex min-h-[218px] flex-col overflow-hidden rounded-xl border border-[#ECE7F4] bg-white shadow-[0_10px_28px_rgba(76,43,116,0.07)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D8CDE8] hover:shadow-[0_18px_42px_rgba(76,43,116,0.12)]">
+              <div className="flex flex-1 flex-col p-5">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <h3 className="min-w-0 flex-1 truncate text-[15px] font-bold leading-6 text-[#4C2B74]">{space.title}</h3>
                   {userSpaceRole && (
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded ml-2 whitespace-nowrap ${
+                    <span className={`shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-bold leading-none tracking-wide ${
                       userSpaceRole === 'OWNER'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-blue-100 text-blue-800'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-[#D9D3F6] bg-[#F2F0FF] text-[#5e4db2]'
                     }`}>
                       {userSpaceRole}
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] text-gray-500 leading-relaxed mb-6">{space.description}</p>
+                <p className="mb-5 line-clamp-2 min-h-[38px] text-[12px] leading-relaxed text-[#6B6375]">{space.description}</p>
    
-                <div className="flex items-end justify-between gap-4 text-gray-500">
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center">
-                      <i data-lucide="check-circle-2" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
-                      <span className="text-[12px] font-medium">{space.tasksCount} Tasks</span>
+                <div className="mt-auto flex items-center justify-between gap-3 border-t border-[#F0ECF6] pt-4 text-[#6B6375]">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
+                    <div className="flex items-center whitespace-nowrap">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F4F0FA]">
+                        <span className="material-symbols-outlined text-[16px] leading-none text-[#4C2B74]">task_alt</span>
+                      </span>
+                      <span className="ml-2 text-[12px] font-semibold">{space.tasksCount} Tasks</span>
                     </div>
-                    <div className="flex items-center">
-                      <i data-lucide="calendar" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
-                      <span className="text-[12px] font-medium">{space.date}</span>
+                    <div className="flex items-center whitespace-nowrap">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F4F0FA]">
+                        <span className="material-symbols-outlined text-[16px] leading-none text-[#4C2B74]">event</span>
+                      </span>
+                      <span className="ml-2 text-[12px] font-semibold">{displayDate}</span>
                     </div>
                   </div>
 
@@ -571,7 +593,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                       onClick={() => openSpaceActionModal(space, 'delete')}
                       aria-label={`Delete ${space.title}`}
                       title="Delete space"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 active:scale-95"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-red-600 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200 active:scale-95"
                     >
                       <span className="material-symbols-outlined text-[18px] leading-none">delete</span>
                     </button>
@@ -583,7 +605,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                       onClick={() => openSpaceActionModal(space, 'restore')}
                       aria-label={`Restore ${space.title}`}
                       title="Restore space"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 active:scale-95"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-[#4C2B74] transition-all hover:border-[#DDD4EA] hover:bg-[#F4F0FA] hover:text-[#3D225E] focus:outline-none focus:ring-2 focus:ring-[#D9D3F6] active:scale-95"
                     >
                       <span className="material-symbols-outlined text-[18px] leading-none">undo</span>
                     </button>

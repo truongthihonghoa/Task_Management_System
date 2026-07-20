@@ -210,6 +210,13 @@ def complete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
     _ensure_space_active(space)
     _ensure_can_modify_space_sprints(db, space, current_user)
 
+    incomplete_task_count = sprint_repository.count_incomplete_tasks_by_sprint(db, sprint_id)
+    if incomplete_task_count:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sprint can only be completed when all tasks are done",
+        )
+
     now = datetime.utcnow()
     sprint.status = "Completed"
     sprint.completed_at = now
