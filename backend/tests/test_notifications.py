@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.api.v1 import notification_preferences as preference_api
 from app.api.v1 import notifications as notification_api
 from app.core.notification_constants import default_preference_values
+from app.repository import notification as notification_repository
 from app.repository.notification import NotificationListResult
 from app.schemas.notification import NotificationBulkIdsRequest, NotificationReadStateRequest, NotificationResponse
 from app.schemas.notification_preference import (
@@ -15,6 +16,7 @@ from app.schemas.notification_preference import (
     NotificationPreferenceUpdateRequest,
 )
 from app.services.notification_preference_service import NotificationPreferenceService
+from app.services import notification_retention_service
 from app.services.notification_service import NotificationService
 
 
@@ -58,6 +60,66 @@ class FakeDb:
 
     def refresh(self, value):
         self.refreshed.append(value)
+
+
+class FakeScalarResult:
+    def scalar_one(self):
+        return 0
+
+    def scalar_one_or_none(self):
+        return None
+
+
+class RecordingQuery:
+    def __init__(self):
+        self.criteria = []
+
+    def options(self, *_args):
+        return self
+
+    def filter(self, *criteria):
+        self.criteria.extend(criteria)
+        return self
+
+    def order_by(self, *_args):
+        return self
+
+    def offset(self, _offset):
+        return self
+
+    def limit(self, _limit):
+        return self
+
+    def count(self):
+        return 0
+
+    def all(self):
+        return []
+
+    def update(self, *_args, **_kwargs):
+        return 0
+
+    def delete(self, **_kwargs):
+        return 0
+
+
+class RecordingDb:
+    def __init__(self):
+        self.statements = []
+        self.queries = []
+        self.flushed = 0
+
+    def execute(self, statement):
+        self.statements.append(statement)
+        return FakeScalarResult()
+
+    def query(self, *_args):
+        query = RecordingQuery()
+        self.queries.append(query)
+        return query
+
+    def flush(self):
+        self.flushed += 1
 
 
 def make_user(user_id="USR00000001", role="USER"):
@@ -210,6 +272,65 @@ def test_list_filters_are_forwarded_to_repository(monkeypatch):
     assert captured["task_id"] == "TSK00000001"
     assert captured["space_id"] == "SPC00000001"
     assert captured["sort_order"] == "asc"
+
+
+def test_notification_repository_cutoffs_match_retention_policy():
+    now = datetime(2026, 7, 20, 12, 0, 0)
+
+    assert notification_repository.notification_display_cutoff(now) == datetime(2026, 6, 20, 12, 0, 0)
+    assert notification_repository.notification_retention_cutoff(now) == datetime(2026, 1, 20, 12, 0, 0)
+
+
+def test_notification_repository_visible_operations_apply_thirty_day_window(monkeypatch):
+    cutoff = datetime(2026, 6, 20, 12, 0, 0)
+    monkeypatch.setattr(notification_repository, "notification_display_cutoff", lambda: cutoff)
+    db = RecordingDb()
+
+    notification_repository.get_notification_for_user(db, "NTF00000001", "USR00000001")
+    notification_repository.get_unread_count(db, "USR00000001")
+    notification_repository.list_notifications(db, user_id="USR00000001")
+    notification_repository.mark_all_read(db, user_id="USR00000001", read_at=datetime(2026, 7, 20, 12, 0, 0))
+    notification_repository.bulk_mark_read_state(
+        db,
+        user_id="USR00000001",
+        notification_ids=["NTF00000001"],
+        is_read=True,
+        read_at=datetime(2026, 7, 20, 12, 0, 0),
+    )
+    notification_repository.delete_read_notifications(db, user_id="USR00000001")
+    notification_repository.bulk_delete_notifications(db, user_id="USR00000001", notification_ids=["NTF00000001"])
+
+    statements_and_criteria = [str(statement) for statement in db.statements]
+    statements_and_criteria.extend(" ".join(str(criteria) for criteria in query.criteria) for query in db.queries)
+
+    assert statements_and_criteria
+    assert all("notifications.created_at >= " in value for value in statements_and_criteria)
+
+
+def test_notification_retention_purge_deletes_older_than_six_months_and_commits(monkeypatch):
+    cutoff = datetime(2026, 1, 20, 12, 0, 0)
+    calls = []
+    db = FakeDb()
+    db.close = lambda: calls.append(("close", None))
+    monkeypatch.setattr(notification_retention_service, "SessionLocal", lambda: db)
+    monkeypatch.setattr(
+        notification_retention_service.notification_repository,
+        "notification_retention_cutoff",
+        lambda: cutoff,
+    )
+    monkeypatch.setattr(
+        notification_retention_service.notification_repository,
+        "delete_notifications_older_than",
+        lambda received_db, received_cutoff: calls.append((received_db, received_cutoff)) or 5,
+    )
+
+    deleted_count = notification_retention_service.purge_expired_notifications()
+
+    assert deleted_count == 5
+    assert calls[0] == (db, cutoff)
+    assert calls[-1] == ("close", None)
+    assert db.commits == 1
+    assert db.rollbacks == 0
 
 
 def test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoints():

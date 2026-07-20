@@ -37,7 +37,7 @@ NOTIFICATION_DELETE_TAG = "Notifications - Delete"
     response_model=NotificationListResponse,
     tags=[NOTIFICATION_QUERY_TAG],
     summary="Get current user's notifications",
-    description="Returns paginated notifications belonging to the authenticated user.",
+    description="Returns paginated notifications from the last 30 days belonging to the authenticated user.",
 )
 def list_notifications(
     status_filter: NotificationReadStatus | None = Query(default=None, alias="status"),
@@ -80,6 +80,7 @@ def list_notifications(
     response_model=NotificationUnreadCountResponse,
     tags=[NOTIFICATION_QUERY_TAG],
     summary="Get unread notification count",
+    description="Counts unread notifications from the last 30 days.",
 )
 def get_unread_count(
     db: Session = Depends(get_db),
@@ -93,7 +94,7 @@ def get_unread_count(
     response_model=NotificationBulkUpdateResponse,
     tags=[NOTIFICATION_READ_STATE_TAG],
     summary="Update notification read state",
-    description="Marks all notifications as read, or selected notifications as read/unread for the authenticated user.",
+    description="Marks all visible notifications as read, or selected visible notifications as read/unread for the authenticated user.",
 )
 def update_read_state(
     payload: NotificationReadStateRequest,
@@ -127,6 +128,7 @@ def update_read_state(
     response_model=NotificationDeleteResponse,
     tags=[NOTIFICATION_DELETE_TAG],
     summary="Delete read notifications",
+    description="Deletes read notifications from the last 30 days for the authenticated user.",
 )
 def delete_read_notifications(
     db: Session = Depends(get_db),
@@ -146,6 +148,7 @@ def delete_read_notifications(
     response_model=NotificationDeleteResponse,
     tags=[NOTIFICATION_DELETE_TAG],
     summary="Bulk delete notifications",
+    description="Deletes selected notifications from the last 30 days for the authenticated user.",
 )
 def bulk_delete_notifications(
     payload: NotificationBulkIdsRequest,
@@ -170,6 +173,7 @@ def bulk_delete_notifications(
     response_model=NotificationResponse,
     tags=[NOTIFICATION_QUERY_TAG],
     summary="Get notification details",
+    description="Returns notification details only when the notification is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
 )
 def get_notification(
@@ -197,6 +201,7 @@ def get_notification(
     status_code=status.HTTP_204_NO_CONTENT,
     tags=[NOTIFICATION_DELETE_TAG],
     summary="Delete a notification",
+    description="Deletes one notification only when it is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
 )
 def delete_notification(

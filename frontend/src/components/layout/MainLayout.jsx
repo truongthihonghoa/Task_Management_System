@@ -6,6 +6,7 @@ import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import { useLanguage } from '../../context/LanguageContext';
+import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
 const INITIAL_NOTIFICATIONS = [
   {
     NOTI_id: 1,
@@ -244,6 +245,9 @@ export default function MainLayout() {
   const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
 
   const filteredNotifications = allNotifications.filter(n => {
+    if (!isNotificationWithinDisplayWindow(n)) {
+      return false;
+    }
     if (isSuperAdmin) {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }

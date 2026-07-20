@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from sqlalchemy import text
@@ -11,8 +13,35 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.media import MEDIA_ROOT, ensure_media_dirs
 from app.db.session import get_db
+from app.services.notification_retention_service import run_notification_retention_job
 
-app = FastAPI(title="Task Management System API")
+
+async def start_notification_retention_job(app: FastAPI) -> None:
+    if os.getenv("NOTIFICATION_RETENTION_JOB_ENABLED", "true").lower() in {"0", "false", "no"}:
+        return
+    app.state.notification_retention_stop_event = asyncio.Event()
+    app.state.notification_retention_task = asyncio.create_task(
+        run_notification_retention_job(app.state.notification_retention_stop_event)
+    )
+
+
+async def stop_notification_retention_job(app: FastAPI) -> None:
+    stop_event = getattr(app.state, "notification_retention_stop_event", None)
+    retention_task = getattr(app.state, "notification_retention_task", None)
+    if stop_event is None or retention_task is None:
+        return
+    stop_event.set()
+    await retention_task
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await start_notification_retention_job(app)
+    yield
+    await stop_notification_retention_job(app)
+
+
+app = FastAPI(title="Task Management System API", lifespan=lifespan)
 
 ensure_media_dirs()
 app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
