@@ -67,103 +67,23 @@ def test_initials_for_name():
     assert main_layout_service.initials_for_name("Hoa") == "HO"
 
 
-def test_get_main_layout_uses_current_user_and_existing_notification_count(monkeypatch):
-    user = make_user(role="SUPER_ADMIN", full_name="Alex Morgan")
+def test_openapi_keeps_only_backend_owned_main_layout_routes():
+    app = __import__("app.main", fromlist=["app"]).app
+    app.openapi_schema = None
+    openapi = app.openapi()
 
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 12)
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: make_preference("vi"))
-    monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 4)
-    monkeypatch.setattr(
-        main_layout_service.help_service,
-        "list_guides",
-        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started"), SimpleNamespace(slug="dashboard-overview")]),
-    )
-
-    response = main_layout_service.get_main_layout(object(), user)
-
-    assert response.current_user.user_id == user.user_id
-    assert response.current_user.initials == "AM"
-    assert response.current_user.system_role == "SUPER_ADMIN"
-    assert response.sidebar.task_count == 12
-    assert response.sidebar.can_view_dashboard is True
-    assert response.sidebar.can_view_users is True
-    assert response.sidebar.can_create_task is False
-    assert response.sidebar.can_view_help is True
-    assert response.sidebar.help_path == "/dashboard/help"
-    assert response.preferences.language == "vi"
-    assert response.notification.unread_count == 4
-    assert response.help.can_view is True
-    assert response.help.guides_endpoint == "/api/v1/help/guides"
-    assert response.help.guide_detail_endpoint == "/api/v1/help/guides/{slug}"
-    assert response.help.default_guide_slug == "getting-started"
-    assert response.help.guide_count == 2
-
-
-def test_get_main_layout_regular_user_sidebar(monkeypatch):
-    user = make_user(role="USER", full_name="Trang Nguyen")
-
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 7)
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
-    monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 2)
-    monkeypatch.setattr(
-        main_layout_service.help_service,
-        "list_guides",
-        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started")]),
-    )
-
-    response = main_layout_service.get_main_layout(object(), user)
-
-    assert response.current_user.display_role == "User"
-    assert response.sidebar.task_count == 7
-    assert response.sidebar.can_view_dashboard is False
-    assert response.sidebar.can_view_users is False
-    assert response.sidebar.can_create_task is True
-    assert response.sidebar.can_view_help is True
-    assert response.preferences.language == "en"
-    assert response.notification.unread_count == 2
-    assert response.help.default_guide_slug == "getting-started"
-
-
-def test_sidebar_summary_matches_main_layout(monkeypatch):
-    user = make_user(role="USER")
-
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "count_visible_tasks", lambda db, received_user: 3)
-    monkeypatch.setattr(main_layout_service.main_layout_repository, "get_user_preference", lambda db, user_id: None)
-    monkeypatch.setattr(main_layout_service, "get_unread_count", lambda db, user_id: 0)
-    monkeypatch.setattr(main_layout_service.help_service, "list_guides", lambda: SimpleNamespace(guides=[]))
-
-    response = main_layout_service.get_sidebar_summary(object(), user)
-
-    assert response.task_count == 3
-    assert response.can_create_task is True
-    assert response.can_view_help is True
-    assert response.help_path == "/dashboard/help"
-
-
-def test_help_navigation_uses_available_guides(monkeypatch):
-    monkeypatch.setattr(
-        main_layout_service.help_service,
-        "list_guides",
-        lambda: SimpleNamespace(guides=[SimpleNamespace(slug="getting-started")]),
-    )
-
-    response = main_layout_service.get_help_navigation()
-
-    assert response.can_view is True
-    assert response.guides_endpoint == "/api/v1/help/guides"
-    assert response.guide_detail_endpoint == "/api/v1/help/guides/{slug}"
-    assert response.default_guide_slug == "getting-started"
-    assert response.guide_count == 1
-
-
-def test_help_navigation_handles_empty_guide_list(monkeypatch):
-    monkeypatch.setattr(main_layout_service.help_service, "list_guides", lambda: SimpleNamespace(guides=[]))
-
-    response = main_layout_service.get_help_navigation()
-
-    assert response.can_view is True
-    assert response.default_guide_slug is None
-    assert response.guide_count == 0
+    assert "/api/v1/main-layout" not in openapi["paths"]
+    assert "/api/v1/main-layout/sidebar-summary" not in openapi["paths"]
+    assert "/api/v1/main-layout/preferences" not in openapi["paths"]
+    assert "/api/v1/main-layout/preferences/language" not in openapi["paths"]
+    assert "/api/v1/main-layout/profile" not in openapi["paths"]
+    assert "/api/v1/main-layout/logout" not in openapi["paths"]
+    assert "/api/v1/main-layout/spaces/{space_id}/context" not in openapi["paths"]
+    assert "/api/v1/me/preferences" in openapi["paths"]
+    assert "/api/v1/me/preferences/language" in openapi["paths"]
+    assert "/api/v1/me/profile" in openapi["paths"]
+    assert "/api/v1/me/spaces/{space_id}/context" in openapi["paths"]
+    assert openapi["paths"]["/api/v1/me/preferences"]["get"]["tags"] == ["Current User"]
 
 
 def test_get_preferences_uses_default_when_missing(monkeypatch):
@@ -247,35 +167,6 @@ def test_main_layout_profile_get_and_update():
     )
     assert updated.full_name == "Trang Nguyen Updated"
     assert user.full_name == "Trang Nguyen Updated"
-
-
-def test_main_layout_logout_delegates_to_auth_service(monkeypatch):
-    db = FakeDb()
-    user = make_user()
-    calls = []
-
-    monkeypatch.setattr(
-        main_layout_api.auth_service,
-        "logout",
-        lambda received_db, current_user, access_token: calls.append((received_db, current_user, access_token))
-        or SimpleNamespace(message="Successfully logged out."),
-    )
-
-    response = main_layout_api.logout(
-        db=db,
-        current_user=user,
-        credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
-    )
-
-    assert response.message == "Successfully logged out."
-    assert calls == [(db, user, "access-token")]
-
-
-def test_main_layout_logout_requires_bearer_credentials():
-    with pytest.raises(HTTPException) as exc:
-        main_layout_api.logout(db=FakeDb(), current_user=make_user(), credentials=None)
-
-    assert exc.value.status_code == 401
 
 
 def test_current_user_rejects_access_token_missing_from_token_store(monkeypatch):

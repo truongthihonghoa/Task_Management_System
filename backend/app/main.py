@@ -13,21 +13,21 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.media import MEDIA_ROOT, ensure_media_dirs
 from app.db.session import get_db
+from app.services.audit_retention_service import run_audit_retention_job
 from app.services.notification_retention_service import run_notification_retention_job
 
 
-async def start_notification_retention_job(app: FastAPI) -> None:
-    if os.getenv("NOTIFICATION_RETENTION_JOB_ENABLED", "true").lower() in {"0", "false", "no"}:
+async def start_scheduled_job(app: FastAPI, *, name: str, enabled_env: str, runner) -> None:
+    if os.getenv(enabled_env, "true").lower() in {"0", "false", "no"}:
         return
-    app.state.notification_retention_stop_event = asyncio.Event()
-    app.state.notification_retention_task = asyncio.create_task(
-        run_notification_retention_job(app.state.notification_retention_stop_event)
-    )
+    stop_event = asyncio.Event()
+    setattr(app.state, f"{name}_stop_event", stop_event)
+    setattr(app.state, f"{name}_task", asyncio.create_task(runner(stop_event)))
 
 
-async def stop_notification_retention_job(app: FastAPI) -> None:
-    stop_event = getattr(app.state, "notification_retention_stop_event", None)
-    retention_task = getattr(app.state, "notification_retention_task", None)
+async def stop_scheduled_job(app: FastAPI, *, name: str) -> None:
+    stop_event = getattr(app.state, f"{name}_stop_event", None)
+    retention_task = getattr(app.state, f"{name}_task", None)
     if stop_event is None or retention_task is None:
         return
     stop_event.set()
@@ -36,9 +36,21 @@ async def stop_notification_retention_job(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await start_notification_retention_job(app)
+    await start_scheduled_job(
+        app,
+        name="notification_retention",
+        enabled_env="NOTIFICATION_RETENTION_JOB_ENABLED",
+        runner=run_notification_retention_job,
+    )
+    await start_scheduled_job(
+        app,
+        name="audit_retention",
+        enabled_env="AUDIT_LOG_RETENTION_JOB_ENABLED",
+        runner=run_audit_retention_job,
+    )
     yield
-    await stop_notification_retention_job(app)
+    await stop_scheduled_job(app, name="notification_retention")
+    await stop_scheduled_job(app, name="audit_retention")
 
 
 app = FastAPI(title="Task Management System API", lifespan=lifespan)

@@ -210,11 +210,31 @@ const NotificationItem = ({ notification, onClick }) => {
 
     const { title, message, IconComponent, iconColor } = getContent();
 
+    const buildNotificationTargetSearch = (updates = {}) => {
+        const currentParams = new URLSearchParams(location.search);
+        const nextParams = new URLSearchParams();
+        ['role', 'spaceRole', 'user'].forEach((key) => {
+            const value = currentParams.get(key);
+            if (value) {
+                nextParams.set(key, value);
+            }
+        });
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value) {
+                nextParams.set(key, value);
+            }
+        });
+        const query = nextParams.toString();
+        return query ? `?${query}` : '';
+    };
+
     const handleItemClick = () => {
         if (notification.space_id) {
-            navigate(`/dashboard/tasks/${notification.space_id}${location.search}`);
+            navigate(`/dashboard/tasks/${notification.space_id}${buildNotificationTargetSearch(
+                notification.task_id ? { taskId: notification.task_id } : {}
+            )}`);
         } else if (notification.task_id) {
-            navigate(`/dashboard/tasks/${notification.task_id}${location.search}`);
+            navigate(`/dashboard/tasks${buildNotificationTargetSearch({ taskId: notification.task_id })}`);
         }
 
         if (onClick) onClick(notification);

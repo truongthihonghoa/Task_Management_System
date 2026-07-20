@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
-from app.repository.audit_retention import cleanup_expired_audit_logs
 
 
 def create_audit_log(
@@ -14,7 +13,6 @@ def create_audit_log(
     payload: Optional[dict] = None
 ) -> AuditLog:
     """Create an audit log entry."""
-    cleanup_expired_audit_logs(db)
     audit_log = AuditLog(
         user_id=user_id,
         action=action,

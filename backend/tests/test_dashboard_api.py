@@ -5,11 +5,27 @@ import pytest
 from fastapi import HTTPException, status
 
 from app.api.v1 import dashboard as dashboard_api
-from app.services import dashboard_service
+from app.services import audit_retention_service, dashboard_service
 
 
 class FakeDb:
     pass
+
+
+class FakeAuditRetentionDb:
+    def __init__(self):
+        self.commits = 0
+        self.rollbacks = 0
+        self.closed = 0
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed += 1
 
 
 def make_user(user_id="USR00000001", role="SUPER_ADMIN", full_name="Alex Morgan"):
@@ -593,6 +609,16 @@ def test_super_admin_dashboard_aggregates_system_metrics(monkeypatch):
     )
     monkeypatch.setattr(
         dashboard_service.dashboard_repository,
+        "get_audit_log_event_type_counts",
+        lambda _db: [("CREATE_USER", 1)],
+    )
+    monkeypatch.setattr(
+        dashboard_service.dashboard_repository,
+        "get_audit_log_label_title_counts",
+        lambda _db: [("USER", 1)],
+    )
+    monkeypatch.setattr(
+        dashboard_service.dashboard_repository,
         "list_assignment_history",
         lambda _db, **_kwargs: ([make_assignment_history(changed_at=now)], 1),
     )
@@ -643,6 +669,16 @@ def test_audit_logs_response_serializes_user_and_event(monkeypatch):
         "list_audit_logs",
         lambda _db, **kwargs: ([log], 1),
     )
+    monkeypatch.setattr(
+        dashboard_service.dashboard_repository,
+        "get_audit_log_event_type_counts",
+        lambda _db: [("SESSION_LOGIN", 1)],
+    )
+    monkeypatch.setattr(
+        dashboard_service.dashboard_repository,
+        "get_audit_log_label_title_counts",
+        lambda _db: [("SESSION", 1)],
+    )
 
     response = dashboard_service.get_audit_logs(
         FakeDb(),
@@ -661,6 +697,8 @@ def test_audit_logs_response_serializes_user_and_event(monkeypatch):
     assert response.items[0].event == "Session Login"
     assert response.items[0].user.initials == "JD"
     assert response.items[0].payload == {"status": "Active"}
+    assert response.filters.event_types[0].value == "SESSION_LOGIN"
+    assert response.filters.label_titles[0].value == "SESSION"
 
 
 def test_audit_log_detail_returns_payload_and_rejects_missing(monkeypatch):
@@ -706,6 +744,42 @@ def test_audit_log_filter_options_are_built_from_database(monkeypatch):
     assert response.date_ranges[0].label == "All time"
     assert "last_30_days" not in {item.value for item in response.date_ranges}
     assert response.sort_orders[0].value == "desc"
+
+
+def test_audit_retention_purge_deletes_expired_logs_and_commits(monkeypatch):
+    db = FakeAuditRetentionDb()
+    calls = []
+    monkeypatch.setattr(audit_retention_service, "SessionLocal", lambda: db)
+    monkeypatch.setattr(
+        audit_retention_service,
+        "cleanup_expired_audit_logs",
+        lambda received_db: calls.append(received_db) or 7,
+    )
+
+    deleted_count = audit_retention_service.purge_expired_audit_logs()
+
+    assert deleted_count == 7
+    assert calls == [db]
+    assert db.commits == 1
+    assert db.rollbacks == 0
+    assert db.closed == 1
+
+
+def test_audit_retention_purge_rolls_back_and_closes_on_error(monkeypatch):
+    db = FakeAuditRetentionDb()
+
+    def fail_cleanup(_db):
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(audit_retention_service, "SessionLocal", lambda: db)
+    monkeypatch.setattr(audit_retention_service, "cleanup_expired_audit_logs", fail_cleanup)
+
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        audit_retention_service.purge_expired_audit_logs()
+
+    assert db.commits == 0
+    assert db.rollbacks == 1
+    assert db.closed == 1
 
 
 def test_assignment_history_response_serializes_task_space_and_users(monkeypatch):
@@ -837,79 +911,82 @@ def test_api_dashboard_route_delegates_to_dashboard_service(monkeypatch):
 
 def test_api_space_summary_routes_delegate_to_dashboard_service(monkeypatch):
     expected_summary = SimpleNamespace(space_id="SPC00000001")
-    expected_members = [SimpleNamespace(user=make_user("USR00000011"))]
-    expected_activities = SimpleNamespace(items=[])
-    expected_tasks = SimpleNamespace(items=[])
-    expected_history = SimpleNamespace(items=[])
+    captured = {}
 
     monkeypatch.setattr(
         dashboard_api.dashboard_service,
         "get_space_summary_dashboard",
-        lambda db, current_user, space_id, **kwargs: expected_summary,
-    )
-    monkeypatch.setattr(
-        dashboard_api.dashboard_service,
-        "get_space_summary_members",
-        lambda db, current_user, space_id: expected_members,
-    )
-    monkeypatch.setattr(
-        dashboard_api.dashboard_service,
-        "get_space_summary_recent_activities",
-        lambda db, current_user, space_id, **kwargs: expected_activities,
-    )
-    monkeypatch.setattr(
-        dashboard_api.dashboard_service,
-        "get_space_summary_recent_tasks",
-        lambda db, current_user, space_id, **kwargs: expected_tasks,
-    )
-    monkeypatch.setattr(
-        dashboard_api.dashboard_service,
-        "get_space_summary_assignment_history",
-        lambda db, current_user, space_id, **kwargs: expected_history,
+        lambda db, current_user, space_id, **kwargs: captured.update(kwargs) or expected_summary,
     )
 
-    assert dashboard_api.get_space_summary_dashboard("SPC00000001", "USR00000011", FakeDb(), make_user()) is expected_summary
-    assert dashboard_api.get_space_summary_members("SPC00000001", FakeDb(), make_user()) is expected_members
-    assert dashboard_api.get_space_summary_recent_activities(
+    assert dashboard_api.get_space_summary_dashboard(
         space_id="SPC00000001",
         member_id="USR00000011",
-        page=1,
-        page_size=20,
-        search="task",
-        status_filter="done",
-        date_range="today",
-        date_from=None,
-        date_to=None,
+        activities_page=2,
+        activities_page_size=30,
+        activities_search="activity",
+        activities_status="done",
+        activities_date_range="today",
+        activities_date_from=None,
+        activities_date_to=None,
+        tasks_tab="assign_history",
+        tasks_page=3,
+        tasks_page_size=40,
+        tasks_search="task",
+        tasks_status="in_progress",
+        tasks_date_range="this_week",
+        tasks_date_from=None,
+        tasks_date_to=None,
+        assignment_page=4,
+        assignment_page_size=50,
+        assignment_search="assignee",
+        assignment_change_status="done",
+        assignment_date_from=None,
+        assignment_date_to=None,
+        assignment_sort_order="asc",
         db=FakeDb(),
         current_user=make_user(),
-    ) is expected_activities
-    assert dashboard_api.get_space_summary_recent_tasks(
-        space_id="SPC00000001",
-        member_id="USR00000011",
-        tab="assign_history",
-        page=1,
-        page_size=20,
-        search="task",
-        status_filter="done",
-        date_range="today",
-        date_from=None,
-        date_to=None,
-        db=FakeDb(),
-        current_user=make_user(),
-    ) is expected_tasks
-    assert dashboard_api.get_space_summary_assignment_history(
-        space_id="SPC00000001",
-        member_id="USR00000011",
-        page=1,
-        page_size=25,
-        search="task",
-        change_status="done",
-        date_from=None,
-        date_to=None,
-        sort_order="desc",
-        db=FakeDb(),
-        current_user=make_user(),
-    ) is expected_history
+    ) is expected_summary
+    assert captured == {
+        "member_id": "USR00000011",
+        "activities_page": 2,
+        "activities_page_size": 30,
+        "activities_search": "activity",
+        "activities_status": "done",
+        "activities_date_range": "today",
+        "activities_date_from": None,
+        "activities_date_to": None,
+        "tasks_tab": "assign_history",
+        "tasks_page": 3,
+        "tasks_page_size": 40,
+        "tasks_search": "task",
+        "tasks_status": "in_progress",
+        "tasks_date_range": "this_week",
+        "tasks_date_from": None,
+        "tasks_date_to": None,
+        "assignment_page": 4,
+        "assignment_page_size": 50,
+        "assignment_search": "assignee",
+        "assignment_change_status": "done",
+        "assignment_date_from": None,
+        "assignment_date_to": None,
+        "assignment_sort_order": "asc",
+    }
+
+
+def test_openapi_hides_space_summary_detail_routes():
+    app = __import__("app.main", fromlist=["app"]).app
+    app.openapi_schema = None
+    openapi = app.openapi()
+
+    assert "/api/v1/dashboard/spaces/{space_id}/summary" in openapi["paths"]
+    assert "/api/v1/dashboard/spaces/{space_id}/summary/members" not in openapi["paths"]
+    assert "/api/v1/dashboard/spaces/{space_id}/summary/recent-activities" not in openapi["paths"]
+    assert "/api/v1/dashboard/spaces/{space_id}/summary/recent-tasks" not in openapi["paths"]
+    assert "/api/v1/dashboard/spaces/{space_id}/summary/assignment-history" not in openapi["paths"]
+    assert "/api/v1/dashboard/super-admin/audit-logs" in openapi["paths"]
+    assert "/api/v1/dashboard/super-admin/audit-logs/filters" not in openapi["paths"]
+    assert "/api/v1/dashboard/super-admin/audit-logs/{log_id}" in openapi["paths"]
 
 
 def test_api_activity_routes_delegate_to_dashboard_service(monkeypatch):
@@ -945,18 +1022,12 @@ def test_api_activity_routes_delegate_to_dashboard_service(monkeypatch):
 
 def test_api_audit_log_routes_delegate_to_dashboard_service(monkeypatch):
     expected_logs = SimpleNamespace(items=[])
-    expected_filters = SimpleNamespace(event_types=[])
     expected_detail = SimpleNamespace(log_id="AUD00000001")
 
     monkeypatch.setattr(
         dashboard_api.dashboard_service,
         "get_audit_logs",
         lambda db, current_user, **kwargs: expected_logs,
-    )
-    monkeypatch.setattr(
-        dashboard_api.dashboard_service,
-        "get_audit_log_filter_options",
-        lambda db, current_user: expected_filters,
     )
     monkeypatch.setattr(
         dashboard_api.dashboard_service,
@@ -976,7 +1047,6 @@ def test_api_audit_log_routes_delegate_to_dashboard_service(monkeypatch):
         db=FakeDb(),
         current_user=make_user(),
     ) is expected_logs
-    assert dashboard_api.get_super_admin_audit_log_filter_options(FakeDb(), make_user()) is expected_filters
     assert dashboard_api.get_super_admin_audit_log_detail("AUD00000001", FakeDb(), make_user()) is expected_detail
 
 
