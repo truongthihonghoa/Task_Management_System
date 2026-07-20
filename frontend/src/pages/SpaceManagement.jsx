@@ -80,6 +80,52 @@ const completeSpaceRequest = async (spaceId) => {
   return response.json();
 };
 
+const deleteSpaceRequest = async (spaceId) => {
+  if (!String(spaceId).startsWith('SPC')) return null;
+
+  const token = getAccessToken();
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    let message = 'Unable to delete this space.';
+    try {
+      const body = await response.json();
+      message = body.message || body.detail || message;
+    } catch {
+      // Keep the fallback message when the backend returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+};
+
+const restoreSpaceRequest = async (spaceId) => {
+  if (!String(spaceId).startsWith('SPC')) return null;
+
+  const token = getAccessToken();
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/restore`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    let message = 'Unable to restore this space.';
+    try {
+      const body = await response.json();
+      message = body.message || body.detail || message;
+    } catch {
+      // Keep the fallback message when the backend returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+};
+
 const SpaceManagement = ({ routeContext = null } = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,6 +172,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [spaceToComplete, setSpaceToComplete] = useState(null);
   const [isCompletingSpace, setIsCompletingSpace] = useState(false);
   const [completeSpaceError, setCompleteSpaceError] = useState('');
+  const [spaceAction, setSpaceAction] = useState(null);
+  const [isSpaceActionSubmitting, setIsSpaceActionSubmitting] = useState(false);
+  const [spaceActionError, setSpaceActionError] = useState('');
+  const [spaceView, setSpaceView] = useState('active');
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDemoUser, setSelectedDemoUser] = useState(currentUserId);
   const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && selectedDemoUser !== 'alex-morgan';
@@ -155,6 +205,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
  
   // Sample data based on image. Owner is scoped per space, not a global role.
   const [spaces, setSpaces] = useState(DEMO_SPACES);
+  const isRecentlyDeletedView = spaceView === 'deleted';
   
   const getUserRole = (userId) => {
     if (userId === 'alex-morgan') return 'SUPER_ADMIN';
@@ -225,10 +276,51 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
       setIsCompletingSpace(false);
     }
   };
+
+  const openSpaceActionModal = (space, type) => {
+    setSpaceActionError('');
+    setSpaceAction({ space, type });
+  };
+
+  const closeSpaceActionModal = () => {
+    if (isSpaceActionSubmitting) return;
+    setSpaceAction(null);
+    setSpaceActionError('');
+  };
+
+  const handleSpaceAction = async () => {
+    if (!spaceAction?.space || !spaceAction?.type) return;
+
+    setIsSpaceActionSubmitting(true);
+    setSpaceActionError('');
+
+    try {
+      const actionRequest = spaceAction.type === 'delete' ? deleteSpaceRequest : restoreSpaceRequest;
+      const updatedSpace = await actionRequest(spaceAction.space.id);
+      setSpaces(prev => prev.map(space => (
+        space.id === spaceAction.space.id
+          ? {
+              ...space,
+              status: updatedSpace?.status_space || (spaceAction.type === 'delete' ? 'Deleted' : 'Active'),
+            }
+          : space
+      )));
+      setSpaceAction(null);
+    } catch (error) {
+      setSpaceActionError(error.message || `Unable to ${spaceAction.type} this space.`);
+    } finally {
+      setIsSpaceActionSubmitting(false);
+    }
+  };
  
   const filteredAndSortedSpaces = spaces
     .filter(space => {
       if (!canAccessSpace(space, selectedDemoUser)) return false;
+      if (isRecentlyDeletedView) {
+        if (space.status !== 'Deleted') return false;
+      } else if (space.status === 'Deleted') {
+        return false;
+      }
       const matchesSearch = space.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         space.description.toLowerCase().includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
@@ -291,6 +383,21 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
             />
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setSpaceView(prev => prev === 'deleted' ? 'active' : 'deleted')}
+          className={`flex h-[34px] items-center gap-2 rounded border px-3 text-[11px] font-bold transition-all shadow-sm active:scale-95 ${
+            isRecentlyDeletedView
+              ? 'border-[#4C2B74] bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+              : 'border-outline-variant bg-white text-[#5e4db2] hover:border-[#5e4db2] hover:bg-[#f0edff]'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[16px]">
+            {isRecentlyDeletedView ? 'arrow_back' : 'delete'}
+          </span>
+          {isRecentlyDeletedView ? 'All Spaces' : 'Recently Deleted'}
+        </button>
 
         <div className="w-43">
           <div className="relative group">
@@ -397,11 +504,15 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
             <i data-lucide="folder-open" className="w-10 h-10 text-gray-300"></i>
           </div>
-          <h3 className="text-xl font-bold text-gray-700 mb-2">You don't have any spaces yet</h3>
+          <h3 className="text-xl font-bold text-gray-700 mb-2">
+            {isRecentlyDeletedView ? 'No recently deleted spaces' : "You don't have any spaces yet"}
+          </h3>
           <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
-            Create your first space to start organizing your projects and collaborating with your team.
+            {isRecentlyDeletedView
+              ? 'Deleted spaces owned by you will appear here until they are restored.'
+              : 'Create your first space to start organizing your projects and collaborating with your team.'}
           </p>
-          {canCreateSpace && (
+          {canCreateSpace && !isRecentlyDeletedView && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
               className="bg-[#4C2B74] text-white px-6 py-3 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all shadow-md active:scale-95"
@@ -420,7 +531,11 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           const userSpaceRole = getUserRoleInSpace(space, selectedDemoUser);
           const isOwner = userSpaceRole === 'OWNER';
           const isArchived = space.status === 'Archived';
+          const isDeleted = space.status === 'Deleted';
           const canCompleteSpace = isAssigned && isOwner && space.status === 'Active';
+          const canDeleteSpace = isAssigned && isOwner && space.status === 'Active';
+          const canRestoreSpace = isAssigned && isOwner && isDeleted;
+          const footerActionCount = canCompleteSpace ? 1 : 0;
           return (
             <div key={space.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
               <div className="p-6 flex-1">
@@ -438,45 +553,76 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                 </div>
                 <p className="text-[12px] text-gray-500 leading-relaxed mb-6">{space.description}</p>
    
-                <div className="flex items-center gap-6 text-gray-500">
-                  <div className="flex items-center">
-                    <i data-lucide="check-circle-2" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
-                    <span className="text-[12px] font-medium">{space.tasksCount} Tasks</span>
+                <div className="flex items-end justify-between gap-4 text-gray-500">
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center">
+                      <i data-lucide="check-circle-2" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
+                      <span className="text-[12px] font-medium">{space.tasksCount} Tasks</span>
+                    </div>
+                    <div className="flex items-center">
+                      <i data-lucide="calendar" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
+                      <span className="text-[12px] font-medium">{space.date}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <i data-lucide="calendar" className="w-4 h-4 mr-2 text-[#4C2B74]"></i>
-                    <span className="text-[12px] font-medium">{space.date}</span>
-                  </div>
-                </div>
-              </div>
-   
-              <div className="p-4 bg-gray-50/50 border-t border-gray-100">
-                <div className={`${canCompleteSpace ? 'grid grid-cols-2' : 'flex'} items-center gap-3`}>
-                  <button
-                    disabled={!isAssigned}
-                    onClick={() => handleViewTasks(space, isAssigned, isOwner)}
-                    className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
-                      !isAssigned
-                        ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] opacity-50 cursor-not-allowed'
-                        : isArchived
-                          ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] hover:bg-[#e6e1ff]'
-                          : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                    }`}
-                  >
-                    View Tasks
-                  </button>
 
-                  {canCompleteSpace && (
+                  {canDeleteSpace && (
                     <button
                       type="button"
-                      onClick={() => openCompleteSpaceModal(space)}
-                      className="w-full py-2.5 rounded-lg border border-[#4C2B74] text-[#4C2B74] bg-white font-bold text-[12px] transition-all shadow-sm hover:bg-[#f0edff] active:scale-95"
+                      onClick={() => openSpaceActionModal(space, 'delete')}
+                      aria-label={`Delete ${space.title}`}
+                      title="Delete space"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 active:scale-95"
                     >
-                      Complete
+                      <span className="material-symbols-outlined text-[18px] leading-none">delete</span>
+                    </button>
+                  )}
+
+                  {canRestoreSpace && (
+                    <button
+                      type="button"
+                      onClick={() => openSpaceActionModal(space, 'restore')}
+                      aria-label={`Restore ${space.title}`}
+                      title="Restore space"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-[18px] leading-none">undo</span>
                     </button>
                   )}
                 </div>
               </div>
+   
+              {!isRecentlyDeletedView && (
+                <div className="p-4 bg-gray-50/50 border-t border-gray-100">
+                  <div
+                    className="grid items-center gap-3"
+                    style={{ gridTemplateColumns: `repeat(${footerActionCount + 1}, minmax(0, 1fr))` }}
+                  >
+                    <button
+                      disabled={!isAssigned || isDeleted}
+                      onClick={() => handleViewTasks(space, isAssigned, isOwner)}
+                      className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
+                        !isAssigned || isDeleted
+                          ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] opacity-50 cursor-not-allowed'
+                          : isArchived
+                            ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] hover:bg-[#e6e1ff]'
+                            : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                      }`}
+                    >
+                      View Tasks
+                    </button>
+
+                    {canCompleteSpace && (
+                      <button
+                        type="button"
+                        onClick={() => openCompleteSpaceModal(space)}
+                        className="w-full py-2.5 rounded-lg border border-[#4C2B74] text-[#4C2B74] bg-white font-bold text-[12px] transition-all shadow-sm hover:bg-[#f0edff] active:scale-95"
+                      >
+                        Complete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -530,6 +676,76 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                 className="rounded-lg bg-[#5e4db2] px-5 py-2 text-[13px] font-bold text-white shadow-md transition-all hover:bg-[#4d3e9c] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isCompletingSpace ? 'Completing...' : 'Complete Space'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {spaceAction && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={closeSpaceActionModal}
+          />
+
+          <div className="relative w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
+              <h2 className="text-base font-bold text-on-surface">
+                {spaceAction.type === 'delete' ? 'Delete Space' : 'Restore Space'}
+              </h2>
+              <button
+                type="button"
+                onClick={closeSpaceActionModal}
+                disabled={isSpaceActionSubmitting}
+                className="rounded-full p-1 transition-colors hover:bg-surface-container disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[20px] text-outline">close</span>
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              <p className="text-[13px] leading-relaxed text-on-surface-variant">
+                {spaceAction.type === 'delete' ? (
+                  <>
+                    Are you sure you want to delete <span className="font-bold text-on-surface">{spaceAction.space.title}</span>? This space will be moved to trash and can be restored by the space owner.
+                  </>
+                ) : (
+                  <>
+                    Restore <span className="font-bold text-on-surface">{spaceAction.space.title}</span> back to active spaces?
+                  </>
+                )}
+              </p>
+
+              {spaceActionError && (
+                <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700">
+                  {spaceActionError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-outline-variant bg-surface-container-low/50 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeSpaceActionModal}
+                disabled={isSpaceActionSubmitting}
+                className="rounded-lg px-4 py-2 text-[13px] font-bold text-outline transition-colors hover:bg-surface-container disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSpaceAction}
+                disabled={isSpaceActionSubmitting}
+                className={`rounded-lg px-5 py-2 text-[13px] font-bold text-white shadow-md transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 ${
+                  spaceAction.type === 'delete'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-blue-700 hover:bg-blue-800'
+                }`}
+              >
+                {isSpaceActionSubmitting
+                  ? (spaceAction.type === 'delete' ? 'Deleting...' : 'Restoring...')
+                  : (spaceAction.type === 'delete' ? 'Delete Space' : 'Restore Space')}
               </button>
             </div>
           </div>

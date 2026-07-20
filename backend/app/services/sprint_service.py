@@ -54,17 +54,18 @@ def _ensure_can_modify_space_sprints(db: Session, space: Space, user: User) -> N
     _ensure_can_view_space_sprints(db, space, user)
 
 
-def _ensure_space_owner(space: Space, user: User) -> None:
-    if space.owner_id != user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the space owner can perform this action",
-        )
-
-
 def _ensure_sprint_not_deleted(sprint: Sprint) -> None:
     if sprint.status == "Deleted":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is deleted")
+
+
+def _ensure_no_other_active_sprint(db: Session, sprint: Sprint) -> None:
+    active_sprint = sprint_repository.get_active_sprint_by_space(db, sprint.space_id)
+    if active_sprint and active_sprint.sprint_id != sprint.sprint_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complete the active sprint before activating another sprint",
+        )
 
 
 def _serialize_sprints(sprints: Iterable[Sprint]) -> list[SprintResponse]:
@@ -107,8 +108,8 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
     _ensure_space_active(space)
     _ensure_can_modify_space_sprints(db, space, current_user)
 
-    now = datetime.utcnow()
     duration_weeks = payload.duration_weeks or 2
+    now = datetime.utcnow()
     sprint = Sprint(
         space_id=space_id,
         goal=payload.goal,
@@ -121,6 +122,8 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
         created_at=now,
         updated_at=now,
     )
+    if sprint.status == "Active":
+        _ensure_no_other_active_sprint(db, sprint)
     sprint_repository.create_sprint_record(db, sprint)
     return SprintResponse.model_validate(sprint)
 
@@ -145,6 +148,8 @@ def update_sprint(db: Session, sprint_id: str, payload: SprintUpdate, current_us
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="End date must be after start date",
         )
+    if update_data.get("status") == "Active":
+        _ensure_no_other_active_sprint(db, sprint)
 
     for field, value in update_data.items():
         setattr(sprint, field, value)
@@ -160,7 +165,7 @@ def delete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResp
 
     space = sprint.space or _get_space_or_404(db, sprint.space_id)
     _ensure_space_active(space)
-    _ensure_space_owner(space, current_user)
+    _ensure_can_modify_space_sprints(db, space, current_user)
 
     active_task_count = sprint_repository.count_active_tasks_by_sprint(db, sprint_id)
     if active_task_count:
@@ -175,11 +180,31 @@ def delete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResp
     return SprintResponse.model_validate(sprint)
 
 
+def activate_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResponse:
+    sprint = _get_sprint_or_404(db, sprint_id)
+    _ensure_sprint_not_deleted(sprint)
+    if sprint.status == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint cannot be activated")
+
+    space = sprint.space or _get_space_or_404(db, sprint.space_id)
+    _ensure_space_active(space)
+    _ensure_can_modify_space_sprints(db, space, current_user)
+    _ensure_no_other_active_sprint(db, sprint)
+
+    if sprint.status != "Active":
+        sprint.status = "Active"
+        sprint.updated_at = datetime.utcnow()
+        sprint_repository.save_sprint(db, sprint)
+    return SprintResponse.model_validate(sprint)
+
+
 def complete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResponse:
     sprint = _get_sprint_or_404(db, sprint_id)
     _ensure_sprint_not_deleted(sprint)
     if sprint.status == "Completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is already completed")
+    if sprint.status != "Active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only active sprints can be completed")
 
     space = sprint.space or _get_space_or_404(db, sprint.space_id)
     _ensure_space_active(space)

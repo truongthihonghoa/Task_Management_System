@@ -18,17 +18,17 @@ ensure_media_dirs()
 app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def read_root():
     return {"status": "ok", "service": "task-management-backend"}
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 def health_check():
     return {"status": "ok"}
 
 
-@app.get("/health/db")
+@app.get("/health/db", include_in_schema=False)
 def database_health_check(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
 

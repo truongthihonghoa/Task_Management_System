@@ -373,8 +373,8 @@ export const EN_TO_VI = {
   "DETAILS": "CHI TIẾT",
   "Details": "Chi tiết",
   "Created At": "Thời gian tạo",
+  "All time": "Tất cả thời gian",
   "Last 7 days": "7 ngày gần đây",
-  "Last 30 days": "30 ngày gần đây",
   "Rows per page": "Số dòng mỗi trang",
   "Page": "Trang",
   "of": "trên",
@@ -441,7 +441,7 @@ export const EN_TO_VI = {
   "Delete Sprint": "Xóa sprint",
   "this sprint": "sprint này",
   "System": "Hệ thống",
-};
+}; 
 
 export const VI_TO_EN = Object.fromEntries(
   Object.entries(EN_TO_VI).map(([english, vietnamese]) => [vietnamese, english])

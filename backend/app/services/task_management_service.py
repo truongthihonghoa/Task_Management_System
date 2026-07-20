@@ -91,8 +91,35 @@ def _get_task_or_404(db: Session, task_id: str) -> Task:
     return task
 
 
+def _is_task_overdue(task: Task, *, now: datetime | None = None) -> bool:
+    if task.completed_at is None:
+        return False
+    if task.task_status in {"done", "cancelled"}:
+        return False
+
+    current_time = now or datetime.utcnow()
+    return task.completed_at.date() < current_time.date()
+
+
+def _is_task_due_today(task: Task, *, now: datetime | None = None) -> bool:
+    if task.completed_at is None:
+        return False
+    if task.task_status in {"done", "cancelled"}:
+        return False
+
+    current_time = now or datetime.utcnow()
+    return task.completed_at.date() == current_time.date()
+
+
+def _apply_task_date_flags(response: TaskListItemResponse, task: Task) -> TaskListItemResponse:
+    response.is_overdue = _is_task_overdue(task)
+    response.is_due_today = _is_task_due_today(task)
+    return response
+
+
 def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     response = TaskListItemResponse.model_validate(task)
+    _apply_task_date_flags(response, task)
     response.attachments = sorted(
         [attachment for attachment in response.attachments if attachment.deleted_at is None],
         key=lambda attachment: attachment.uploaded_at,
@@ -116,6 +143,7 @@ def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_
 
 def _build_task_detail_response(task: Task) -> TaskDetailResponse:
     response = TaskDetailResponse.model_validate(task)
+    _apply_task_date_flags(response, task)
     response.task_status_label = task.task_status.replace("_", " ").upper()
     response.sprint_name = task.sprint.name if task.sprint else None
     response.creator_name = task.creator.full_name if task.creator else None
@@ -194,6 +222,7 @@ def list_tasks(
     task_status: str | None,
     priority: str | None,
     sort: str,
+    active_sprint_only: bool = True,
 ) -> TaskListResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
@@ -209,6 +238,7 @@ def list_tasks(
         task_status=task_status,
         priority=priority,
         sort=sort,
+        active_sprint_only=active_sprint_only,
     )
     return _build_task_list_response(tasks, total, page=page, page_size=page_size)
 
@@ -249,7 +279,7 @@ def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardR
     _ensure_can_view_space_tasks(db, space, current_user)
 
     grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
-    for task in task_repository.list_board_task_records(db, space_id):
+    for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
         grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
     return TaskBoardResponse(**grouped)
 

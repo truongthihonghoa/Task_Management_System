@@ -167,7 +167,7 @@ class SprintCreate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     duration_weeks: Optional[int] = Field(default=2, ge=1, le=52)
-    status: Literal["Planned", "Active"] = "Active"
+    status: Literal["Planned", "Active"] = "Planned"
     auto_start: bool = False
     auto_complete: bool = False
 
@@ -370,6 +370,8 @@ class TaskListItemResponse(BaseModel):
     priority: str
     task_status: str
     completed_at: Optional[datetime]
+    is_overdue: bool = False
+    is_due_today: bool = False
     story_points: Optional[float]
     created_at: datetime
     updated_at: datetime
@@ -677,3 +679,4 @@ class ChangePasswordRequest(BaseModel):
         if self.current_password == self.new_password:
             raise ValueError("New password must not be the same as current password.")
         return self
+    

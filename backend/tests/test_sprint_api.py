@@ -38,7 +38,7 @@ def test_list_and_create_sprints_delegate_to_service(monkeypatch):
         start_date=datetime(2026, 7, 10, 9, 0, 0),
         end_date=datetime(2026, 7, 24, 9, 0, 0),
         duration_weeks=2,
-        status="Active",
+        status="Planned",
         auto_start=False,
         auto_complete=False,
     )
@@ -69,7 +69,13 @@ def test_list_and_create_sprints_delegate_to_service(monkeypatch):
     ]
 
 
-def test_sprint_detail_update_delete_and_complete_delegate_to_service(monkeypatch):
+def test_sprint_create_defaults_to_planned():
+    payload = SprintCreate()
+
+    assert payload.status == "Planned"
+
+
+def test_sprint_detail_update_delete_activate_and_complete_delegate_to_service(monkeypatch):
     db = object()
     user = SimpleNamespace(user_id="USR00000003")
     update_payload = SprintUpdate(
@@ -101,6 +107,12 @@ def test_sprint_detail_update_delete_and_complete_delegate_to_service(monkeypatc
     )
     monkeypatch.setattr(
         sprints.sprint_service,
+        "activate_sprint",
+        lambda received_db, sprint_id, current_user: calls.append(("activate", received_db, sprint_id, current_user))
+        or "activate",
+    )
+    monkeypatch.setattr(
+        sprints.sprint_service,
         "complete_sprint",
         lambda received_db, sprint_id, current_user: calls.append(("complete", received_db, sprint_id, current_user))
         or "complete",
@@ -109,10 +121,12 @@ def test_sprint_detail_update_delete_and_complete_delegate_to_service(monkeypatc
     assert sprints.get_sprint("SPR00000003", db, user) == "get"
     assert sprints.update_sprint("SPR00000003", update_payload, db, user) == "update"
     assert sprints.delete_sprint("SPR00000003", db, user) == "delete"
+    assert sprints.activate_sprint("SPR00000003", db, user) == "activate"
     assert sprints.complete_sprint("SPR00000003", db, user) == "complete"
     assert calls == [
         ("get", db, "SPR00000003", user),
         ("update", db, "SPR00000003", update_payload, user),
         ("delete", db, "SPR00000003", user),
+        ("activate", db, "SPR00000003", user),
         ("complete", db, "SPR00000003", user),
     ]

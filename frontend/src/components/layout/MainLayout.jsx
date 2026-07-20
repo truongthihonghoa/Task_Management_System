@@ -917,6 +917,7 @@ export default function MainLayout() {
         initialSprint={createTaskInitialSprint}
         onCreateTask={createTaskHandler}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
       />
 

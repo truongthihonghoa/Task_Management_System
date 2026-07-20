@@ -2,8 +2,54 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import '../../styles/CreateTaskModal.css';
 import RichTextEditor from './RichTextEditor';
 
+const getCompletedDateValue = (task = {}) => task.completed_at || task.completedAt || task.date;
 
-export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTask, currentRole = 'ADMIN', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
+const formatCompletedDate = (value, fallback = 'Jun 26, 2026') => {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const isCompletedDateOverdue = (value, status, apiOverdue = undefined) => {
+  if (!value) return false;
+
+  const normalizedStatus = String(status || '').toLowerCase();
+  if (['done', 'cancelled'].includes(normalizedStatus)) return false;
+  if (typeof apiOverdue === 'boolean') return apiOverdue;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const completedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return completedDate < todayDate;
+};
+
+const isCompletedDateDueToday = (value, status, apiDueToday = undefined) => {
+  if (!value) return false;
+
+  const normalizedStatus = String(status || '').toLowerCase();
+  if (['done', 'cancelled'].includes(normalizedStatus)) return false;
+  if (typeof apiDueToday === 'boolean') return apiDueToday;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const completedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return completedDate.getTime() === todayDate.getTime();
+};
+
+const DUE_TODAY_COLOR = '#92400E';
+const DUE_TODAY_BACKGROUND = '#FEF3C7';
+
+
+export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
   const [activeTab, setActiveTab] = useState('comments');
   const [commentText, setCommentText] = useState('');
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -60,12 +106,15 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   const currentUserId = currentUser?.id || currentUser?.user_id || null;
   const currentUserName = currentUser?.name || currentUser?.authorName || 'Unknown User';
   const isAdmin = currentRole === 'ADMIN';
+  const isSpaceOwner = currentSpaceRole === 'OWNER';
+  const canModifyTask = !isAdmin;
   const currentUserNames = useMemo(() => [currentUser?.name, currentUser?.fullName, currentUser?.username].filter(Boolean), [currentUser]);
-  const statusOptions = currentRole === 'ADMIN'
+  const statusOptions = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
   const canEditTaskContent = useMemo(() => {
-    if (isAdmin || currentRole === 'USER') return true;
+    if (!canModifyTask) return false;
+    if (currentRole === 'USER') return true;
     if (!currentUserId || !localTask) return false;
     return (
       localTask.creatorId === currentUserId ||
@@ -75,8 +124,8 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
       currentUserNames.includes(localTask.reporter) ||
       currentUserNames.includes(localTask.assignee)
     );
-  }, [isAdmin, currentRole, currentUserId, currentUserNames, localTask]);
-  const canManageAdminFields = isAdmin || currentRole === 'USER';
+  }, [canModifyTask, currentRole, currentUserId, currentUserNames, localTask]);
+  const canManageAdminFields = canModifyTask;
 
   const isCommentOwner = (comment) => {
     if (!comment || !currentUserId) return false;
@@ -284,8 +333,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
       setIsTitleEditing(false);
 
 
-      if (task.date) {
-        const d = new Date(task.date);
+      const completedDateValue = getCompletedDateValue(task);
+      if (completedDateValue) {
+        const d = new Date(completedDateValue);
         if (!isNaN(d.getTime())) {
           setCompletedMonth(d.getMonth());
           setCompletedYear(d.getFullYear());
@@ -325,6 +375,22 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
 
 
   if (!task) return null;
+
+  const completedDateValue = getCompletedDateValue(localTask);
+  const completedDateLabel = formatCompletedDate(completedDateValue);
+  const isCompletedOverdue = isCompletedDateOverdue(
+    completedDateValue,
+    localTask.status || localTask.task_status,
+    localTask.is_overdue
+  );
+  const isCompletedDueToday = !isCompletedOverdue && isCompletedDateDueToday(
+    completedDateValue,
+    localTask.status || localTask.task_status,
+    localTask.is_due_today
+  );
+  const completedDateColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#172B4D';
+  const completedDateBackground = isCompletedOverdue ? '#FFF0F0' : isCompletedDueToday ? DUE_TODAY_BACKGROUND : 'transparent';
+  const completedDateIconColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#6B778C';
 
 
   // Get initials from name
@@ -1362,11 +1428,16 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 <div className="relative">
                   <div
                     className={`flex items-center gap-1.5 ${canManageAdminFields ? 'cursor-pointer hover:bg-[#F4F5F7]' : ''} rounded px-2 py-1 transition-colors`}
-                    style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: completedDateColor,
+                      backgroundColor: completedDateBackground
+                    }}
                     onClick={() => { if (canManageAdminFields) setIsCompletedOpen(!isCompletedOpen); }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: '#6B778C' }}>calendar_today</span>
-                    {localTask.date || 'Jun 26, 2026'}
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: completedDateIconColor }}>calendar_today</span>
+                    {completedDateLabel}
                   </div>
 
 
@@ -1435,8 +1506,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                           {getDaysInMonth(completedYear, completedMonth).map((day, i) => {
                             if (day === null) return <div key={`empty-${i}`} style={{ height: '32px' }} />;
                             // Check if current day is selected
-                            const isSelected = localTask.date && (() => {
-                              const d = new Date(localTask.date);
+                            const selectedCompletedDate = getCompletedDateValue(localTask);
+                            const isSelected = selectedCompletedDate && (() => {
+                              const d = new Date(selectedCompletedDate);
                               return !isNaN(d.getTime()) &&
                                 d.getDate() === day &&
                                 d.getMonth() === completedMonth &&
@@ -1461,8 +1533,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                                 }}
                                 onClick={() => {
                                   const formatted = `${monthAbbrs[completedMonth]} ${day}, ${completedYear}`;
-                                  setLocalTask(prev => ({ ...prev, date: formatted }));
-                                  syncTask({ date: formatted });
+                                  const completedAt = `${completedYear}-${String(completedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                  setLocalTask(prev => ({ ...prev, date: formatted, completed_at: completedAt }));
+                                  syncTask({ date: formatted, completed_at: completedAt });
                                   setIsCompletedOpen(false);
                                 }}
                               >
@@ -1491,15 +1564,15 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                   <div className="flex justify-between items-center relative">
                     <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Created</span>
                     <span
-                      className={`transition-colors ${isAdmin ? 'cursor-pointer hover:text-[#4C2B74]' : 'opacity-80 cursor-default'}`}
+                      className={`transition-colors ${canManageAdminFields ? 'cursor-pointer hover:text-[#4C2B74]' : 'opacity-80 cursor-default'}`}
                       style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}
-                      onClick={() => { if (isAdmin) setIsCreatedOpen(!isCreatedOpen); }}
+                      onClick={() => { if (canManageAdminFields) setIsCreatedOpen(!isCreatedOpen); }}
                     >
                       {localTask.createdAt || 'Jun 20, 2026'}
                     </span>
 
 
-                    {isCreatedOpen && isAdmin && (
+                    {isCreatedOpen && canManageAdminFields && (
                       <div className="calendar-dropdown-container" style={{ right: 0, top: '100%', padding: '12px', width: '280px', zIndex: 100 }}>
                         <div className="calendar-header flex items-center justify-between mb-4">
                           <div className="flex gap-2">
@@ -1676,4 +1749,3 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     </div>
   );
 }
-
