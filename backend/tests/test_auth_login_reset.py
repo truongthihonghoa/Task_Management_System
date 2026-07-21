@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.services import auth_service
 from app.repository.auth import PASSWORD_RESET
-from app.schemas.pydantic_models import EmailRequest, LoginRequest, ResetPasswordRequest, VerifyResetCodeRequest
+from app.schemas.pydantic_models import EmailRequest, LoginRequest, ResetPasswordRequest
 
 
 class FakeDb:
@@ -175,11 +175,11 @@ def test_forgot_password_generates_password_reset_token_and_sends_email(monkeypa
     monkeypatch.setattr(auth_service, "generate_otp", lambda: "483921")
     monkeypatch.setattr(auth_service, "upsert_verification_token", lambda _db, **kwargs: upserts.append(kwargs))
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)) or True)
+    monkeypatch.setattr(auth_service, "send_password_reset_email", lambda email, code: sent.append((email, code)) or True)
 
     response = auth_service.forgot_password(db, user.email)
 
-    assert response.message == "Verification code sent successfully."
+    assert response.message == "Password reset link sent successfully."
     assert upserts[0]["token_type"] == PASSWORD_RESET
     assert upserts[0]["otp_code"] == "483921"
     assert sent == [(user.email, "483921")]
@@ -195,42 +195,6 @@ def test_forgot_password_email_not_found(monkeypatch):
     assert_http_error(exc_info, 404, "Email does not exist.")
 
 
-def test_verify_reset_code_success_marks_token_used(monkeypatch):
-    db = FakeDb()
-    user = make_user()
-    token = make_token()
-
-    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
-    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-
-    response = auth_service.verify_reset_code(db, user.email, "483921")
-
-    assert response.verified is True
-    assert token.used_at is not None
-    assert db.commits == 1
-
-
-@pytest.mark.parametrize(
-    ("token", "code", "message"),
-    [
-        (make_token(otp_code="111111"), "483921", "The verification code is incorrect."),
-        (make_token(expires_at=datetime.utcnow() - timedelta(minutes=1)), "483921", "The verification code has expired."),
-        (make_token(used_at=datetime.utcnow()), "483921", "The verification code is no longer valid."),
-    ],
-)
-def test_verify_reset_code_rejects_invalid_expired_or_used_codes(monkeypatch, token, code, message):
-    user = make_user()
-
-    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
-
-    with pytest.raises(HTTPException) as exc_info:
-        auth_service.verify_reset_code(FakeDb(), user.email, code)
-
-    assert_http_error(exc_info, 400, message)
-
-
 def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     db = FakeDb()
     user = make_user()
@@ -241,7 +205,7 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "generate_otp", lambda: "222222")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(auth_service, "send_verification_email", lambda email, code: sent.append((email, code)) or True)
+    monkeypatch.setattr(auth_service, "send_password_reset_email", lambda email, code: sent.append((email, code)) or True)
 
     response = auth_service.resend_reset_code(db, user.email)
 
@@ -256,36 +220,40 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
 def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     db = FakeDb()
     user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=datetime.utcnow())
-    token = make_token(used_at=datetime.utcnow())
+    token = make_token(used_at=None)
     audits = []
+    revoked = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(auth_service, "revoke_all_user_tokens", lambda _db, user_id: revoked.append(user_id))
 
-    response = auth_service.reset_password(db, user.email, "NewPassword@123")
+    response = auth_service.reset_password(db, user.email, token.otp_code, "NewPassword@123")
 
     assert response.message == "Password reset successfully."
     assert user.password_hash == "hashed::NewPassword@123"
     assert user.failed_login_attempts == 0
     assert user.locked_until is None
     assert user.status_user == "Active"
+    assert token.used_at is not None
+    assert revoked == [user.user_id]
     assert audits[0]["action"] == "RESET_PASSWORD"
     assert db.commits == 1
 
 
-def test_reset_password_requires_verified_reset_code(monkeypatch):
+def test_reset_password_rejects_used_reset_link(monkeypatch):
     user = make_user()
-    token = make_token(used_at=None)
+    token = make_token(used_at=datetime.utcnow())
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth_service.reset_password(FakeDb(), user.email, "NewPassword@123")
+        auth_service.reset_password(FakeDb(), user.email, token.otp_code, "NewPassword@123")
 
-    assert_http_error(exc_info, 400, "Password reset code must be verified before resetting password.")
+    assert_http_error(exc_info, 400, "The verification code is no longer valid.")
 
 
 def test_reset_password_validates_password_strength_and_match():

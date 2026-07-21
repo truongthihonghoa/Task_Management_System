@@ -15,10 +15,12 @@ from app.models.user import User
 from app.repository import user as user_repo
 from app.schemas.pydantic_models import (
     ChangePasswordRequest,
-    UpdateProfileRequest,
+    UpdateProfileRequest, 
     UserManagementListResponse,
     UserManagementResponse,
     UserProfileResponse,
+    UserStatusUpdateRequest,
+    UserLockUpdateRequest,
 )
 
 SUPPORTED_STATUSES = {"Pending", "Active", "Inactive", "Locked"}
@@ -132,30 +134,58 @@ def update_user(db: Session, user_id: str, update_data: dict[str, Any]) -> UserM
     return _user_response(user)
 
 
-def activate_user(db: Session, user_id: str) -> UserManagementResponse:
+def update_user_status(
+    db: Session,
+    user_id: str,
+    new_status: str,
+) -> UserManagementResponse:
+    if new_status not in {"Active", "Inactive"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid status.",
+        )
+
     user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Active"})
+
+    user_repo.update_user_fields(
+        db,
+        user,
+        {"status_user": new_status},
+    )
+
     return _user_response(user)
 
+def update_user_lock_status(
+    db: Session,
+    user_id: str,
+    locked: bool,
+) -> UserManagementResponse:
 
-def deactivate_user(db: Session, user_id: str) -> UserManagementResponse:
     user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Inactive"})
+
+    if locked:
+        locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
+
+        user_repo.update_user_fields(
+            db,
+            user,
+            {
+                "status_user": "Locked",
+                "locked_until": locked_until,
+            },
+        )
+    else:
+        user_repo.update_user_fields(
+            db,
+            user,
+            {
+                "status_user": "Active",
+                "failed_login_attempts": 0,
+                "locked_until": None,
+            },
+        )
+
     return _user_response(user)
-
-
-def lock_user(db: Session, user_id: str) -> UserManagementResponse:
-    user = get_user_or_404(db, user_id)
-    locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
-    user_repo.update_user_fields(db, user, {"status_user": "Locked", "locked_until": locked_until})
-    return _user_response(user)
-
-
-def unlock_user(db: Session, user_id: str) -> UserManagementResponse:
-    user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Active", "failed_login_attempts": 0, "locked_until": None})
-    return _user_response(user)
-
 
 def get_user_profile(db: Session, user_id: str) -> UserProfileResponse:
     user = get_user_or_404(db, user_id)

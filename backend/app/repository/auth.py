@@ -204,9 +204,37 @@ def revoke_refresh_token_for_access_token(
 
     user_token.refresh_token = ""
     user_token.refresh_expires_at = revoked_at or datetime.utcnow()
+    user_token.is_revoked = True
     return user_token
 
 
+def get_user_token_by_refresh_token(db: Session, refresh_token: str) -> UserToken | None:
+    return db.execute(
+        select(UserToken).where(
+            UserToken.refresh_token == refresh_token,
+        )
+    ).scalar_one_or_none()
+
+
+def update_user_token(
+    db: Session,
+    user_token: UserToken,
+    *,
+    new_access_token: str,
+    access_expires_at: datetime,
+) -> UserToken:
+    user_token.access_token = new_access_token
+    user_token.access_expires_at = access_expires_at
+
+    return user_token
+
+
+def revoke_all_user_tokens(db: Session, user_id: str) -> None:
+    db.query(UserToken).filter(
+        UserToken.user_id == user_id,
+    ).delete(synchronize_session=False)
+
+    db.commit()
 # ---------------------------------------------------------------------------
 # AuditLog operations
 # ---------------------------------------------------------------------------

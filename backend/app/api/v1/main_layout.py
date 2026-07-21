@@ -13,7 +13,23 @@ from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileRespons
 from app.services import main_layout_service
 
 
-router = APIRouter(prefix="/me", tags=["Current User"])
+router = APIRouter(prefix="/main-layout", tags=["main layout"])
+
+
+@router.get("", response_model=MainLayoutResponse)
+def get_main_layout(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MainLayoutResponse:
+    return main_layout_service.get_main_layout(db, current_user)
+
+
+@router.get("/sidebar-summary", response_model=SidebarSummaryResponse)
+def get_sidebar_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SidebarSummaryResponse:
+    return main_layout_service.get_sidebar_summary(db, current_user)
 
 
 @router.get("/preferences", response_model=MainLayoutPreferencesResponse)

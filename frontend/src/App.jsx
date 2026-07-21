@@ -21,8 +21,10 @@ import UserManagement from "./pages/UserManagement";
 import ProfilePage from "./pages/ProfilePage";
 import HelpCenter from "./pages/HelpCenter";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import HelpGuide from "./pages/HelpGuide";
+import ProtectedRoute from "./routes/ProtectedRoute";
 /**
  * Redirect /dashboard → /dashboard/ while preserving the query string
  * (e.g. ?role=ADMIN is kept intact so the Dashboard can read the role param).
@@ -40,12 +42,21 @@ function AppRoutes() {
             {/* Authentication */}
             <Route path="/" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/account-recovery" element={<ForgotPassword />} />
+            <Route path="/create-account" element={<ForgotPassword />} />
+            <Route path="/forgot-password" element={<Navigate to="/account-recovery" replace />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Protected layout */}
-            <Route path="/dashboard/*" element={<MainLayout />}>
+            <Route
+                path="/dashboard/*"
+                element={(
+                    <ProtectedRoute>
+                        <MainLayout />
+                    </ProtectedRoute>
+                )}
+            >
                 <Route index element={<Dashboard />} />
                 <Route path="spaces" element={<SpaceManagement />} />
                 <Route path="tasks/:spaceId?" element={<TaskManagement />} />
@@ -66,9 +77,11 @@ function AppRoutes() {
 export default function App() {
     return (
         <LanguageProvider>
-            <BrowserRouter>
-                <AppRoutes />
-            </BrowserRouter>
+            <AuthProvider>
+                <BrowserRouter>
+                    <AppRoutes />
+                </BrowserRouter>
+            </AuthProvider>
         </LanguageProvider>
     );
 }

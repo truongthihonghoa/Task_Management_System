@@ -6,23 +6,27 @@ import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
+
 import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
 import {
-  buildDemoLayoutUser,
   getPrimaryNavigationItems,
   getSupportNavigationItems,
 } from '../../utils/mainLayoutConfig';
+
 const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
 
 const copyLayoutQueryParams = (search) => {
   const currentParams = new URLSearchParams(search);
   const nextParams = new URLSearchParams();
+
   LAYOUT_QUERY_KEYS.forEach((key) => {
     const value = currentParams.get(key);
     if (value) {
       nextParams.set(key, value);
     }
   });
+
   return nextParams;
 };
 
@@ -223,6 +227,28 @@ const SEARCH_USERS = [
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
 
+function getInitials(value = '') {
+  const words = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return 'U';
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join('');
+}
+
+function normalizeAvatarUrl(avatarUrl) {
+  if (!avatarUrl) return '';
+  if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
+  if (avatarUrl.startsWith('/media/')) return avatarUrl;
+  if (avatarUrl.startsWith('media/')) return `/${avatarUrl}`;
+  return avatarUrl;
+}
+
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -243,6 +269,7 @@ export default function MainLayout() {
   const avatarDropdownRef = useRef(null);
   const [showApps, setShowApps] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const { user: authUser, logout } = useAuth();
 
   const appsRef = useRef(null);
   const appsDropdownRef = useRef(null);
@@ -253,19 +280,35 @@ export default function MainLayout() {
   const settingsDropdownRef = useRef(null);
   const searchRef = useRef(null);
 
-  const roleParam = searchParams.get('role')?.toUpperCase();
-  const currentRole = roleParam === 'USER' ? 'USER' : 'ADMIN';
-  const isSuperAdmin = currentRole === 'ADMIN';
+  const authRole = authUser?.role || 'USER';
+  const isSuperAdmin = authRole === 'SUPER_ADMIN';
+  const currentRole = isSuperAdmin ? 'ADMIN' : 'USER';
   const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
-  const currentUser = useMemo(
-    () => buildDemoLayoutUser({ isSuperAdmin, currentSpaceRole }),
-    [currentSpaceRole, isSuperAdmin]
-  );
+  const currentUserName = authUser?.full_name || authUser?.email || 'User';
+
+  const currentUser = {
+    id: authUser?.user_id || '',
+    name: currentUserName,
+    email: authUser?.email || '',
+    initials: getInitials(currentUserName),
+    avatarUrl: normalizeAvatarUrl(authUser?.avatar_url || ''),
+    role: authRole,
+    displayRole: isSuperAdmin
+      ? 'Super Admin'
+      : currentSpaceRole === 'OWNER'
+        ? 'Owner in this space'
+        : 'User',
+  };
+
   const primaryNavigationItems = useMemo(
     () => getPrimaryNavigationItems({ isSuperAdmin }),
     [isSuperAdmin]
   );
-  const supportNavigationItems = useMemo(() => getSupportNavigationItems(), []);
+
+  const supportNavigationItems = useMemo(
+    () => getSupportNavigationItems(),
+    []
+  );
 
   const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
 
@@ -457,13 +500,10 @@ export default function MainLayout() {
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
-  const handleLogoutClick = () => {
-    ['access_token', 'accessToken', 'token', 'auth_token'].forEach((key) => {
-      window.localStorage.removeItem(key);
-      window.sessionStorage.removeItem(key);
-    });
-    setShowAvatarDropdown(false);
+  const handleLogoutClick = async () => {
+    await logout();
     navigate('/', { replace: true });
+    setShowAvatarDropdown(false); // Close dropdown after logout
   };
   const handleChangeLanguage = (lang) => {
     setLanguage(lang);
@@ -920,11 +960,15 @@ export default function MainLayout() {
                 onClick={() => setShowAvatarDropdown(prev => !prev)}
                 className="flex items-center space-x-3 border-l pl-6 border-gray-200 font-['Inter']">
                 <div className="w-10 h-10 rounded-full bg-purple-100 border border-[#2D1B4E] flex items-center justify-center overflow-hidden shrink-0">
-                  <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
-                    <span className="text-[#2D1B4E] text-xs font-bold">
-                      {currentUser.initials}
-                    </span>
-                  </div>
+                  {currentUser.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
+                      <span className="text-[#2D1B4E] text-xs font-bold">
+                        {currentUser.initials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Name Section - flex-1 để đẩy icon sang phải */}
@@ -940,6 +984,7 @@ export default function MainLayout() {
                 >
                     <AvatarDropdown
                         currentRole={currentRole}
+                        currentUser={currentUser}
                         onClose={() => setShowAvatarDropdown(false)}
                         onProfileClick={handleProfileClick}
                         onNotificationClick={handleNotificationClick}

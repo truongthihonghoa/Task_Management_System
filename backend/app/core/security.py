@@ -13,11 +13,12 @@ from passlib.context import CryptContext
 from app.repository.auth import get_user_by_id, get_user_token
 from app.db.session import get_db
 from app.models.user import User
+from jose import JWTError, ExpiredSignatureError, jwt
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES","1"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS","1"))
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -48,7 +49,9 @@ def get_current_user(
 
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+
         token_user_id = payload.get("user_id") or payload.get("sub")
+
         if (
             payload.get("type") == "access"
             and stored_token is not None
@@ -56,9 +59,18 @@ def get_current_user(
             and stored_token.user_id == token_user_id
         ):
             user_id = token_user_id
+
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token has expired."
+        )
+
     except JWTError:
-        if stored_token and stored_token.access_expires_at >= now:
-            user_id = stored_token.user_id
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token."
+        )
 
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token.")
