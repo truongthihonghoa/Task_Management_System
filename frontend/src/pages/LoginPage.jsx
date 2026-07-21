@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import taskflowLogo from '../assets/taskflow-logo.png';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+function getErrorMessage(error) {
+    const detail = error?.response?.data?.detail;
+    const message = error?.response?.data?.message;
+
+    if (message) return message;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+    if (detail?.message) return detail.message;
+
+    return 'Unable to sign in. Please check your email and password.';
+}
 
 export default function LoginPage() {
+    const navigate = useNavigate();
+    const location = useLocation();
+    const { login } = useAuth();
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [remember, setRemember] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
     const [isDark, setIsDark] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [isRedirecting, setIsRedirecting] = useState(false);
     const [emailError, setEmailError] = useState(false);
-
-    const navigate = useNavigate();
+    const [formError, setFormError] = useState('');
+    const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
 
     useEffect(() => {
         if (isDark) {
@@ -24,40 +41,48 @@ export default function LoginPage() {
     const handleEmailChange = (e) => {
         const value = e.target.value;
         setEmail(value);
+        setFormError('');
+        setSuccessMessage('');
         if (value.includes('@') || value === '') {
             setEmailError(false);
         }
     };
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
+        setFormError('');
+        setSuccessMessage('');
 
-        if (!email.includes('@')) {
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail.includes('@')) {
             setEmailError(true);
             return;
         }
 
         setIsLoading(true);
+        try {
+            const response = await login({
+                email: normalizedEmail,
+                password,
+                remember,
+            });
+            setEmail('');
+            setPassword('');
 
-        setTimeout(() => {
+            const from = location.state?.from;
+            const fallbackPath = response.user?.role === 'SUPER_ADMIN'
+                ? '/dashboard'
+                : '/dashboard/spaces';
+            const redirectPath = from
+                ? `${from.pathname || fallbackPath}${from.search || ''}`
+                : fallbackPath;
+
+            navigate(redirectPath, { replace: true });
+        } catch (error) {
+            setFormError(getErrorMessage(error));
+        } finally {
             setIsLoading(false);
-            setIsRedirecting(true);
-
-            // Determine user role based on email (mock logic)
-            // Super Admin: Alex Morgan (alex.morgan@example.com)
-            // Regular Users: Trang Nguyen, Tien Phham, etc.
-            const isAdminEmail = email.toLowerCase().includes('alex.morgan') || 
-                                 email.toLowerCase().includes('admin');
-
-            setTimeout(() => {
-                setIsRedirecting(false);
-                setEmail('');
-                setPassword('');
-                const normalizedEmail = email.trim().toLowerCase();
-                const isSuperAdminLogin = normalizedEmail.includes('admin') || normalizedEmail.includes('alex') || normalizedEmail.includes('super');
-                navigate(isSuperAdminLogin ? '/dashboard' : '/dashboard/spaces?role=USER');
-            }, 1000);
-        }, 2000);
+        }
     };
 
     return (
@@ -94,7 +119,9 @@ export default function LoginPage() {
                     </div>
 
                     {/* Form */}
-                    <form className="flex flex-col gap-6" onSubmit={handleLogin}>
+                    <form className="flex flex-col gap-6" onSubmit={handleLogin} autoComplete="off">
+                        <input className="hidden" type="text" name="fake-username" autoComplete="username" tabIndex={-1} aria-hidden="true" />
+                        <input className="hidden" type="password" name="fake-password" autoComplete="current-password" tabIndex={-1} aria-hidden="true" />
 
                         {/* Email */}
                         <div className="flex flex-col gap-[9px]">
@@ -108,6 +135,10 @@ export default function LoginPage() {
                                 <input
                                     id="email"
                                     type="email"
+                                    name="taskflow-login-email-input"
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                    data-1p-ignore="true"
                                     placeholder="name@company.com"
                                     required
                                     value={email}
@@ -136,6 +167,10 @@ export default function LoginPage() {
                                 <input
                                     id="password"
                                     type={showPassword ? 'text' : 'password'}
+                                    name="taskflow-login-password-input"
+                                    autoComplete="new-password"
+                                    data-lpignore="true"
+                                    data-1p-ignore="true"
                                     placeholder="••••••••"
                                     required
                                     value={password}
@@ -159,6 +194,8 @@ export default function LoginPage() {
                             <label className="flex items-center gap-2 cursor-pointer group">
                                 <input
                                     type="checkbox"
+                                    checked={remember}
+                                    onChange={(event) => setRemember(event.target.checked)}
                                     className="w-[18px] h-[18px] border border-outline rounded focus:ring-0 checked:bg-primary dark:checked:bg-primary text-primary cursor-pointer accent-primary"
                                 />
                                 <span className="text-[12px] leading-[16px] font-medium tracking-[0.05em] text-on-surface-variant dark:text-surface-variant group-hover:text-on-surface transition-colors">
@@ -167,22 +204,34 @@ export default function LoginPage() {
                             </label>
                             <Link
                                 className="text-[12px] leading-[16px] font-medium tracking-[0.05em] text-[#2D1B4E] dark:text-[#2D1B4E]/80 hover:underline underline-offset-4"
-                                to="/forgot-password"
+                                to="/account-recovery"
                                 state={{ flow: 'forgot' }}
                             >
                                 Forgot Password?
                             </Link>
                         </div>
 
+                        {formError && (
+                            <div className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-[13px] leading-[18px] font-medium text-error">
+                                {formError}
+                            </div>
+                        )}
+
+                        {successMessage && (
+                            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-[13px] leading-[18px] font-medium text-green-700">
+                                {successMessage}
+                            </div>
+                        )}
+
                         {/* Login Button */}
                         <button
                             type="submit"
-                            disabled={isLoading || isRedirecting}
+                            disabled={isLoading}
                             className={`w-full py-3 text-white text-[18px] font-semibold flex items-center justify-center gap-4 rounded-lg active:scale-[0.98] transition-all duration-200 shadow-sm
-                            ${isRedirecting ? 'bg-tertiary-container' : 'bg-[#4C2B74] hover:bg-[#4C2B74]/90 dark:bg-[#4C2B74]'}`}
+                            bg-[#4C2B74] hover:bg-[#4C2B74]/90 dark:bg-[#4C2B74] disabled:opacity-80 disabled:cursor-not-allowed`}
                         >
                             <span className={isLoading ? 'opacity-50' : ''}>
-                                {isRedirecting ? 'Redirecting...' : 'Login'}
+                                {isLoading ? 'Signing in...' : 'Login'}
                             </span>
                             {isLoading && (
                                 <div className="border-2 border-white/30 rounded-full border-top-2 border-t-white w-4 h-4 animate-spin"></div>
@@ -197,7 +246,7 @@ export default function LoginPage() {
                             Don't have an account?{' '}
                             <Link
                                 className="text-[#2D1B4E] dark:text-[#2D1B4E]/80 font-bold hover:underline underline-offset-4"
-                                to="/forgot-password"
+                                to="/create-account"
                                 state={{ flow: 'register' }}
                             >
                                 Register

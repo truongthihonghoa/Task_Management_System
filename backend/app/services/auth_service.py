@@ -22,7 +22,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.email import EmailService
+from app.core.email import EmailService, send_verification_email
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -65,6 +65,11 @@ OTP_EXPIRE_MINUTES = 15
 MAX_RESENDS_PER_HOUR = 5
 MAX_FAILED_LOGIN_ATTEMPTS = int(os.getenv("MAX_FAILED_LOGIN_ATTEMPTS", "5"))
 ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "15"))
+
+
+def send_password_reset_email(email: str, token_code: str) -> bool:
+    """Send a password reset link email."""
+    return EmailService().send_password_reset_email(email, token_code)
 
 
 # ---------------------------------------------------------------------------
@@ -445,9 +450,7 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
-        # Send password reset email with link
-        email_service = EmailService()
-        email_sent = email_service.send_password_reset_email(email, token_code)
+        email_sent = send_password_reset_email(email, token_code)
         if not email_sent:
             db.rollback()
             raise HTTPException(
@@ -538,13 +541,12 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
         
-        # Send email and check if successful
-        email_sent = send_verification_email(email, otp_code)
+        email_sent = send_password_reset_email(email, otp_code)
         if not email_sent:
             db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"message": "Failed to send verification email. Please try again later."},
+                detail={"message": "Failed to send password reset email. Please try again later."},
             )
         
         db.commit()
@@ -583,6 +585,7 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
         if user.status_user == "Locked":
             user.status_user = "Active"
         user.updated_at = now
+        revoke_all_user_tokens(db, user.user_id)
         create_audit_log(
             db,
             user_id=user.user_id,
@@ -671,13 +674,15 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
         raise
 
     return RegisterResponse(
-    message="Registration successful.",
-    email=user.email,
-    full_name=user.full_name,
-    role=user.role,
-    access_token=access_token,
-    refresh_token=refresh_token,
-)
+        message="Registration successful.",
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="Bearer",
+        user=user,
+    )
 
 
 def logout(db: Session, current_user, access_token: str) -> MessageResponse:

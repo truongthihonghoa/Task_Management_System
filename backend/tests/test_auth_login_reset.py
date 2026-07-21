@@ -205,7 +205,7 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "generate_otp", lambda: "222222")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
-    monkeypatch.setattr(EmailService, "send_password_reset_email", lambda self, email, code: sent.append((email, code)) or True)
+    monkeypatch.setattr(auth_service, "send_password_reset_email", lambda email, code: sent.append((email, code)) or True)
 
     response = auth_service.resend_reset_code(db, user.email)
 
@@ -220,13 +220,15 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
 def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     db = FakeDb()
     user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=datetime.utcnow())
-    token = make_token(used_at=datetime.utcnow())
+    token = make_token(used_at=None)
     audits = []
+    revoked = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
     monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
+    monkeypatch.setattr(auth_service, "revoke_all_user_tokens", lambda _db, user_id: revoked.append(user_id))
 
     response = auth_service.reset_password(db, user.email, token.otp_code, "NewPassword@123")
 
@@ -235,13 +237,15 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     assert user.failed_login_attempts == 0
     assert user.locked_until is None
     assert user.status_user == "Active"
+    assert token.used_at is not None
+    assert revoked == [user.user_id]
     assert audits[0]["action"] == "RESET_PASSWORD"
     assert db.commits == 1
 
 
-def test_reset_password_requires_verified_reset_code(monkeypatch):
+def test_reset_password_rejects_used_reset_link(monkeypatch):
     user = make_user()
-    token = make_token(used_at=None)
+    token = make_token(used_at=datetime.utcnow())
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
@@ -249,7 +253,7 @@ def test_reset_password_requires_verified_reset_code(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         auth_service.reset_password(FakeDb(), user.email, token.otp_code, "NewPassword@123")
 
-    assert_http_error(exc_info, 400, "Password reset code must be verified before resetting password.")
+    assert_http_error(exc_info, 400, "The verification code is no longer valid.")
 
 
 def test_reset_password_validates_password_strength_and_match():

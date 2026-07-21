@@ -596,6 +596,8 @@ class RegisterResponse(MessageResponse):
     role: str
     access_token: str
     refresh_token: str
+    token_type: str = "Bearer"
+    user: LoginUserResponse
 
 
 UserStatus = Literal["Pending", "Active", "Inactive", "Locked"]

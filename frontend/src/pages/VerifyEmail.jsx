@@ -1,16 +1,41 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { resendVerification, verifyEmail } from '../api/authApi';
+
+function getErrorMessage(error) {
+  const detail = error?.response?.data?.detail;
+  const message = error?.response?.data?.message;
+
+  if (message) return message;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+  if (detail?.message) return detail.message;
+
+  return 'Unable to verify the code. Please try again.';
+}
 
 export default function VerifyEmail() {
   const [otp, setOtp] = useState(new Array(6).fill(''));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const inputRefs = useRef([]);
   const location = useLocation();
-  const email = location.state?.email || 'your email address';
+  const navigate = useNavigate();
+  const email = location.state?.email || '';
   const flow = location.state?.flow || 'forgot';
+  const isRegisterFlow = flow === 'register';
 
   useEffect(() => {
     inputRefs.current = inputRefs.current.slice(0, 6);
   }, []);
+
+  useEffect(() => {
+    if (!email) {
+      navigate(isRegisterFlow ? '/create-account' : '/account-recovery', { replace: true, state: { flow } });
+    }
+  }, [email, flow, isRegisterFlow, navigate]);
 
   const handleChange = (element, index) => {
     const value = element.value.replace(/[^0-9]/g, '');
@@ -19,48 +44,79 @@ export default function VerifyEmail() {
     const newOtp = [...otp];
     newOtp[index] = value.substring(value.length - 1);
     setOtp(newOtp);
+    setErrorMessage('');
+    setMessage('');
 
     if (index < 5) {
-      inputRefs.current[index + 1].focus();
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (e, index) => {
     if (e.key === 'Backspace') {
       const newOtp = [...otp];
-      
+
       if (otp[index]) {
         newOtp[index] = '';
         setOtp(newOtp);
       } else if (index > 0) {
         newOtp[index - 1] = '';
         setOtp(newOtp);
-        inputRefs.current[index - 1].focus();
+        inputRefs.current[index - 1]?.focus();
       }
     }
   };
 
-  const navigate = useNavigate();
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const otpCode = otp.join('');
-    console.log("Mã OTP đã nhập:", otpCode);
-    if (flow === 'register') {
-      navigate('/register', { state: { email } });
-    } else {
-      navigate('/reset-password', { state: { email } });
+
+    if (otpCode.length !== 6) {
+      setErrorMessage('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+    setMessage('');
+
+    try {
+      if (isRegisterFlow) {
+        await verifyEmail({ email, otpCode });
+        navigate('/register', { state: { email, verified: true }, replace: true });
+      } else {
+        navigate('/reset-password', { state: { email, token: otpCode }, replace: true });
+      }
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!isRegisterFlow) return;
+
+    setIsResending(true);
+    setErrorMessage('');
+    setMessage('');
+
+    try {
+      const response = await resendVerification(email);
+      setOtp(new Array(6).fill(''));
+      inputRefs.current[0]?.focus();
+      setMessage(response.message || 'Verification code has been resent.');
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsResending(false);
     }
   };
 
   return (
     <div className="bg-surface min-h-screen flex flex-col font-sans antialiased">
-      {/* Khối nội dung chính - ĐÃ ĐỒNG BỘ CHUẨN LOGIN: flex items-center justify-center p-6 */}
       <main className="flex-grow flex items-center justify-center p-6">
-        {/* Card wrapper - p-8 md:p-12 tương tự LoginPage */}
         <section className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-12 w-full max-w-[440px]">
-          
-          {/* Icon and Title Section */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-6">
               <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -75,12 +131,12 @@ export default function VerifyEmail() {
           </div>
 
           <form onSubmit={handleSubmit}>
-            {/* OTP Input Grid */}
             <div className="grid grid-cols-6 gap-2 mb-6">
               {otp.map((data, index) => (
                 <input
                   key={index}
                   type="text"
+                  inputMode="numeric"
                   maxLength={1}
                   className="w-full h-12 sm:h-14 text-center text-xl font-semibold border border-gray-300 rounded-lg focus:border-[#4B3277] focus:ring-2 focus:ring-[#4B3277] transition-all outline-none bg-white p-0"
                   placeholder="-"
@@ -92,39 +148,45 @@ export default function VerifyEmail() {
               ))}
             </div>
 
-            {/* Countdown Timer */}
-            <div className="text-center mb-8 flex items-center justify-center space-x-1 text-blue-600 font-medium text-sm">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
-              </svg>
-              <span>01:59</span>
-            </div>
+            {errorMessage && (
+              <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {errorMessage}
+              </div>
+            )}
 
-            {/* Action Button */}
-            <button 
-              type="submit" 
-              className="w-full bg-[#4B3277] hover:bg-[#3d2861] text-white font-semibold py-3.5 rounded-xl transition-colors duration-200 mb-6 shadow-md shadow-purple-200"
+            {message && (
+              <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+                {message}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-[#4B3277] hover:bg-[#3d2861] text-white font-semibold py-3.5 rounded-xl transition-colors duration-200 mb-6 shadow-md shadow-purple-200 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              Verify OTP
+              {isSubmitting ? 'Verifying...' : 'Verify OTP'}
             </button>
           </form>
 
-          {/* Resend Link */}
           <div className="text-center text-sm text-gray-500 mb-10">
             Didn't receive the code?<br />
-            <button type="button" className="text-gray-400 hover:text-gray-600 font-medium transition-colors mt-1">
-              Resend Code
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={!isRegisterFlow || isResending}
+              className="text-gray-400 hover:text-gray-600 font-medium transition-colors mt-1 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isResending ? 'Resending...' : 'Resend Code'}
             </button>
           </div>
 
-          {/* Secure Footer within Card */}
           <div className="border-t border-gray-50 pt-6 flex items-center justify-center space-x-2 text-[10px] uppercase tracking-widest text-gray-400 font-semibold">
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
             </svg>
             <span>Secure Verification</span>
           </div>
-
         </section>
       </main>
     </div>

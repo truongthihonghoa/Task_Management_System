@@ -13,6 +13,7 @@ import html
 import logging
 import os
 import smtplib
+import ssl
 
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -50,6 +51,10 @@ class EmailService:
         )
         self.smtp_use_tls = (
             os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+        )
+        self.smtp_use_ssl = (
+            os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+            or self.smtp_port == 465
         )
 
         self.otp_expire_minutes = int(
@@ -698,67 +703,99 @@ class EmailService:
                 html_content=html_content,
             )
 
-            logger.info(
-                "Attempting to send email to %s",
-                to_email,
-            )
-
-            with smtplib.SMTP(
-                self.smtp_host,
-                self.smtp_port,
-                timeout=30,
-            ) as smtp:
-                if self.smtp_use_tls:
-                    smtp.starttls()
-
-                smtp.login(
-                    self.smtp_username,
-                    self.smtp_password,
-                )
-
-                smtp.send_message(message)
-
-            logger.info(
-                "Email sent successfully to %s",
-                to_email,
-            )
-
-            return True
-
         except ValueError as error:
             logger.error(
                 "SMTP configuration error: %s",
                 error,
             )
+            return False
 
-        except smtplib.SMTPAuthenticationError as error:
-            logger.error(
-                "SMTP authentication failed for %s: %s",
-                to_email,
-                error,
-            )
+        for attempt in range(1, 4):
+            try:
+                logger.info(
+                    "Attempting to send email to %s (attempt %s)",
+                    to_email,
+                    attempt,
+                )
 
-        except smtplib.SMTPException as error:
-            logger.error(
-                "SMTP error sending email to %s: %s",
-                to_email,
-                error,
-            )
+                context = ssl.create_default_context()
+                if self.smtp_use_ssl:
+                    smtp = smtplib.SMTP_SSL(
+                        self.smtp_host,
+                        self.smtp_port,
+                        timeout=30,
+                        context=context,
+                    )
+                else:
+                    smtp = smtplib.SMTP(
+                        self.smtp_host,
+                        self.smtp_port,
+                        timeout=30,
+                    )
 
-        except OSError as error:
-            logger.error(
-                "Network error sending email to %s: %s",
-                to_email,
-                error,
-            )
+                with smtp:
+                    smtp.ehlo()
 
-        except Exception:
-            logger.exception(
-                "Unexpected error sending email to %s",
-                to_email,
-            )
+                    if self.smtp_use_tls and not self.smtp_use_ssl:
+                        smtp.starttls(context=context)
+                        smtp.ehlo()
+
+                    smtp.login(
+                        self.smtp_username,
+                        self.smtp_password,
+                    )
+
+                    smtp.send_message(message)
+
+                logger.info(
+                    "Email sent successfully to %s",
+                    to_email,
+                )
+
+                return True
+
+            except smtplib.SMTPAuthenticationError as error:
+                logger.error(
+                    "SMTP authentication failed for %s: %s",
+                    to_email,
+                    error,
+                )
+                return False
+
+            except smtplib.SMTPException as error:
+                logger.warning(
+                    "SMTP error sending email to %s on attempt %s: %s",
+                    to_email,
+                    attempt,
+                    error,
+                )
+
+            except OSError as error:
+                logger.warning(
+                    "Network error sending email to %s on attempt %s: %s",
+                    to_email,
+                    attempt,
+                    error,
+                )
+
+            except Exception:
+                logger.exception(
+                    "Unexpected error sending email to %s",
+                    to_email,
+                )
+                return False
 
         return False
+
+    def send_verification_email(self, to_email: str, otp_code: str) -> bool:
+        """Send an email verification OTP."""
+        subject = f"{self.app_name} - Email Verification"
+        return self.send_email(
+            to_email=to_email,
+            subject=subject,
+            text_content=self._verification_email_body(otp_code),
+            html_content=self._verification_email_html(otp_code),
+        )
 
     def send_password_reset_email(self, to_email: str, token_code: str) -> bool:
         """Send a password reset email containing a reset link and token."""
