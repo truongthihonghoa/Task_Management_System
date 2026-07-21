@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Iterable
+import logging
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -19,6 +20,11 @@ from app.schemas.pydantic_models import (
     TaskListResponse,
     TaskUpdate,
 )
+from app.services.notification_service import NotificationService
+
+
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
 
 
 def _get_space_or_404(db: Session, space_id: str) -> Space:
@@ -130,6 +136,41 @@ def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
 
 def _serialize_task_list_items(tasks: Iterable[Task]) -> list[TaskListItemResponse]:
     return [_build_task_list_item_response(task) for task in tasks]
+
+
+def _task_assignee_ids(task: Task) -> list[str]:
+    return [assignee.assignee_id for assignee in (getattr(task, "assignees", None) or []) if assignee.assignee_id]
+
+
+def _notify_task_assignees(
+    db: Session,
+    task: Task,
+    *,
+    current_user: User,
+    notification_type: str,
+    title: str,
+    message: str,
+    metadata: dict | None = None,
+) -> None:
+    try:
+        notification_service.create_notifications_for_users(
+            db,
+            user_ids=_task_assignee_ids(task),
+            actor_id=current_user.user_id,
+            task_id=task.task_id,
+            space_id=task.space_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            audience="USER",
+            metadata={
+                "task_title": task.title,
+                "space_name": task.space.name_space if task.space else None,
+                **(metadata or {}),
+            },
+        )
+    except Exception:
+        logger.exception("Unable to create task notification.")
 
 
 def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_size: int) -> TaskListResponse:
@@ -307,11 +348,59 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
     if "sprint_id" in update_data:
         _get_sprint_for_space_or_404(db, task.space_id, update_data["sprint_id"])
 
+    previous_status = task.task_status
+    previous_priority = task.priority
+    previous_completed_at = task.completed_at
+
     for field, value in update_data.items():
         setattr(task, field, value)
     task.updated_at = datetime.utcnow()
 
     task_repository.save_task(db, task)
+    if update_data:
+        if "task_status" in update_data and previous_status != task.task_status:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="status_changed",
+                title="Task status updated",
+                message=f"{current_user.full_name} changed {task.title} status to {task.task_status}.",
+                metadata={"previous_status": previous_status, "new_status": task.task_status},
+            )
+        elif "priority" in update_data and previous_priority != task.priority:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="priority_changed",
+                title="Task priority updated",
+                message=f"{current_user.full_name} changed {task.title} priority to {task.priority}.",
+                metadata={"previous_priority": previous_priority, "new_priority": task.priority},
+            )
+        elif "completed_at" in update_data and previous_completed_at != task.completed_at:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="due_date_changed",
+                title="Task due date updated",
+                message=f"{current_user.full_name} changed the due date for {task.title}.",
+                metadata={
+                    "previous_due_date": previous_completed_at.isoformat() if previous_completed_at else None,
+                    "new_due_date": task.completed_at.isoformat() if task.completed_at else None,
+                },
+            )
+        else:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="task_updated",
+                title="Task updated",
+                message=f"{current_user.full_name} updated {task.title}.",
+                metadata={"updated_fields": sorted(update_data)},
+            )
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
@@ -328,4 +417,13 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     task.deleted_at = now
     task.updated_at = now
     task_repository.save_task(db, task, refresh=False)
+    _notify_task_assignees(
+        db,
+        task,
+        current_user=current_user,
+        notification_type="task_deleted",
+        title="Task deleted",
+        message=f"{current_user.full_name} deleted {task.title}.",
+        metadata={"deleted_at": now.isoformat()},
+    )
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))

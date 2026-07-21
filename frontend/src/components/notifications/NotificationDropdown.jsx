@@ -3,7 +3,7 @@ import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
-const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose }) => {
+const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose, onNotificationClick, onDeleteNotification }) => {
   const visibleNotifications = useMemo(
     () => notifications.filter(isNotificationWithinDisplayWindow),
     [notifications]
@@ -63,7 +63,11 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
                   <NotificationItem 
                     key={item.NOTI_id} 
                     notification={item} 
-                    onClick={onClose}
+                    onClick={(notification) => {
+                      onNotificationClick?.(notification);
+                      onClose?.();
+                    }}
+                    onDelete={onDeleteNotification}
                   />
                 ))}
               </div>

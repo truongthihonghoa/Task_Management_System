@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     UserPlus, RefreshCw, MessageSquare, Clock,
     AlertCircle, Lock, ShieldCheck, UserX, Bell, Clipboard,
-    AtSign, Paperclip, CheckSquare, FileText, Users, Settings, History
+    AtSign, Paperclip, CheckSquare, FileText, Users, Settings, History,
+    MoreVertical, Trash2
 } from 'lucide-react';
 
-const NotificationItem = ({ notification, onClick }) => {
+const NotificationItem = ({ notification, onClick, onDelete }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const taskName = notification.task_name || 'this task';
     const targetUser = notification.target_user || 'this user';
@@ -208,7 +210,18 @@ const NotificationItem = ({ notification, onClick }) => {
         }
     };
 
-    const { title, message, IconComponent, iconColor } = getContent();
+    const content = getContent();
+    const title = notification.title || content.title;
+    const message = notification.message || content.message;
+    const { IconComponent, iconColor } = content;
+    const userManagementNotificationTypes = new Set([
+        'user_registered',
+        'account_locked',
+        'user_verified',
+        'user_deactivated',
+        'role_changed',
+        'permission_changed',
+    ]);
 
     const buildNotificationTargetSearch = (updates = {}) => {
         const currentParams = new URLSearchParams(location.search);
@@ -229,12 +242,26 @@ const NotificationItem = ({ notification, onClick }) => {
     };
 
     const handleItemClick = () => {
+        if (isMenuOpen) {
+            setIsMenuOpen(false);
+        }
         if (notification.space_id) {
             navigate(`/dashboard/tasks/${notification.space_id}${buildNotificationTargetSearch(
                 notification.task_id ? { taskId: notification.task_id } : {}
             )}`);
         } else if (notification.task_id) {
             navigate(`/dashboard/tasks${buildNotificationTargetSearch({ taskId: notification.task_id })}`);
+        } else if (userManagementNotificationTypes.has(notification.type) && notification.target_user_id) {
+            navigate(`/dashboard/users${buildNotificationTargetSearch({
+                userId: notification.target_user_id,
+                mode: 'edit',
+            })}`);
+        } else if (notification.type === 'audit_log_event') {
+            navigate(`/dashboard${buildNotificationTargetSearch(
+                notification.audit_log_id ? { auditLogId: notification.audit_log_id } : {}
+            )}`);
+        } else if (notification.type === 'system_alert') {
+            navigate(`/dashboard${buildNotificationTargetSearch()}`);
         }
 
         if (onClick) onClick(notification);
@@ -267,9 +294,40 @@ const NotificationItem = ({ notification, onClick }) => {
                     <h4 className={`text-sm ${notification.is_read ? 'font-medium text-gray-700' : 'font-bold text-[#4C2B74]'}`}>
                         {title}
                     </h4>
-                    <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap ml-2">
-                        {notification.created_at}
-                    </span>
+                    <div className="relative ml-2 flex items-center gap-1">
+                        <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
+                            {notification.created_at}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setIsMenuOpen((value) => !value);
+                            }}
+                            className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                            aria-label="Notification actions"
+                        >
+                            <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {isMenuOpen && (
+                            <div
+                                className="absolute right-0 top-6 z-20 w-48 rounded-lg border border-gray-100 bg-white py-1 shadow-xl"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsMenuOpen(false);
+                                        onDelete?.(notification);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete this notification
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {notification.triggered_by_name && (
