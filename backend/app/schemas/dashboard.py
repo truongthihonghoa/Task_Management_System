@@ -152,6 +152,7 @@ class DashboardAuditLogListResponse(BaseModel):
     page: int
     page_size: int
     items: list[DashboardAuditLogItemResponse] = Field(default_factory=list)
+    filters: DashboardAuditLogFilterOptionsResponse = Field(default_factory=DashboardAuditLogFilterOptionsResponse)
 
 
 class DashboardAssignmentHistoryListResponse(BaseModel):

@@ -56,6 +56,16 @@ const getAccessToken = () => {
   );
 };
 
+const getLayoutQueryParams = (search) => {
+  const currentParams = new URLSearchParams(search);
+  const nextParams = new URLSearchParams();
+  ['role', 'spaceRole', 'user'].forEach((key) => {
+    const value = currentParams.get(key);
+    if (value) {
+      nextParams.set(key, value);
+    }
+  });
+  return nextParams;
 const formatSpaceDate = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -249,7 +259,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
 
   const handleViewTasks = (space, isAssigned, isOwner) => {
     if (isAssigned) {
-      const params = new URLSearchParams(location.search);
+      const params = getLayoutQueryParams(location.search);
       if (!isSuperAdmin) {
         params.set('role', 'USER');
         params.set('spaceRole', isOwner ? 'OWNER' : 'USER');

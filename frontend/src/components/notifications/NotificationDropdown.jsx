@@ -1,11 +1,17 @@
 import React, { useMemo } from 'react';
 import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
+import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
 const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose }) => {
+  const visibleNotifications = useMemo(
+    () => notifications.filter(isNotificationWithinDisplayWindow),
+    [notifications]
+  );
+
   const groupedNotifications = useMemo(() => {
     const groups = { Today: [], Yesterday: [], Earlier: [] };
-    notifications.forEach(n => {
+    visibleNotifications.forEach(n => {
       if (groups[n.group]) {
         groups[n.group].push(n);
       } else {
@@ -13,9 +19,9 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
       }
     });
     return groups;
-  }, [notifications]);
+  }, [visibleNotifications]);
 
-  const hasNotifications = notifications.length > 0;
+  const hasNotifications = visibleNotifications.length > 0;
 
   // Open the full notifications modal from the header dropdown.
   const handleNavigateToAll = () => {
@@ -70,6 +76,11 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
             </div>
             <h4 className="font-bold text-gray-700 mb-1">You're all caught up!</h4>
             <p className="text-xs text-gray-400">No new notifications.</p>
+          </div>
+        )}
+        {hasNotifications && (
+          <div className="px-5 py-3 text-center text-[11px] font-semibold text-gray-400 border-t border-gray-100">
+            {notificationLimitMessage}
           </div>
         )}
       </div>
