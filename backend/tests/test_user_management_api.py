@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ class FakeDb:
         self.users = users or []
         self.added = []
         self.commits = 0
+        self.flushes = 0
         self.rollbacks = 0
 
     def add(self, value):
@@ -22,6 +24,9 @@ class FakeDb:
 
     def commit(self):
         self.commits += 1
+
+    def flush(self):
+        self.flushes += 1
 
     def rollback(self):
         self.rollbacks += 1
@@ -328,6 +333,25 @@ def test_user_response_never_exposes_password_hash():
     response_data = response.model_dump()
 
     assert "password_hash" not in response_data
+
+
+def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path):
+    user = make_user(avatar_url=None)
+    db = FakeDb(users=[user])
+    file = SimpleNamespace(
+        filename="avatar.png",
+        content_type="image/png",
+        file=BytesIO(b"fake image content"),
+    )
+    monkeypatch.setattr(user_service, "MEDIA_ROOT", tmp_path)
+
+    avatar_url = user_service.update_user_avatar(db, user.user_id, file)
+
+    assert avatar_url.startswith("/media/avatars/")
+    assert avatar_url.endswith(".png")
+    assert user.avatar_url == avatar_url
+    assert db.flushes == 1
+    assert (tmp_path / avatar_url.removeprefix("/media/")).exists()
 
 
 def test_create_user_audit_log_stores_expected_fields():
