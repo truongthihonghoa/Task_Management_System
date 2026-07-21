@@ -37,7 +37,11 @@ export function getPrimaryNavigationItems({ isSuperAdmin, taskCount = DEFAULT_TA
       path: '/dashboard/spaces',
       visible: true,
       badge: taskCount,
-      match: (pathname) => pathname === '/dashboard/spaces' || pathname.includes('/dashboard/tasks'),
+      match: (pathname) => (
+        pathname === '/dashboard/spaces'
+        || pathname.startsWith('/dashboard/spaces/')
+        || pathname.includes('/dashboard/tasks')
+      ),
     },
     {
       key: 'users',

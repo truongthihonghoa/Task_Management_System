@@ -57,6 +57,12 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
     )
     monkeypatch.setattr(
         spaces.space_crud,
+        "unarchive_space",
+        lambda received_db, space_id, **kwargs: calls.append(("unarchive", received_db, space_id, kwargs))
+        or {"space_id": space_id},
+    )
+    monkeypatch.setattr(
+        spaces.space_crud,
         "delete_space",
         lambda received_db, space_id, **kwargs: calls.append(("delete", received_db, space_id, kwargs))
         or {"space_id": space_id},
@@ -68,6 +74,7 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
     assert spaces.update_space("SPC00000002", update_payload, db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.archive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.complete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
+    assert spaces.unarchive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.restore_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.delete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
 
@@ -78,6 +85,7 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
         ("update", db, "SPC00000002", update_payload, {"current_user": current_user}),
         ("archive", db, "SPC00000002", {"current_user": current_user}),
         ("archive", db, "SPC00000002", {"current_user": current_user}),
+        ("unarchive", db, "SPC00000002", {"current_user": current_user}),
         ("restore", db, "SPC00000002", {"current_user": current_user}),
         ("delete", db, "SPC00000002", {"current_user": current_user}),
     ]
@@ -206,6 +214,109 @@ def test_delete_space_allows_archived_space_for_owner(monkeypatch):
     assert archived_space.deleted_at is not None
     assert db.committed is True
     assert db.refreshed is archived_space
+
+
+def test_unarchive_space_reopens_archived_space_for_owner(monkeypatch):
+    created_at = datetime(2026, 7, 1, 9, 0, 0)
+    archived_at = datetime.utcnow()
+    owner = SimpleNamespace(user_id="USR00000003", status_user="Active")
+    archived_space = SimpleNamespace(
+        space_id="SPC00000002",
+        name_space="Product Team",
+        description="Archived project",
+        owner_id=owner.user_id,
+        status_space="Archived",
+        created_at=created_at,
+        updated_at=created_at,
+        archived_at=archived_at,
+        reopen_until=archived_at + timedelta(days=7),
+        deleted_at=None,
+    )
+
+    class FakeQuery:
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return owner
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.refreshed = None
+
+        def query(self, _model):
+            return FakeQuery()
+
+        def commit(self):
+            self.committed = True
+
+        def refresh(self, space):
+            self.refreshed = space
+
+    notifications = []
+
+    class FakeNotificationService:
+        def create_notification(self, *_args, **kwargs):
+            notifications.append(kwargs)
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: archived_space)
+    monkeypatch.setattr(space_repository, "_ensure_space_name_available", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    response = space_repository.unarchive_space(db, archived_space.space_id, current_user=owner)
+
+    assert response.status_space == "Active"
+    assert archived_space.status_space == "Active"
+    assert archived_space.archived_at is None
+    assert archived_space.reopen_until is None
+    assert archived_space.deleted_at is None
+    assert archived_space.updated_at != created_at
+    assert notifications[0]["metadata"]["event"] == "space_unarchived"
+    assert db.committed is True
+    assert db.refreshed is archived_space
+
+
+def test_unarchive_space_rejects_expired_reopen_window(monkeypatch):
+    owner = SimpleNamespace(user_id="USR00000003")
+    archived_at = datetime.utcnow() - timedelta(days=8)
+    archived_space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=owner.user_id,
+        status_space="Archived",
+        archived_at=archived_at,
+        reopen_until=archived_at + timedelta(days=7),
+        deleted_at=None,
+    )
+
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: archived_space)
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_repository.unarchive_space(object(), archived_space.space_id, current_user=owner)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Space reopen period has expired"
+
+
+def test_unarchive_space_rejects_deleted_space(monkeypatch):
+    owner = SimpleNamespace(user_id="USR00000003")
+    deleted_space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=owner.user_id,
+        status_space="Deleted",
+        archived_at=datetime.utcnow(),
+        reopen_until=None,
+        deleted_at=datetime.utcnow(),
+    )
+
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: deleted_space)
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_repository.unarchive_space(object(), deleted_space.space_id, current_user=owner)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Cannot unarchive deleted space"
 
 
 def test_delete_space_rejects_already_deleted_space(monkeypatch):
@@ -498,3 +609,40 @@ def test_cleanup_expired_deleted_spaces_rolls_back_on_failure(monkeypatch):
 
     assert db.committed is False
     assert db.rolled_back is True
+
+
+def test_cleanup_expired_archived_space_reopen_windows_expires_reopen(monkeypatch):
+    now = datetime(2026, 7, 20, 9, 0, 0)
+    archived_space = SimpleNamespace(
+        space_id="SPC00000002",
+        status_space="Archived",
+        deleted_at=None,
+        reopen_until=now - timedelta(minutes=1),
+        updated_at=now - timedelta(days=14),
+    )
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.rolled_back = False
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            self.rolled_back = True
+
+    db = FakeDB()
+    monkeypatch.setattr(
+        space_repository,
+        "list_expired_archived_space_reopen_records",
+        lambda received_db, **kwargs: [archived_space],
+    )
+
+    expired_count = space_repository.cleanup_expired_archived_space_reopen_windows(db, now=now)
+
+    assert expired_count == 1
+    assert archived_space.reopen_until is None
+    assert archived_space.updated_at == now
+    assert db.committed is True
+    assert db.rolled_back is False

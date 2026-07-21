@@ -43,6 +43,7 @@ from app.schemas.pydantic_models import (
 
 
 TRASH_RETENTION_DAYS = 14
+SPACE_REOPEN_DAYS = 7
 notification_service = NotificationService()
 
 
@@ -57,6 +58,19 @@ def _is_trash_expired(space: Space, now: datetime | None = None) -> bool:
     if not expires_at:
         return False
     return expires_at <= (now or datetime.utcnow())
+
+
+def _space_reopen_until(archived_at: datetime) -> datetime:
+    return archived_at + timedelta(days=SPACE_REOPEN_DAYS)
+
+
+def _can_reopen_space(space: Space, now: datetime | None = None) -> bool:
+    if space.status_space != "Archived" or space.deleted_at is not None:
+        return False
+    reopen_until = getattr(space, "reopen_until", None)
+    if reopen_until is None:
+        return False
+    return reopen_until > (now or datetime.utcnow())
 
 
 def _normalize_space_name(name: str) -> str:
@@ -168,6 +182,9 @@ def _space_response(space: Space) -> SpaceResponse:
         status_space=space.status_space,
         created_at=space.created_at,
         updated_at=space.updated_at,
+        archived_at=getattr(space, "archived_at", None),
+        reopen_until=getattr(space, "reopen_until", None),
+        can_reopen=_can_reopen_space(space),
         deleted_at=space.deleted_at,
     )
 
@@ -684,8 +701,11 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
             detail="Cannot archive deleted space",
         )
 
+    now = datetime.utcnow()
     space.status_space = "Archived"
-    space.updated_at = datetime.utcnow()
+    space.archived_at = now
+    space.reopen_until = _space_reopen_until(now)
+    space.updated_at = now
     notification_service.create_notification(
         db,
         user_id=space.owner_id,
@@ -695,6 +715,65 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
         space_id=space.space_id,
         audience="OWNER",
         metadata={"space_name": space.name_space, "event": "space_archived"},
+        allow_self_notification=True,
+    )
+    db.commit()
+    db.refresh(space)
+    return _space_response(space)
+
+
+def unarchive_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
+    space = get_space_or_404(db, space_id)
+    if current_user is not None:
+        _ensure_space_owner(space, current_user)
+    if space.status_space == "Active" and space.deleted_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is already active",
+        )
+    if space.status_space == "Deleted" or space.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot unarchive deleted space",
+        )
+    if space.status_space != "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space must be archived",
+        )
+    if not _can_reopen_space(space):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space reopen period has expired",
+        )
+
+    owner = db.query(User).filter(User.user_id == space.owner_id).first()
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner user not found",
+        )
+    _ensure_active_owner(owner)
+    _ensure_space_name_available(
+        db,
+        owner_id=space.owner_id,
+        name_space=space.name_space,
+        exclude_space_id=space.space_id,
+    )
+
+    space.status_space = "Active"
+    space.archived_at = None
+    space.reopen_until = None
+    space.updated_at = datetime.utcnow()
+    notification_service.create_notification(
+        db,
+        user_id=space.owner_id,
+        notification_type="owner_space_update",
+        title="Space reopened",
+        message=f"Space {space.name_space} was reopened.",
+        space_id=space.space_id,
+        audience="OWNER",
+        metadata={"space_name": space.name_space, "event": "space_unarchived"},
         allow_self_notification=True,
     )
     db.commit()
@@ -731,6 +810,8 @@ def restore_space(db: Session, space_id: str, current_user: User | None = None) 
     )
 
     space.status_space = "Active"
+    space.archived_at = None
+    space.reopen_until = None
     space.deleted_at = None
     space.updated_at = datetime.utcnow()
     notification_service.create_notification(
@@ -757,6 +838,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     now = datetime.utcnow()
     space.status_space = "Deleted"
     space.deleted_at = now
+    space.reopen_until = None
     space.updated_at = now
     notification_service.create_notification(
         db,
@@ -846,6 +928,39 @@ def cleanup_expired_deleted_spaces(db: Session, *, now: datetime | None = None) 
         raise
 
     return deleted_count
+
+
+def list_expired_archived_space_reopen_records(db: Session, *, now: datetime | None = None) -> list[Space]:
+    current_time = now or datetime.utcnow()
+    return (
+        db.query(Space)
+        .filter(
+            Space.status_space == "Archived",
+            Space.deleted_at.is_(None),
+            Space.reopen_until.isnot(None),
+            Space.reopen_until <= current_time,
+        )
+        .order_by(Space.reopen_until.asc(), Space.space_id.asc())
+        .all()
+    )
+
+
+def cleanup_expired_archived_space_reopen_windows(db: Session, *, now: datetime | None = None) -> int:
+    expired_spaces = list_expired_archived_space_reopen_records(db, now=now)
+    expired_count = 0
+
+    try:
+        for space in expired_spaces:
+            space.reopen_until = None
+            space.updated_at = now or datetime.utcnow()
+            expired_count += 1
+        if expired_count:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return expired_count
 
 
 def list_space_members(db: Session, space_id: str, current_user: User | None = None) -> List[SpaceMemberResponse]:
