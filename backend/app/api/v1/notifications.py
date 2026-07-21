@@ -19,10 +19,10 @@ from app.schemas.notification import (
     NotificationBulkUpdateResponse,
     NotificationDeleteResponse,
     NotificationListResponse,
+    NotificationReadStateRequest,
     NotificationResponse,
     NotificationUnreadCountResponse,
 )
-from app.services.notification_service import NotificationService
 
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -32,8 +32,9 @@ notification_service = NotificationService()
 @router.get(
     "",
     response_model=NotificationListResponse,
+    tags=[NOTIFICATION_TAG],
     summary="Get current user's notifications",
-    description="Returns paginated notifications belonging to the authenticated user.",
+    description="Returns paginated notifications from the last 30 days belonging to the authenticated user.",
 )
 def list_notifications(
     status_filter: NotificationReadStatus | None = Query(default=None, alias="status"),
@@ -74,7 +75,9 @@ def list_notifications(
 @router.get(
     "/unread-count",
     response_model=NotificationUnreadCountResponse,
+    tags=[NOTIFICATION_TAG],
     summary="Get unread notification count",
+    description="Counts unread notifications from the last 30 days.",
 )
 def get_unread_count(
     db: Session = Depends(get_db),
@@ -84,69 +87,45 @@ def get_unread_count(
 
 
 @router.patch(
-    "/read-all",
+    "/read-state",
     response_model=NotificationBulkUpdateResponse,
-    summary="Mark all notifications as read",
+    tags=[NOTIFICATION_TAG],
+    summary="Update notification read state",
+    description="Marks all visible notifications as read, or selected visible notifications as read/unread for the authenticated user.",
 )
-def mark_all_read(
+def update_read_state(
+    payload: NotificationReadStateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> NotificationBulkUpdateResponse:
     try:
-        updated_count = notification_repository.mark_all_read(db, user_id=current_user.user_id, read_at=datetime.utcnow())
+        if payload.target == "all":
+            updated_count = notification_repository.mark_all_read(
+                db,
+                user_id=current_user.user_id,
+                read_at=datetime.utcnow(),
+            )
+        else:
+            updated_count = notification_repository.bulk_mark_read_state(
+                db,
+                user_id=current_user.user_id,
+                notification_ids=payload.notification_ids or [],
+                is_read=payload.is_read,
+                read_at=datetime.utcnow() if payload.is_read else None,
+            )
         db.commit()
     except Exception:
         db.rollback()
         raise
     return NotificationBulkUpdateResponse(updated_count=updated_count)
-
-
-@router.patch(
-    "/read",
-    response_model=NotificationBulkUpdateResponse,
-    summary="Bulk mark notifications as read",
-)
-def bulk_mark_read(
-    payload: NotificationBulkIdsRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationBulkUpdateResponse:
-    try:
-        updated_count = notification_repository.bulk_mark_read(
-            db,
-            user_id=current_user.user_id,
-            notification_ids=payload.notification_ids,
-            read_at=datetime.utcnow(),
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationBulkUpdateResponse(updated_count=updated_count)
-
-
-@router.delete(
-    "/read",
-    response_model=NotificationDeleteResponse,
-    summary="Delete read notifications",
-)
-def delete_read_notifications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationDeleteResponse:
-    try:
-        deleted_count = notification_repository.delete_read_notifications(db, user_id=current_user.user_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationDeleteResponse(message="Read notifications deleted.", deleted_count=deleted_count)
 
 
 @router.delete(
     "",
     response_model=NotificationDeleteResponse,
+    tags=[NOTIFICATION_TAG],
     summary="Bulk delete notifications",
+    description="Deletes selected notifications from the last 30 days for the authenticated user.",
 )
 def bulk_delete_notifications(
     payload: NotificationBulkIdsRequest,
@@ -166,10 +145,32 @@ def bulk_delete_notifications(
     return NotificationDeleteResponse(message="Notifications deleted.", deleted_count=deleted_count)
 
 
+@router.delete(
+    "/read",
+    response_model=NotificationDeleteResponse,
+    tags=[NOTIFICATION_TAG],
+    summary="Delete read notifications",
+    description="Deletes read notifications from the last 30 days for the authenticated user.",
+)
+def delete_read_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationDeleteResponse:
+    try:
+        deleted_count = notification_repository.delete_read_notifications(db, user_id=current_user.user_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return NotificationDeleteResponse(message="Read notifications deleted.", deleted_count=deleted_count)
+
+
 @router.get(
     "/{notification_id}",
     response_model=NotificationResponse,
+    tags=[NOTIFICATION_TAG],
     summary="Get notification details",
+    description="Returns notification details only when the notification is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
 )
 def get_notification(
@@ -180,65 +181,24 @@ def get_notification(
     notification = notification_repository.get_notification_for_user(db, notification_id, current_user.user_id)
     if notification is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-    return notification
-
-
-@router.patch(
-    "/{notification_id}/read",
-    response_model=NotificationResponse,
-    summary="Mark one notification as read",
-    responses={404: {"description": "Notification not found"}},
-)
-def mark_notification_read(
-    notification_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationResponse:
-    try:
-        notification = notification_service.mark_read(db, user_id=current_user.user_id, notification_id=notification_id)
-        if notification is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-        db.commit()
-        db.refresh(notification)
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        raise
-    return notification
-
-
-@router.patch(
-    "/{notification_id}/unread",
-    response_model=NotificationResponse,
-    summary="Mark one notification as unread",
-    responses={404: {"description": "Notification not found"}},
-)
-def mark_notification_unread(
-    notification_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationResponse:
-    try:
-        notification = notification_service.mark_unread(db, user_id=current_user.user_id, notification_id=notification_id)
-        if notification is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
-        db.commit()
-        db.refresh(notification)
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception:
-        db.rollback()
-        raise
+    if not notification.is_read:
+        try:
+            notification.is_read = True
+            notification.read_at = datetime.utcnow()
+            db.commit()
+            db.refresh(notification)
+        except Exception:
+            db.rollback()
+            raise
     return notification
 
 
 @router.delete(
     "/{notification_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    tags=[NOTIFICATION_TAG],
     summary="Delete a notification",
+    description="Deletes one notification only when it is from the last 30 days.",
     responses={404: {"description": "Notification not found"}},
 )
 def delete_notification(

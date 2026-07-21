@@ -208,6 +208,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [isSprintInfoOpen, setIsSprintInfoOpen] = useState(false);
   const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
   const sprintInfoAnchorRef = useRef(null);
+  const boardScrollRef = useRef(null);
+  const boardAutoScrollFrameRef = useRef(null);
+  const dragPointerXRef = useRef(null);
+  const isBoardDraggingRef = useRef(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [viewMonth, setViewMonth] = useState(5); // June
@@ -285,11 +289,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
   const isSpaceOwner = currentSpaceRole === 'OWNER';
+  const isSpaceMember = currentSpaceRole === 'USER';
   const canModifyTasks = !isAdmin;
   const canManageTasks = isSpaceOwner;
-  const canManagePeople = isSpaceOwner;
+  const canManagePeople = isSpaceOwner || isSpaceMember;
   const canSelectTasks = canModifyTasks || canManageTasks;
-  const canDirectAddPeople = canManagePeople;
+  const canDirectAddPeople = isSpaceOwner;
   const projectAssigneeOptions = [
     availableAssignees[0],
     ...projectPeople.map(person => ({
@@ -516,7 +521,79 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     );
   };
 
+  useEffect(() => {
+    const updatePointerFromMouse = (event) => {
+      dragPointerXRef.current = event.clientX;
+    };
+
+    const updatePointerFromTouch = (event) => {
+      if (event.touches?.[0]) {
+        dragPointerXRef.current = event.touches[0].clientX;
+      }
+    };
+
+    window.addEventListener('mousemove', updatePointerFromMouse, { passive: true });
+    window.addEventListener('touchmove', updatePointerFromTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', updatePointerFromMouse);
+      window.removeEventListener('touchmove', updatePointerFromTouch);
+    };
+  }, []);
+
+  const stopBoardAutoScroll = useCallback(() => {
+    isBoardDraggingRef.current = false;
+    if (boardAutoScrollFrameRef.current) {
+      cancelAnimationFrame(boardAutoScrollFrameRef.current);
+      boardAutoScrollFrameRef.current = null;
+    }
+  }, []);
+
+  const startBoardAutoScroll = useCallback(() => {
+    if (!canModifyTasks) return;
+
+    isBoardDraggingRef.current = true;
+    const edgeSize = 140;
+    const maxScrollSpeed = 28;
+
+    const scrollBoard = () => {
+      const board = boardScrollRef.current;
+      const pointerX = dragPointerXRef.current;
+
+      if (!isBoardDraggingRef.current || !board) {
+        boardAutoScrollFrameRef.current = null;
+        return;
+      }
+
+      if (typeof pointerX === 'number') {
+        const rect = board.getBoundingClientRect();
+        const distanceFromLeft = pointerX - rect.left;
+        const distanceFromRight = rect.right - pointerX;
+        let scrollDelta = 0;
+
+        if (distanceFromLeft >= 0 && distanceFromLeft < edgeSize) {
+          scrollDelta = -Math.ceil(((edgeSize - distanceFromLeft) / edgeSize) * maxScrollSpeed);
+        } else if (distanceFromRight >= 0 && distanceFromRight < edgeSize) {
+          scrollDelta = Math.ceil(((edgeSize - distanceFromRight) / edgeSize) * maxScrollSpeed);
+        }
+
+        if (scrollDelta !== 0) {
+          board.scrollLeft += scrollDelta;
+        }
+      }
+
+      boardAutoScrollFrameRef.current = requestAnimationFrame(scrollBoard);
+    };
+
+    stopBoardAutoScroll();
+    isBoardDraggingRef.current = true;
+    boardAutoScrollFrameRef.current = requestAnimationFrame(scrollBoard);
+  }, [canModifyTasks, stopBoardAutoScroll]);
+
+  useEffect(() => stopBoardAutoScroll, [stopBoardAutoScroll]);
+
   const onDragEnd = (result) => {
+    stopBoardAutoScroll();
     if (!canModifyTasks) return;
     const { destination, source, draggableId } = result;
     if (!destination) return;
@@ -639,6 +716,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         return (a.title || '').localeCompare(b.title || '');
       case 'name-za':
         return (b.title || '').localeCompare(a.title || '');
+      case 'custom':
       default:
         return 0;
     }
@@ -653,6 +731,54 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     setSelectedTaskDetail(updatedTask);
   };
+
+  const handleMoveTaskWithinStatus = (taskId, direction) => {
+    if (!canModifyTasks) return;
+
+    const movingTask = tasks.find(task => task.id === taskId);
+    if (!movingTask) return;
+
+    const displayedColumnTaskIds = filteredTasks
+      .filter(task => task.status === movingTask.status)
+      .map(task => task.id);
+    const currentIndex = displayedColumnTaskIds.indexOf(taskId);
+    if (currentIndex === -1) return;
+
+    const visibleIdsWithoutMovingTask = displayedColumnTaskIds.filter(id => id !== taskId);
+    let referenceTaskId = null;
+    let insertPosition = 'before';
+
+    if (direction === 'top' && currentIndex > 0) {
+      referenceTaskId = visibleIdsWithoutMovingTask[0];
+    } else if (direction === 'up' && currentIndex > 0) {
+      referenceTaskId = displayedColumnTaskIds[currentIndex - 1];
+    } else if (direction === 'down' && currentIndex < displayedColumnTaskIds.length - 1) {
+      referenceTaskId = displayedColumnTaskIds[currentIndex + 1];
+      insertPosition = 'after';
+    } else if (direction === 'bottom' && currentIndex < displayedColumnTaskIds.length - 1) {
+      referenceTaskId = visibleIdsWithoutMovingTask[visibleIdsWithoutMovingTask.length - 1];
+      insertPosition = 'after';
+    }
+
+    if (!referenceTaskId) return;
+
+    setSortOption('custom');
+    setTasks(prev => {
+      const movingIndex = prev.findIndex(task => task.id === taskId);
+      if (movingIndex === -1) return prev;
+
+      const taskToMove = prev[movingIndex];
+      const withoutMovingTask = prev.filter(task => task.id !== taskId);
+      const referenceIndex = withoutMovingTask.findIndex(task => task.id === referenceTaskId);
+      if (referenceIndex === -1) return prev;
+
+      const nextTasks = [...withoutMovingTask];
+      const insertIndex = insertPosition === 'before' ? referenceIndex : referenceIndex + 1;
+      nextTasks.splice(insertIndex, 0, taskToMove);
+      return nextTasks;
+    });
+  };
+
   const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
   const spaceMemberCount = new Set(tasks.map(task => task.assignee).filter(Boolean)).size;
   const viewTabClass = (targetView) =>
@@ -993,7 +1119,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   {sortOption === 'created-newest' ? 'Newest First'
                     : sortOption === 'created-oldest' ? 'Oldest First'
                       : sortOption === 'name-az' ? 'Name A→Z'
-                        : 'Name Z→A'}
+                        : sortOption === 'name-za' ? 'Name Z→A'
+                          : 'Custom Order'}
                 </span>
                 <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
               </button>
@@ -1160,8 +1287,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       {/* BOARD VIEW */}
       {view === 'board' && (
         <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
+          <DragDropContext onDragStart={startBoardAutoScroll} onDragEnd={onDragEnd}>
+            <div ref={boardScrollRef} className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
               {visibleStatuses.map(status => (
                 <KanbanColumn
                   key={status}
@@ -1170,6 +1297,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   setTasks={setTasks}
                   onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
                   onOpenDetail={setSelectedTaskDetail}
+                  onMoveTask={handleMoveTaskWithinStatus}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
                   canModifyTasks={canModifyTasks}
@@ -1474,14 +1602,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       {/* Bottom-fixed selection toolbar */}
       {selectedTasks.length > 0 && canSelectTasks && (
         <div className="fixed left-6 right-6 bottom-4 z-50 flex justify-center pointer-events-none">
-          <div className="w-full max-w-[620px] pointer-events-auto rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 text-slate-700 shadow-sm ring-1 ring-gray-400/80 relative">
+          <div className="w-full max-w-[620px] pointer-events-auto rounded-xl border border-[#D8D1FF] bg-[#FBFAFF] px-3 py-2 text-[#2D1B4E] shadow-[0_10px_30px_rgba(94,77,178,0.16)] relative">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-[13px] font-medium text-slate-700">{selectedTasks.length} selected</span>
+                <span className="rounded-lg bg-[#F0EDFF] px-2.5 py-1 text-[13px] font-bold text-[#5E4DB2]">{selectedTasks.length} selected</span>
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="px-2 py-1 text-[12px] font-medium rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
                   {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
                 </button>
@@ -1490,7 +1618,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
-                      className="px-2 py-1 text-[12px] rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                      className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-[#5E4DB2] hover:bg-[#4C3A9E] text-white border border-[#5E4DB2] transition shadow-sm"
                     >
                       Change status
                     </button>
@@ -1525,7 +1653,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedTasks([]); }}
                   aria-label="Close selection toolbar"
-                  className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-slate-500 hover:bg-gray-100 transition"
+                  className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-[#7A6AA8] hover:bg-[#F0EDFF] hover:text-[#4C2B74] transition"
                 >
                   <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
@@ -1630,7 +1758,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -1651,7 +1779,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
@@ -1670,7 +1798,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const isOverdue = isTaskOverdue(task.completed_at || date, status, task.is_overdue);
@@ -1743,41 +1871,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   };
 
   const handleMove = (direction) => {
-    setTasks(prev => {
-      const columnTasks = prev.filter(t => t.status === task.status);
-      const globalIdx = prev.findIndex(t => t.id === task.id);
-      if (globalIdx === -1) return prev;
-
-      const colIdx = columnTasks.findIndex(t => t.id === task.id);
-      let newPrev = [...prev];
-
-      if (direction === 'up' && colIdx > 0) {
-        const taskAbove = columnTasks[colIdx - 1];
-        newPrev.splice(globalIdx, 1);
-        const newAboveGlobalIdx = newPrev.findIndex(t => t.id === taskAbove.id);
-        newPrev.splice(newAboveGlobalIdx, 0, task);
-      }
-      else if (direction === 'down' && colIdx < columnTasks.length - 1) {
-        const taskBelow = columnTasks[colIdx + 1];
-        newPrev.splice(globalIdx, 1);
-        const newBelowGlobalIdx = newPrev.findIndex(t => t.id === taskBelow.id);
-        newPrev.splice(newBelowGlobalIdx + 1, 0, task);
-      }
-      else if (direction === 'top' && colIdx > 0) {
-        const firstTask = columnTasks[0];
-        newPrev.splice(globalIdx, 1);
-        const newFirstGlobalIdx = newPrev.findIndex(t => t.id === firstTask.id);
-        newPrev.splice(newFirstGlobalIdx, 0, task);
-      }
-      else if (direction === 'bottom' && colIdx < columnTasks.length - 1) {
-        const lastTask = columnTasks[columnTasks.length - 1];
-        newPrev.splice(globalIdx, 1);
-        const newLastGlobalIdx = newPrev.findIndex(t => t.id === lastTask.id);
-        newPrev.splice(newLastGlobalIdx + 1, 0, task);
-      }
-
-      return newPrev;
-    });
+    onMoveTask?.(task.id, direction);
     setShowMenu(false);
     setShowMoveSubMenu(false);
   };

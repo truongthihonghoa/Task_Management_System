@@ -150,7 +150,7 @@ async function persistLanguagePreference(language) {
   if (!token) return;
 
   try {
-    await fetch(`${API_BASE_URL}/main-layout/preferences/language`, {
+    await fetch(`${API_BASE_URL}/me/preferences/language`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -168,7 +168,7 @@ async function loadLanguagePreference() {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/main-layout/preferences`, {
+    const response = await fetch(`${API_BASE_URL}/me/preferences`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

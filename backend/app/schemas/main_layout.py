@@ -3,51 +3,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class CurrentUserLayoutResponse(BaseModel):
-    user_id: str
-    full_name: str
-    email: str
-    initials: str
-    avatar_url: str | None
-    system_role: str
-    display_role: str
-
-
-class SidebarSummaryResponse(BaseModel):
-    task_count: int
-    can_view_dashboard: bool = False
-    can_view_users: bool = False
-    can_create_task: bool = False
-    can_view_help: bool = True
-    help_path: str = "/dashboard/help"
-
-
 class MainLayoutPreferencesResponse(BaseModel):
     language: str = "en"
 
 
 class MainLayoutLanguageRequest(BaseModel):
     language: Literal["en", "vi"]
-
-
-class MainLayoutNotificationResponse(BaseModel):
-    unread_count: int
-
-
-class MainLayoutHelpResponse(BaseModel):
-    can_view: bool = True
-    guides_endpoint: str = "/api/v1/help/guides"
-    guide_detail_endpoint: str = "/api/v1/help/guides/{slug}"
-    default_guide_slug: str | None = None
-    guide_count: int = 0
-
-
-class MainLayoutResponse(BaseModel):
-    current_user: CurrentUserLayoutResponse
-    sidebar: SidebarSummaryResponse
-    preferences: MainLayoutPreferencesResponse
-    notification: MainLayoutNotificationResponse
-    help: MainLayoutHelpResponse
 
 
 class SpacePermissionResponse(BaseModel):

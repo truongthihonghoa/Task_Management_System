@@ -7,6 +7,34 @@ import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+
+import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
+import {
+  getPrimaryNavigationItems,
+  getSupportNavigationItems,
+} from '../../utils/mainLayoutConfig';
+
+const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
+
+const copyLayoutQueryParams = (search) => {
+  const currentParams = new URLSearchParams(search);
+  const nextParams = new URLSearchParams();
+
+  LAYOUT_QUERY_KEYS.forEach((key) => {
+    const value = currentParams.get(key);
+    if (value) {
+      nextParams.set(key, value);
+    }
+  });
+
+  return nextParams;
+};
+
+const getLayoutSearch = (search) => {
+  const query = copyLayoutQueryParams(search).toString();
+  return query ? `?${query}` : '';
+};
+
 const INITIAL_NOTIFICATIONS = [
   {
     NOTI_id: 1,
@@ -257,6 +285,7 @@ export default function MainLayout() {
   const currentRole = isSuperAdmin ? 'ADMIN' : 'USER';
   const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
   const currentUserName = authUser?.full_name || authUser?.email || 'User';
+
   const currentUser = {
     id: authUser?.user_id || '',
     name: currentUserName,
@@ -271,9 +300,22 @@ export default function MainLayout() {
         : 'User',
   };
 
+  const primaryNavigationItems = useMemo(
+    () => getPrimaryNavigationItems({ isSuperAdmin }),
+    [isSuperAdmin]
+  );
+
+  const supportNavigationItems = useMemo(
+    () => getSupportNavigationItems(),
+    []
+  );
+
   const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
 
   const filteredNotifications = allNotifications.filter(n => {
+    if (!isNotificationWithinDisplayWindow(n)) {
+      return false;
+    }
     if (isSuperAdmin) {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }
@@ -340,28 +382,16 @@ export default function MainLayout() {
     }
   }, [location.pathname, showNotifications, showSettings, showAvatarDropdown, showSearchDropdown,showApps]);
 
-  const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
-  const isTasksActive = location.pathname === '/dashboard/spaces' || location.pathname.includes('/dashboard/tasks');
-  const isUsersActive = location.pathname === '/dashboard/users';
-  const isProfileActive = location.pathname === '/dashboard/profile';
-  const isNotificationsActive = location.pathname === '/dashboard/notifications';
-  const isSettingsActive = location.pathname === '/dashboard/notification-settings';
-  const isHelpActive = (
-    location.pathname === '/dashboard/help'
-    || location.pathname === '/dashboard/help-guide'
-    || location.pathname.startsWith('/dashboard/help/guides/')
-  );
-
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
     if (!isSuperAdmin) {
       // If on Dashboard (index) redirect to Space Management
       if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
       // If trying to access Users page, redirect to Space Management
       if (location.pathname.startsWith('/dashboard/users')) {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
     }
   }, [isSuperAdmin, location.pathname, location.search, navigate]);
@@ -401,8 +431,8 @@ export default function MainLayout() {
 
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
-  const buildSearchParams = (updates = {}) => {
-    const params = new URLSearchParams(location.search);
+  const buildSearchParams = (updates = {}, { preservePageParams = false } = {}) => {
+    const params = preservePageParams ? new URLSearchParams(location.search) : copyLayoutQueryParams(location.search);
     Object.entries(updates).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') {
         params.delete(key);
@@ -416,7 +446,23 @@ export default function MainLayout() {
 
   const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
   const openDashboardPath = (path, updates = {}) => {
-    navigate(dashboardPath(path, updates));
+    const targetPath = dashboardPath(path, updates);
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+
+    if (isLeavingTaskPage && typeof window !== 'undefined') {
+      window.location.assign(targetPath);
+      return;
+    }
+
+    navigate(targetPath);
+  };
+
+  const handleDashboardLinkClick = (event, path, updates = {}) => {
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+    if (!isLeavingTaskPage) return;
+
+    event.preventDefault();
+    openDashboardPath(path, updates);
   };
 
   const handleSearchSpaceClick = (taskId) => {
@@ -434,7 +480,7 @@ export default function MainLayout() {
 
   const handleSearchUserClick = (user) => {
     if (!isSuperAdmin || !user?.id) return;
-    navigate(`/dashboard/users${buildSearchParams({ userId: user.id, mode: 'edit' })}`);
+    openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -506,106 +552,125 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 space-y-1 mt-4">
-          {/* Dashboard Item */}
-          {isSuperAdmin && (isDashboardActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
-                <span className="text-sm font-bold">Dashboard</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
-              <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
-              <span className="text-sm font-medium">Dashboard</span>
-            </Link>
-          ))}
+<nav className="flex-1 px-3 space-y-1 mt-4">
+  {primaryNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
 
-          {/* Tasks Item */}
-          {isTasksActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
-                <div className="flex items-center">
-                  <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
-                  <span className="text-sm font-bold">Tasks</span>
-                </div>
-                <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
-              <div className="flex items-center">
-                <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
-                <span className="text-sm font-medium">Tasks</span>
-              </div>
-              <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-            </Link>
-          )}
+    const linkContent = (
+      <>
+        <div className="flex items-center min-w-0">
+          <i
+            className={`w-5 h-5 mr-3 shrink-0 ${
+              isActive ? 'text-[#2D1B4E]' : ''
+            }`}
+            data-lucide={item.icon}
+          ></i>
 
-          {/* Users Item */}
-          {isSuperAdmin && (isUsersActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
-                <span className="text-sm font-bold">Users</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
-              <i className="w-5 h-5 mr-3" data-lucide="users"></i>
-              <span className="text-sm font-medium">Users</span>
-            </Link>
-          ))}
-        </nav>
-
-        {/* Bottom Navigation */}
-        <div className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${showSettings ? '-translate-y-[100px]' : ''}`}>
-          {/* Help Item */}
-          {isHelpActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
-                <span className="text-sm font-bold">Help</span>
-              </Link>
-            </div>
-          ) : (
-            <Link className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
-              <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
-              <span className="text-sm font-medium">Help</span>
-            </Link>
-          )}
-          <div className="relative" ref={settingsRef}>
-            <button
-              onClick={() => openDashboardPath('/dashboard/notification-settings')}
-              className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
-                isSettingsActive
-                  ? "bg-[#E0E8FF] text-[#2D1B4E]"
-                  : "text-[#6B7280] hover:bg-gray-50"
-              }`}
-            >
-              {isSettingsActive && <div className="sidebar-active-indicator"></div>}
-
-              <div className="flex items-center flex-1">
-                <i
-                  className={`w-5 h-5 mr-3 ${
-                    isSettingsActive ? "text-[#2D1B4E]" : ""
-                  }`}
-                  data-lucide="settings"
-                ></i>
-
-                <span className={`text-sm ${isSettingsActive ? "font-bold" : "font-medium"}`}>
-                  Settings
-                </span>
-              </div>
-            </button>
-          </div>
+          <span
+            className={`text-sm ${
+              isActive ? 'font-bold' : 'font-medium'
+            }`}
+          >
+            {item.label}
+          </span>
         </div>
+
+        {item.badge !== undefined && (
+          <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </>
+    );
+
+    return isActive ? (
+      <div className="relative flex items-center" key={item.key}>
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className={`flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 ${
+            item.badge !== undefined ? 'justify-between' : ''
+          }`}
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          {linkContent}
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className={`flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors ${
+          item.badge !== undefined ? 'justify-between' : ''
+        }`}
+        key={item.key}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        {linkContent}
+      </Link>
+    );
+  })}
+</nav>
+        {/* Bottom Navigation */}
+<div
+  className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${
+    showSettings ? '-translate-y-[100px]' : ''
+  }`}
+>
+  {supportNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
+
+    return isActive ? (
+      <div
+        className="relative flex items-center"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+      >
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2"
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          <i
+            className="w-5 h-5 mr-3 text-[#2D1B4E]"
+            data-lucide={item.icon}
+          ></i>
+
+          <span className="text-sm font-bold">
+            {item.label}
+          </span>
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        <i
+          className="w-5 h-5 mr-3"
+          data-lucide={item.icon}
+        ></i>
+
+        <span className="text-sm font-medium">
+          {item.label}
+        </span>
+      </Link>
+    );
+  })}
+</div>
       </aside>
       {/* END: LeftSidebar */}
 
@@ -935,9 +1000,7 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <React.Fragment key={location.pathname}>
-            <Outlet context={layoutContext} />
-          </React.Fragment>
+          <Outlet key={`${location.pathname}${location.search}`} context={layoutContext} />
         </main>
         {/* END: MainContentArea */}
 

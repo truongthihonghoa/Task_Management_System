@@ -9,11 +9,9 @@ from app.models.user import User
 from app.schemas.dashboard import (
     DashboardActivityListResponse,
     DashboardActivitySpaceResponse,
-    DashboardAuditLogFilterOptionsResponse,
     DashboardAuditLogItemResponse,
     DashboardAssignmentHistoryListResponse,
     DashboardAuditLogListResponse,
-    DashboardSummaryMemberResponse,
     SpaceSummaryDashboardResponse,
     SuperAdminDashboardResponse,
 )
@@ -35,107 +33,58 @@ def get_super_admin_dashboard(
 def get_space_summary_dashboard(
     space_id: str,
     member_id: str | None = Query(default=None),
+    activities_page: int = Query(default=1, ge=1),
+    activities_page_size: int = Query(default=20, ge=1, le=100),
+    activities_search: str | None = Query(default=None),
+    activities_status: str | None = Query(default=None),
+    activities_date_range: str | None = Query(default=None),
+    activities_date_from: datetime | None = Query(default=None),
+    activities_date_to: datetime | None = Query(default=None),
+    tasks_tab: str = Query(default="worked_on"),
+    tasks_page: int = Query(default=1, ge=1),
+    tasks_page_size: int = Query(default=20, ge=1, le=100),
+    tasks_search: str | None = Query(default=None),
+    tasks_status: str | None = Query(default=None),
+    tasks_date_range: str | None = Query(default=None),
+    tasks_date_from: datetime | None = Query(default=None),
+    tasks_date_to: datetime | None = Query(default=None),
+    assignment_page: int = Query(default=1, ge=1),
+    assignment_page_size: int = Query(default=25, ge=1, le=100),
+    assignment_search: str | None = Query(default=None),
+    assignment_change_status: str | None = Query(default=None),
+    assignment_date_from: datetime | None = Query(default=None),
+    assignment_date_to: datetime | None = Query(default=None),
+    assignment_sort_order: str = Query(default="desc"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SpaceSummaryDashboardResponse:
-    return dashboard_service.get_space_summary_dashboard(db, current_user, space_id, member_id=member_id)
-
-
-@router.get("/spaces/{space_id}/summary/members", response_model=list[DashboardSummaryMemberResponse])
-def get_space_summary_members(
-    space_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> list[DashboardSummaryMemberResponse]:
-    return dashboard_service.get_space_summary_members(db, current_user, space_id)
-
-
-@router.get("/spaces/{space_id}/summary/recent-activities", response_model=DashboardActivityListResponse)
-def get_space_summary_recent_activities(
-    space_id: str,
-    member_id: str | None = Query(default=None),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    search: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
-    date_range: str | None = Query(default=None),
-    date_from: datetime | None = Query(default=None),
-    date_to: datetime | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> DashboardActivityListResponse:
-    return dashboard_service.get_space_summary_recent_activities(
+    return dashboard_service.get_space_summary_dashboard(
         db,
         current_user,
         space_id,
         member_id=member_id,
-        page=page,
-        page_size=page_size,
-        search=search,
-        status_filter=status_filter,
-        date_range=date_range,
-        date_from=date_from,
-        date_to=date_to,
-    )
-
-
-@router.get("/spaces/{space_id}/summary/recent-tasks", response_model=DashboardActivityListResponse)
-def get_space_summary_recent_tasks(
-    space_id: str,
-    member_id: str | None = Query(default=None),
-    tab: str = Query(default="worked_on"),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    search: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
-    date_range: str | None = Query(default=None),
-    date_from: datetime | None = Query(default=None),
-    date_to: datetime | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> DashboardActivityListResponse:
-    return dashboard_service.get_space_summary_recent_tasks(
-        db,
-        current_user,
-        space_id,
-        member_id=member_id,
-        tab=tab,
-        page=page,
-        page_size=page_size,
-        search=search,
-        status_filter=status_filter,
-        date_range=date_range,
-        date_from=date_from,
-        date_to=date_to,
-    )
-
-
-@router.get("/spaces/{space_id}/summary/assignment-history", response_model=DashboardAssignmentHistoryListResponse)
-def get_space_summary_assignment_history(
-    space_id: str,
-    member_id: str | None = Query(default=None),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=25, ge=1, le=100),
-    search: str | None = Query(default=None),
-    change_status: str | None = Query(default=None),
-    date_from: datetime | None = Query(default=None),
-    date_to: datetime | None = Query(default=None),
-    sort_order: str = Query(default="desc"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> DashboardAssignmentHistoryListResponse:
-    return dashboard_service.get_space_summary_assignment_history(
-        db,
-        current_user,
-        space_id,
-        member_id=member_id,
-        page=page,
-        page_size=page_size,
-        search=search,
-        change_status=change_status,
-        date_from=date_from,
-        date_to=date_to,
-        sort_order=sort_order,
+        activities_page=activities_page,
+        activities_page_size=activities_page_size,
+        activities_search=activities_search,
+        activities_status=activities_status,
+        activities_date_range=activities_date_range,
+        activities_date_from=activities_date_from,
+        activities_date_to=activities_date_to,
+        tasks_tab=tasks_tab,
+        tasks_page=tasks_page,
+        tasks_page_size=tasks_page_size,
+        tasks_search=tasks_search,
+        tasks_status=tasks_status,
+        tasks_date_range=tasks_date_range,
+        tasks_date_from=tasks_date_from,
+        tasks_date_to=tasks_date_to,
+        assignment_page=assignment_page,
+        assignment_page_size=assignment_page_size,
+        assignment_search=assignment_search,
+        assignment_change_status=assignment_change_status,
+        assignment_date_from=assignment_date_from,
+        assignment_date_to=assignment_date_to,
+        assignment_sort_order=assignment_sort_order,
     )
 
 
@@ -201,14 +150,6 @@ def get_super_admin_audit_logs(
         date_to=date_to,
         sort_order=sort_order,
     )
-
-
-@router.get("/super-admin/audit-logs/filters", response_model=DashboardAuditLogFilterOptionsResponse)
-def get_super_admin_audit_log_filter_options(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> DashboardAuditLogFilterOptionsResponse:
-    return dashboard_service.get_audit_log_filter_options(db, current_user)
 
 
 @router.get("/super-admin/audit-logs/{log_id}", response_model=DashboardAuditLogItemResponse)

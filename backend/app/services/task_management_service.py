@@ -165,7 +165,14 @@ def _build_task_detail_response(task: Task) -> TaskDetailResponse:
     return response
 
 
-def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: User) -> TaskDetailResponse:
+def create_task(
+    db: Session,
+    space_id: str,
+    payload: TaskCreate,
+    current_user: User,
+    *,
+    attachments: Iterable[UploadFile] | None = None,
+) -> TaskDetailResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_active(space)
     _ensure_can_modify_space_tasks(db, space, current_user)
@@ -186,29 +193,17 @@ def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: U
         updated_at=now,
     )
     task_repository.create_task_record(db, task)
-    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
-
-
-def create_task_with_attachments(
-    db: Session,
-    space_id: str,
-    payload: TaskCreate,
-    current_user: User,
-    *,
-    attachments: Iterable[UploadFile] | None = None,
-) -> TaskDetailResponse:
-    created_task = create_task(db, space_id, payload, current_user)
     for attachment in attachments or []:
         if not attachment.filename:
             continue
         media_service.upload_task_media(
             db,
-            created_task.task_id,
+            task.task_id,
             usage="attachment",
             file=attachment,
             current_user=current_user,
         )
-    return _build_task_detail_response(_get_task_or_404(db, created_task.task_id))
+    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
 def list_tasks(
@@ -332,20 +327,5 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     now = datetime.utcnow()
     task.deleted_at = now
     task.updated_at = now
-    task_repository.save_task(db, task, refresh=False)
-    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
-
-
-def restore_task(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
-    task = _get_task_or_404(db, task_id)
-    if task.deleted_at is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not deleted")
-
-    space = task.space or _get_space_or_404(db, task.space_id)
-    _ensure_space_active(space)
-    _ensure_space_owner(space, current_user)
-
-    task.deleted_at = None
-    task.updated_at = datetime.utcnow()
     task_repository.save_task(db, task, refresh=False)
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))

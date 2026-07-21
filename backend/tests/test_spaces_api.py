@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -163,6 +164,66 @@ def test_archived_space_is_read_only():
 
     assert service_exc.value.status_code == 400
     assert service_exc.value.detail == "Space is archived"
+
+
+def test_delete_space_allows_archived_space_for_owner(monkeypatch):
+    created_at = datetime(2026, 7, 1, 9, 0, 0)
+    owner = SimpleNamespace(user_id="USR00000003")
+    archived_space = SimpleNamespace(
+        space_id="SPC00000002",
+        name_space="Product Team",
+        description="Archived project",
+        owner_id=owner.user_id,
+        status_space="Archived",
+        created_at=created_at,
+        updated_at=created_at,
+        deleted_at=None,
+    )
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.refreshed = None
+
+        def commit(self):
+            self.committed = True
+
+        def refresh(self, space):
+            self.refreshed = space
+
+    class FakeNotificationService:
+        def create_notification(self, *_args, **_kwargs):
+            return None
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: archived_space)
+    monkeypatch.setattr(space_repository, "notification_service", FakeNotificationService())
+
+    response = space_repository.delete_space(db, archived_space.space_id, current_user=owner)
+
+    assert response.status_space == "Deleted"
+    assert archived_space.status_space == "Deleted"
+    assert archived_space.deleted_at is not None
+    assert db.committed is True
+    assert db.refreshed is archived_space
+
+
+def test_delete_space_rejects_already_deleted_space(monkeypatch):
+    owner = SimpleNamespace(user_id="USR00000003")
+    deleted_space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=owner.user_id,
+        status_space="Deleted",
+        deleted_at=datetime.utcnow(),
+    )
+
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: deleted_space)
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_repository.delete_space(object(), deleted_space.space_id, current_user=owner)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Space is already deleted"
 
 
 def test_invitation_acceptance_notifies_original_inviter(monkeypatch):
@@ -347,3 +408,93 @@ def test_owner_approval_sends_invitation_from_original_requester(monkeypatch):
     assert member_request.review_token == "invitee-token"
     assert db.committed is True
     assert sent_invitations == [(requester, space, member_request)]
+
+
+def test_cleanup_expired_deleted_spaces_hard_deletes_only_expired_spaces(monkeypatch):
+    now = datetime(2026, 7, 20, 9, 0, 0)
+    expired_space = SimpleNamespace(space_id="SPC00000001", deleted_at=now - timedelta(days=14, minutes=1))
+    deleted = []
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.rolled_back = False
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            self.rolled_back = True
+
+    db = FakeDB()
+    monkeypatch.setattr(
+        space_repository,
+        "list_expired_deleted_space_records",
+        lambda received_db, **kwargs: [expired_space],
+    )
+    monkeypatch.setattr(
+        space_repository,
+        "hard_delete_space",
+        lambda received_db, space_id, **kwargs: deleted.append((received_db, space_id, kwargs)) or True,
+    )
+
+    deleted_count = space_repository.cleanup_expired_deleted_spaces(db, now=now)
+
+    assert deleted_count == 1
+    assert deleted == [(db, "SPC00000001", {"commit": False})]
+    assert db.committed is True
+    assert db.rolled_back is False
+
+
+def test_cleanup_expired_deleted_spaces_skips_commit_when_nothing_expired(monkeypatch):
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.rolled_back = False
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            self.rolled_back = True
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "list_expired_deleted_space_records", lambda received_db, **kwargs: [])
+
+    deleted_count = space_repository.cleanup_expired_deleted_spaces(db)
+
+    assert deleted_count == 0
+    assert db.committed is False
+    assert db.rolled_back is False
+
+
+def test_cleanup_expired_deleted_spaces_rolls_back_on_failure(monkeypatch):
+    expired_space = SimpleNamespace(space_id="SPC00000001")
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+            self.rolled_back = False
+
+        def commit(self):
+            self.committed = True
+
+        def rollback(self):
+            self.rolled_back = True
+
+    def fail_hard_delete(*_args, **_kwargs):
+        raise RuntimeError("delete failed")
+
+    db = FakeDB()
+    monkeypatch.setattr(
+        space_repository,
+        "list_expired_deleted_space_records",
+        lambda received_db, **kwargs: [expired_space],
+    )
+    monkeypatch.setattr(space_repository, "hard_delete_space", fail_hard_delete)
+
+    with pytest.raises(RuntimeError, match="delete failed"):
+        space_repository.cleanup_expired_deleted_spaces(db)
+
+    assert db.committed is False
+    assert db.rolled_back is True

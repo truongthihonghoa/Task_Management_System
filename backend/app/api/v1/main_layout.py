@@ -1,19 +1,16 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
-from app.core.security import bearer_scheme, get_current_user
+from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.main_layout import (
     MainLayoutLanguageRequest,
     MainLayoutPreferencesResponse,
-    MainLayoutResponse,
-    SidebarSummaryResponse,
     SpaceContextResponse,
 )
-from app.schemas.pydantic_models import MessageResponse, UpdateProfileRequest, UserProfileResponse
-from app.services import auth_service, main_layout_service
+from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileResponse
+from app.services import main_layout_service
 
 
 router = APIRouter(prefix="/main-layout", tags=["main layout"])
@@ -76,17 +73,6 @@ def update_profile(
     except Exception:
         db.rollback()
         raise
-
-
-@router.post("/logout", response_model=MessageResponse, status_code=200)
-def logout(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> MessageResponse:
-    if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
-    return auth_service.logout(db, current_user, credentials.credentials)
 
 
 @router.get("/spaces/{space_id}/context", response_model=SpaceContextResponse)

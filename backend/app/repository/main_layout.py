@@ -32,20 +32,6 @@ def user_can_access_space_condition(user: User):
     )
 
 
-def count_visible_tasks(db: Session, user: User) -> int:
-    query = (
-        db.query(func.count(Task.task_id))
-        .join(Space, Task.space_id == Space.space_id)
-        .filter(
-            Task.deleted_at.is_(None),
-            *_active_space_filter(),
-        )
-    )
-    if user.role != "SUPER_ADMIN":
-        query = query.filter(user_can_access_space_condition(user))
-    return int(query.scalar() or 0)
-
-
 def get_space_for_context(db: Session, space_id: str) -> Space | None:
     return (
         db.query(Space)

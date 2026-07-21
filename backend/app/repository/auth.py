@@ -12,7 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
-from app.repository.audit_retention import cleanup_expired_audit_logs
 from app.models.user import User
 from app.models.user_token import UserToken
 from app.models.verification_token import VerificationToken
@@ -249,7 +248,6 @@ def create_audit_log(
     entity_id: str | None = None,
     payload: dict[str, Any] | None = None,
 ) -> AuditLog:
-    cleanup_expired_audit_logs(db)
     audit_log = AuditLog(
         user_id=user_id,
         action=action,

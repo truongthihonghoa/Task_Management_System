@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Iterable
 
@@ -363,20 +362,3 @@ class NotificationService:
             allow_self_notification=allow_self_notification,
         )
 
-    def mark_read(self, db: Session, *, user_id: str, notification_id: str) -> Notification | None:
-        return notification_repository.mark_notification_read_state(
-            db,
-            notification_id=notification_id,
-            user_id=user_id,
-            is_read=True,
-            read_at=datetime.utcnow(),
-        )
-
-    def mark_unread(self, db: Session, *, user_id: str, notification_id: str) -> Notification | None:
-        return notification_repository.mark_notification_read_state(
-            db,
-            notification_id=notification_id,
-            user_id=user_id,
-            is_read=False,
-            read_at=None,
-        )

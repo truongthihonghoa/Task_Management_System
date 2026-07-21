@@ -414,6 +414,7 @@ def get_audit_logs(
         page=page,
         page_size=page_size,
         items=[_audit_log_item(log) for log in logs],
+        filters=_build_audit_log_filter_options(db),
     )
 
 
@@ -425,8 +426,7 @@ def get_audit_log_detail(db: Session, user: User, log_id: str) -> DashboardAudit
     return _audit_log_item(log)
 
 
-def get_audit_log_filter_options(db: Session, user: User) -> DashboardAuditLogFilterOptionsResponse:
-    ensure_super_admin(user)
+def _build_audit_log_filter_options(db: Session) -> DashboardAuditLogFilterOptionsResponse:
     event_types = [
         DashboardFilterOptionResponse(value=action, label=humanize_action(action), count=int(count or 0))
         for action, count in dashboard_repository.get_audit_log_event_type_counts(db)
@@ -447,6 +447,11 @@ def get_audit_log_filter_options(db: Session, user: User) -> DashboardAuditLogFi
             for value, label in AUDIT_SORT_OPTIONS
         ],
     )
+
+
+def get_audit_log_filter_options(db: Session, user: User) -> DashboardAuditLogFilterOptionsResponse:
+    ensure_super_admin(user)
+    return _build_audit_log_filter_options(db)
 
 
 def get_assignment_history(
@@ -929,6 +934,28 @@ def get_space_summary_dashboard(
     space_id: str,
     *,
     member_id: str | None = None,
+    activities_page: int = 1,
+    activities_page_size: int = 20,
+    activities_search: str | None = None,
+    activities_status: str | None = None,
+    activities_date_range: str | None = None,
+    activities_date_from: datetime | None = None,
+    activities_date_to: datetime | None = None,
+    tasks_tab: str = "worked_on",
+    tasks_page: int = 1,
+    tasks_page_size: int = 20,
+    tasks_search: str | None = None,
+    tasks_status: str | None = None,
+    tasks_date_range: str | None = None,
+    tasks_date_from: datetime | None = None,
+    tasks_date_to: datetime | None = None,
+    assignment_page: int = 1,
+    assignment_page_size: int = 25,
+    assignment_search: str | None = None,
+    assignment_change_status: str | None = None,
+    assignment_date_from: datetime | None = None,
+    assignment_date_to: datetime | None = None,
+    assignment_sort_order: str = "desc",
 ) -> SpaceSummaryDashboardResponse:
     space = ensure_space_summary_access(db, space_id, user)
     viewer_role, viewer_scope = _space_summary_scope(space, user)
@@ -963,28 +990,79 @@ def get_space_summary_dashboard(
         )
     )
 
-    activity_counts = _activity_counts(
+    recent_tasks = get_space_summary_recent_tasks(
         db,
-        space_id=space_id,
-        search=None,
-        status_filter=None,
-        date_from=None,
-        date_to=None,
-        user_id=selected_member_id,
-        assignment_member_id=selected_member_id,
-        include_assign_history=viewer_scope == "space",
-        current_sprint_only_for_assignments=True,
+        user,
+        space_id,
+        tab=tasks_tab,
+        page=tasks_page,
+        page_size=tasks_page_size,
+        member_id=selected_member_id,
+        search=tasks_search,
+        status_filter=tasks_status,
+        date_range=tasks_date_range,
+        date_from=tasks_date_from,
+        date_to=tasks_date_to,
     )
-    recent_tasks = get_space_summary_recent_tasks(db, user, space_id, tab="worked_on", page=1, page_size=8, member_id=selected_member_id)
-    viewed_items = get_space_summary_recent_tasks(db, user, space_id, tab="viewed", page=1, page_size=8, member_id=selected_member_id)
+    viewed_items = get_space_summary_recent_tasks(
+        db,
+        user,
+        space_id,
+        tab="viewed",
+        page=tasks_page,
+        page_size=tasks_page_size,
+        member_id=selected_member_id,
+        search=tasks_search,
+        status_filter=tasks_status,
+        date_range=tasks_date_range,
+        date_from=tasks_date_from,
+        date_to=tasks_date_to,
+    )
     if viewer_scope == "member":
         assignment_history = None
-        assigned_to_me = get_space_summary_recent_tasks(db, user, space_id, tab="assigned_to_me", page=1, page_size=8, member_id=selected_member_id)
+        assigned_to_me = get_space_summary_recent_tasks(
+            db,
+            user,
+            space_id,
+            tab="assigned_to_me",
+            page=tasks_page,
+            page_size=tasks_page_size,
+            member_id=selected_member_id,
+            search=tasks_search,
+            status_filter=tasks_status,
+            date_range=tasks_date_range,
+            date_from=tasks_date_from,
+            date_to=tasks_date_to,
+        )
     else:
-        assignment_history = get_space_summary_assignment_history(db, user, space_id, page=1, page_size=8, member_id=selected_member_id)
+        assignment_history = get_space_summary_assignment_history(
+            db,
+            user,
+            space_id,
+            page=assignment_page,
+            page_size=assignment_page_size,
+            member_id=selected_member_id,
+            search=assignment_search,
+            change_status=assignment_change_status,
+            date_from=assignment_date_from,
+            date_to=assignment_date_to,
+            sort_order=assignment_sort_order,
+        )
         assigned_to_me = None
 
-    recent_activities = get_space_summary_recent_activities(db, user, space_id, page=1, page_size=8, member_id=selected_member_id)
+    recent_activities = get_space_summary_recent_activities(
+        db,
+        user,
+        space_id,
+        page=activities_page,
+        page_size=activities_page_size,
+        member_id=selected_member_id,
+        search=activities_search,
+        status_filter=activities_status,
+        date_range=activities_date_range,
+        date_from=activities_date_from,
+        date_to=activities_date_to,
+    )
 
     return SpaceSummaryDashboardResponse(
         space_id=space.space_id,
@@ -1019,7 +1097,7 @@ def get_space_summary_dashboard(
             if viewer_scope == "space"
             else None
         ),
-        activity_counts=activity_counts,
+        activity_counts=recent_activities.counts,
         recent_activities=recent_activities.items,
         recent_tasks=recent_tasks,
         viewed_items=viewed_items,

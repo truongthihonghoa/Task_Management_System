@@ -12,7 +12,6 @@ from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
 from app.models.task_assignment_history import TaskAssignmentHistory
 from app.models.user import User
-from app.repository.audit_retention import cleanup_expired_audit_logs
 
 
 def get_user_status_counts(db: Session) -> dict[str, int]:
@@ -439,7 +438,6 @@ def list_audit_logs(
     date_to: datetime | None = None,
     sort_order: str = "desc",
 ) -> tuple[list[AuditLog], int]:
-    cleanup_expired_audit_logs(db, commit=True)
     query = db.query(AuditLog).outerjoin(User, AuditLog.user_id == User.user_id).options(joinedload(AuditLog.user))
 
     normalized_search = search.strip() if search else None
@@ -487,7 +485,6 @@ def list_task_audit_logs(
     date_to: datetime | None = None,
     user_id: str | None = None,
 ) -> tuple[list[tuple[AuditLog, Task]], int]:
-    cleanup_expired_audit_logs(db, commit=True)
     query = (
         db.query(AuditLog, Task)
         .join(Task, AuditLog.entity_id == Task.task_id)
@@ -536,7 +533,6 @@ def list_task_audit_logs(
 
 
 def get_audit_log_by_id(db: Session, log_id: str) -> AuditLog | None:
-    cleanup_expired_audit_logs(db, commit=True)
     return (
         db.query(AuditLog)
         .options(joinedload(AuditLog.user))
@@ -546,7 +542,6 @@ def get_audit_log_by_id(db: Session, log_id: str) -> AuditLog | None:
 
 
 def get_audit_log_event_type_counts(db: Session) -> list[tuple[str, int]]:
-    cleanup_expired_audit_logs(db, commit=True)
     return (
         db.query(AuditLog.action, func.count(AuditLog.log_id))
         .group_by(AuditLog.action)
@@ -556,7 +551,6 @@ def get_audit_log_event_type_counts(db: Session) -> list[tuple[str, int]]:
 
 
 def get_audit_log_label_title_counts(db: Session) -> list[tuple[str, int]]:
-    cleanup_expired_audit_logs(db, commit=True)
     return (
         db.query(AuditLog.label_title, func.count(AuditLog.log_id))
         .group_by(AuditLog.label_title)
