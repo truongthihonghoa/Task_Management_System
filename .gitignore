@@ -5,5 +5,6 @@ frontend/.env
 __pycache__/
 *.py[cod]
 *.log
+backend/media/
 dist/
 node_modules/

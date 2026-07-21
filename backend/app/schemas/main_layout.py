@@ -1,6 +1,14 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class MainLayoutResponse(BaseModel):
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class SidebarSummaryResponse(BaseModel):
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class MainLayoutPreferencesResponse(BaseModel):

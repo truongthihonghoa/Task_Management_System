@@ -66,6 +66,8 @@ const getLayoutQueryParams = (search) => {
     }
   });
   return nextParams;
+};
+
 const formatSpaceDate = (value) => {
   if (!value) return '';
   const date = new Date(value);

@@ -5,11 +5,13 @@ user_service.py — Business logic for user management and profiles.
 import os
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.media import MEDIA_FOLDERS, MEDIA_ROOT
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.repository import user as user_repo
@@ -213,27 +215,37 @@ def update_user_avatar(db: Session, user_id: str, file: UploadFile) -> str:
     if file_size > 5 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds 5 MB limit.")
 
-    avatar_dir = "media/avatars/"
-    os.makedirs(avatar_dir, exist_ok=True)
+    avatar_dir = MEDIA_ROOT / MEDIA_FOLDERS["avatar"]
+    avatar_dir.mkdir(parents=True, exist_ok=True)
 
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
+    ext = Path(file.filename or "").suffix.lower().lstrip(".") or "jpg"
     filename = f"{uuid.uuid4()}.{ext}"
-    filepath = os.path.join(avatar_dir, filename).replace("\\", "/")
+    filepath = avatar_dir / filename
+    avatar_url = f"/media/{MEDIA_FOLDERS['avatar']}/{filename}"
 
-    with open(filepath, "wb") as f:
+    with filepath.open("wb") as f:
         f.write(file.file.read())
 
     old_avatar = user.avatar_url
-    user_repo.update_user_fields(db, user, {"avatar_url": filepath})
+    user_repo.update_user_fields(db, user, {"avatar_url": avatar_url})
+    db.flush()
 
-    if old_avatar and os.path.exists(old_avatar):
-        if not old_avatar.endswith("default.png") and not old_avatar.endswith("default.jpg"):
+    if old_avatar and not old_avatar.endswith(("default.png", "default.jpg")):
+        old_path = None
+        if old_avatar.startswith("/media/"):
+            old_path = MEDIA_ROOT / old_avatar.removeprefix("/media/")
+        elif old_avatar.startswith("media/"):
+            old_path = MEDIA_ROOT / old_avatar.removeprefix("media/")
+        else:
+            old_path = Path(old_avatar)
+
+        if old_path.exists() and old_path.is_file():
             try:
-                os.remove(old_avatar)
+                old_path.unlink()
             except OSError:
                 pass
 
-    return filepath
+    return avatar_url
 
 
 def change_user_password(db: Session, user_id: str, password_data: ChangePasswordRequest) -> None:

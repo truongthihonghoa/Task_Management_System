@@ -23,8 +23,10 @@ from app.schemas.notification import (
     NotificationResponse,
     NotificationUnreadCountResponse,
 )
+from app.services.notification_service import NotificationService
 
 
+NOTIFICATION_TAG = "notifications"
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 notification_service = NotificationService()
 
