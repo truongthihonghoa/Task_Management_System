@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.notification_constants import SortOrder
 from app.models.notification import Notification
+from app.models.task import Task
 
 NOTIFICATION_DISPLAY_DAYS = 30
 NOTIFICATION_RETENTION_MONTHS = 6
@@ -43,7 +44,7 @@ def _is_leap_year(year: int) -> bool:
 def get_notification_for_user(db: Session, notification_id: str, user_id: str) -> Notification | None:
     return db.execute(
         select(Notification)
-        .options(joinedload(Notification.actor))
+        .options(joinedload(Notification.actor), joinedload(Notification.task).joinedload(Task.sprint))
         .where(
             Notification.notification_id == notification_id,
             Notification.user_id == user_id,
@@ -78,7 +79,10 @@ def list_notifications(
     page_size: int = 20,
     sort_order: str = SortOrder.DESC.value,
 ) -> NotificationListResult:
-    query = db.query(Notification).options(joinedload(Notification.actor)).filter(
+    query = db.query(Notification).options(
+        joinedload(Notification.actor),
+        joinedload(Notification.task).joinedload(Task.sprint),
+    ).filter(
         Notification.user_id == user_id,
         Notification.created_at >= notification_display_cutoff(),
     )

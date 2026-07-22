@@ -43,141 +43,6 @@ const getLayoutSearch = (search) => {
   return query ? `?${query}` : '';
 };
 
-const INITIAL_NOTIFICATIONS = [
-  {
-    NOTI_id: 1,
-    type: 'task_assigned',
-    task_name: 'Design Dashboard',
-    triggered_by_name: 'Hoa',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'H',
-    is_read: false,
-    created_at: '2 min ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'To Do',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 2,
-    type: 'status_changed',
-    task_name: 'Design System',
-    new_status: 'In Review',
-    triggered_by_name: 'Pham Thi Cam Tien',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'PT',
-    is_read: false,
-    created_at: '33 sec ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 3,
-    type: 'comment_added',
-    task_name: 'Audit Logs Screen',
-    triggered_by_name: 'Trung',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'T',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 4,
-    type: 'due_today',
-    task_name: 'Database Migration',
-    is_read: false,
-    created_at: '3 hours ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'Pending',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 5,
-    type: 'space_member_added',
-    space_name: 'Task Management System',
-    triggered_by_name: 'Trang Nguyen',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'TN',
-    is_read: false,
-    created_at: '1 hour ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 6,
-    type: 'owner_space_update',
-    space_name: 'Task Management System',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 10,
-    type: 'user_registered',
-    target_user: 'Nguyen Van A',
-    is_read: false,
-    created_at: '5 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 11,
-    type: 'account_locked',
-    target_user: 'User123',
-    is_read: false,
-    created_at: '10 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 12,
-    type: 'user_verified',
-    target_user: 'Alex Morgan',
-    is_read: true,
-    created_at: '2 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 13,
-    type: 'permission_changed',
-    target_user: 'Hoang Hoa',
-    is_read: false,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 14,
-    type: 'audit_log_event',
-    message: 'Security audit event recorded for a sensitive permission update.',
-    is_read: true,
-    created_at: '3 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  }
-];
 const SEARCH_TASKS = [
   { id: 'TM-1', spaceId: 'SP-001', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
   { id: 'TM-2', spaceId: 'SP-001', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
@@ -281,8 +146,9 @@ function mapNotification(notification) {
   const metadata = notification.metadata || {};
   const actorName = notification.actor?.full_name || metadata.triggered_by_name || '';
   const targetUser = metadata.target_user || metadata.target_user_name || '';
-  const taskName = metadata.task_name || metadata.task_title || notification.title;
+  const taskName = metadata.task_name || metadata.task_title || notification.task?.title || '';
   const spaceName = metadata.space_name || metadata.name_space || metadata.space || '';
+  const sprintName = metadata.sprint_name || metadata.name_sprint || metadata.sprint || notification.task?.sprint_name || '';
 
   return {
     NOTI_id: notification.notification_id,
@@ -294,6 +160,7 @@ function mapNotification(notification) {
     target_user_id: metadata.user_id || metadata.target_user_id,
     audit_log_id: metadata.log_id || metadata.audit_log_id,
     task_name: taskName,
+    sprint_name: sprintName,
     space_name: spaceName,
     target_user: targetUser,
     triggered_by_name: actorName,

@@ -165,6 +165,7 @@ def _notify_task_assignees(
             audience="USER",
             metadata={
                 "task_title": task.title,
+                "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                 "space_name": task.space.name_space if task.space else None,
                 **(metadata or {}),
             },

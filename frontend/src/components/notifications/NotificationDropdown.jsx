@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
 const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose, onNotificationClick, onDeleteNotification }) => {
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const visibleNotifications = useMemo(
     () => notifications.filter(isNotificationWithinDisplayWindow),
     [notifications]
@@ -25,6 +26,7 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
 
   // Open the full notifications modal from the header dropdown.
   const handleNavigateToAll = () => {
+    setOpenActionMenuId(null);
     onViewAll?.();
     onClose?.();
   };
@@ -36,7 +38,10 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
         <h3 className="font-bold text-[#4C2B74]">Notifications</h3>
         <div className="flex items-center space-x-4">
           <button 
-            onClick={onMarkAllRead}
+            onClick={() => {
+              setOpenActionMenuId(null);
+              onMarkAllRead?.();
+            }}
             className="text-xs font-semibold text-[#4C2B74] hover:underline"
           >
             Mark all as read
@@ -64,10 +69,18 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
                     key={item.NOTI_id} 
                     notification={item} 
                     onClick={(notification) => {
+                      setOpenActionMenuId(null);
                       onNotificationClick?.(notification);
                       onClose?.();
                     }}
                     onDelete={onDeleteNotification}
+                    isMenuOpen={openActionMenuId === item.NOTI_id}
+                    onMenuToggle={(notificationId) => {
+                      setOpenActionMenuId((currentId) => (
+                        currentId === notificationId ? null : notificationId
+                      ));
+                    }}
+                    onMenuClose={() => setOpenActionMenuId(null)}
                   />
                 ))}
               </div>

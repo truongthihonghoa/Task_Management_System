@@ -172,33 +172,13 @@ const NotificationSettingsPage = () => {
     [notificationItems]
   );
 
-  const storageUserKey = authUser?.user_id || authUser?.email || "anonymous";
-  const storageKey = `notification-preferences:${storageUserKey}:${scope}`;
   const frequencyOptions = FREQUENCY_OPTIONS;
 
-  const getSavedPreferences = () => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) || "{}");
-    } catch {
-      return {};
-    }
-  };
-
-  const getSavedChannelSettings = (type) => {
-    const saved = getSavedPreferences();
-    return saved[type] ? { ...initialChannelState, ...saved[type] } : initialChannelState;
-  };
-
-  const getSavedEmailFrequency = () => {
-    const savedFrequency = getSavedPreferences().emailFrequency || "INSTANT";
-    return frequencyOptions.some((option) => option.value === savedFrequency) ? savedFrequency : "INSTANT";
-  };
-
-  const [emailEnabled, setEmailEnabled] = useState(() => getSavedPreferences().emailEnabled ?? true);
-  const [emailFrequency, setEmailFrequency] = useState(() => getSavedEmailFrequency());
-  const [emailSettings, setEmailSettings] = useState(() => getSavedChannelSettings("emailSettings"));
-  const [appSettings, setAppSettings] = useState(() => getSavedChannelSettings("appSettings"));
-  const [isLoading, setIsLoading] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [emailFrequency, setEmailFrequency] = useState("INSTANT");
+  const [emailSettings, setEmailSettings] = useState(initialChannelState);
+  const [appSettings, setAppSettings] = useState(initialChannelState);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -226,15 +206,6 @@ const NotificationSettingsPage = () => {
   };
 
   useEffect(() => {
-    const saved = getSavedPreferences();
-    setEmailEnabled(saved.emailEnabled ?? true);
-    setEmailFrequency(getSavedEmailFrequency());
-    setEmailSettings(getSavedChannelSettings("emailSettings"));
-    setAppSettings(getSavedChannelSettings("appSettings"));
-    setSuccessMessage("");
-  }, [storageKey, initialChannelState]);
-
-  useEffect(() => {
     let isMounted = true;
 
     async function loadPreference() {
@@ -245,13 +216,6 @@ const NotificationSettingsPage = () => {
         const preference = await getNotificationPreference(scope);
         if (!isMounted) return;
         applyPreference(preference);
-        localStorage.setItem(storageKey, JSON.stringify({
-          emailEnabled: preference.email_enabled,
-          emailFrequency: preference.email_frequency,
-          emailSettings: preference.email_settings,
-          appSettings: preference.app_settings,
-          savedAt: new Date().toISOString(),
-        }));
       } catch (error) {
         if (!isMounted) return;
         const detail = error?.response?.data?.detail || error?.response?.data?.message;
@@ -268,7 +232,7 @@ const NotificationSettingsPage = () => {
     return () => {
       isMounted = false;
     };
-  }, [scope, storageKey, initialChannelState]);
+  }, [scope, initialChannelState]);
 
   const toggleChannel = (channel, key) => {
     const setter = channel === "email" ? setEmailSettings : setAppSettings;
@@ -289,14 +253,6 @@ const NotificationSettingsPage = () => {
   const isGroupChecked = (channelSettings, items) => items.every((item) => channelSettings[item.key]);
 
   const handleSave = async () => {
-    const preferences = {
-      emailEnabled,
-      emailFrequency,
-      emailSettings,
-      appSettings,
-      savedAt: new Date().toISOString(),
-    };
-
     setIsSaving(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -309,7 +265,6 @@ const NotificationSettingsPage = () => {
         app_settings: appSettings,
       });
       applyPreference(preference);
-      localStorage.setItem(storageKey, JSON.stringify(preferences));
       setSuccessMessage("Notification preferences saved.");
     } catch (error) {
       const detail = error?.response?.data?.detail || error?.response?.data?.message;
@@ -327,13 +282,6 @@ const NotificationSettingsPage = () => {
     try {
       const preference = await resetNotificationPreference(scope);
       applyPreference(preference);
-      localStorage.setItem(storageKey, JSON.stringify({
-        emailEnabled: preference.email_enabled,
-        emailFrequency: preference.email_frequency,
-        emailSettings: preference.email_settings,
-        appSettings: preference.app_settings,
-        savedAt: new Date().toISOString(),
-      }));
       setSuccessMessage("Notification preferences reset to defaults.");
     } catch (error) {
       const detail = error?.response?.data?.detail || error?.response?.data?.message;

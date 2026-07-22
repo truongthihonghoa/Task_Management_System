@@ -23,7 +23,7 @@ from app.schemas.notification import (
 )
 
 
-NOTIFICATION_TAG = "Notifications"
+NOTIFICATION_TAG = "notifications"
 router = APIRouter(prefix="/notifications")
 
 

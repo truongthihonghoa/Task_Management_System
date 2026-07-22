@@ -143,6 +143,7 @@ def _notify_comment_event(
             audience="USER",
             metadata={
                 "task_title": task.title,
+                "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                 "space_name": task.space.name_space if task.space else None,
                 **(metadata or {}),
             },
