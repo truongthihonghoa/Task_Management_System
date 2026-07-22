@@ -7,7 +7,7 @@ auth_service, return responses. No business logic here.
 
 import os
 from app.models.user import User
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, status, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.core.security import create_access_token, create_refresh_token, generat
 
 from app.services.notification_service import NotificationService
 
-from app.services import auth_service
+from app.services import auth_service, user_service
 from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  
 from app.core.security import get_current_user, bearer_scheme
 
@@ -42,6 +42,7 @@ from app.schemas.pydantic_models import (
     RegisterRequest,
     RegisterResponse,
     ResetPasswordRequest,
+    UpdateAvatarResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
     TokenRefreshRequest,
@@ -88,6 +89,30 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     return auth_service.register(db, payload)
+
+
+@router.post("/register/avatar", response_model=UpdateAvatarResponse, status_code=200)
+def upload_register_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UpdateAvatarResponse:
+    try:
+        avatar_url = user_service.update_user_avatar(db, current_user.user_id, file)
+        create_audit_log(
+            db,
+            user_id=current_user.user_id,
+            action="UPLOAD_REGISTER_AVATAR",
+            label_title="Upload registration avatar",
+            entity_id=current_user.user_id,
+            payload={"avatar_url": avatar_url},
+        )
+        db.commit()
+        return UpdateAvatarResponse(message="Registration avatar uploaded successfully.", avatar_url=avatar_url)
+    except Exception:
+        db.rollback()
+        raise
 
 
 from fastapi import Response

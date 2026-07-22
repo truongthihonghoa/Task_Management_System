@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from app.api.v1 import users as users_api
 from app.repository import user as user_repository
 from app.services import user_service
+from app.services.storage_service import StoredUpload
 from app.schemas.pydantic_models import UserManagementUpdateRequest
 
 
@@ -353,6 +354,38 @@ def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path
     assert user.avatar_url == avatar_url
     assert db.flushes == 1
     assert (tmp_path / avatar_url.removeprefix("/media/")).exists()
+
+
+def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
+    user = make_user(avatar_url=None)
+    db = FakeDb(users=[user])
+    file = SimpleNamespace(
+        filename="avatar.png",
+        content_type="image/png",
+        file=BytesIO(b"fake image content"),
+    )
+    calls = []
+
+    monkeypatch.setenv("MEDIA_STORAGE", "cloudinary")
+    monkeypatch.setattr(
+        user_service.storage_service,
+        "upload_to_cloudinary",
+        lambda received_file, **kwargs: calls.append((received_file, kwargs))
+        or StoredUpload(
+            file_path="taskflow/avatars/USR00000001/cloud-avatar",
+            file_url="https://res.cloudinary.com/demo/image/upload/cloud-avatar.png",
+            file_size=18,
+            public_id="taskflow/avatars/USR00000001/cloud-avatar",
+        ),
+    )
+
+    avatar_url = user_service.update_user_avatar(db, user.user_id, file)
+
+    assert avatar_url == "https://res.cloudinary.com/demo/image/upload/cloud-avatar.png"
+    assert user.avatar_url == avatar_url
+    assert db.flushes == 1
+    assert calls[0][1]["folder"] == "avatars/USR00000001"
+    assert calls[0][1]["resource_type"] == "image"
 
 
 def test_create_user_audit_log_stores_expected_fields():

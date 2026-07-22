@@ -13,6 +13,7 @@ from app.models.task_attachment import TaskAttachment
 from app.models.user import User
 from app.repository import media as media_repository
 from app.schemas.pydantic_models import MediaUploadResponse, TaskAttachmentListResponse, TaskAttachmentResponse
+from app.services import storage_service
 
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
@@ -205,12 +206,24 @@ def upload_task_media(
 
     safe_name = _validate_file(usage, file)
     stored_name = f"{uuid4().hex}_{safe_name}"
-    media_folder = get_media_folder(usage, task_id)
-    target_path = media_folder / stored_name
-    file_size = _save_upload_file(file, target_path)
+    target_path = None
+    if storage_service.is_cloudinary_enabled():
+        uploaded = storage_service.upload_to_cloudinary(
+            file,
+            folder=f"tasks/{task_id}/{MEDIA_FOLDERS[usage]}",
+            public_id=stored_name,
+            max_size=MAX_UPLOAD_SIZE,
+        )
+        file_size = uploaded.file_size
+        relative_path = uploaded.file_path
+        file_url = uploaded.file_url
+    else:
+        media_folder = get_media_folder(usage, task_id)
+        target_path = media_folder / stored_name
+        file_size = _save_upload_file(file, target_path)
+        relative_path = _relative_media_path(target_path)
+        file_url = _public_media_url(usage, task_id, stored_name)
 
-    relative_path = _relative_media_path(target_path)
-    file_url = _public_media_url(usage, task_id, stored_name)
     try:
         attachment = _create_attachment_record(
             db,
@@ -223,7 +236,7 @@ def upload_task_media(
             uploaded_by=current_user.user_id,
         )
     except Exception:
-        if target_path.exists():
+        if target_path is not None and target_path.exists():
             target_path.unlink()
         raise
 
@@ -303,13 +316,27 @@ def replace_task_attachment(
     usage = _get_attachment_usage(attachment)
     safe_name = _validate_file(usage, file)
     stored_name = f"{uuid4().hex}_{safe_name}"
-    media_folder = get_media_folder(usage, attachment.task_id)
-    target_path = media_folder / stored_name
-    file_size = _save_upload_file(file, target_path)
+    target_path = None
+    if storage_service.is_cloudinary_enabled():
+        uploaded = storage_service.upload_to_cloudinary(
+            file,
+            folder=f"tasks/{attachment.task_id}/{MEDIA_FOLDERS[usage]}",
+            public_id=stored_name,
+            max_size=MAX_UPLOAD_SIZE,
+        )
+        file_size = uploaded.file_size
+        file_path = uploaded.file_path
+        file_url = uploaded.file_url
+    else:
+        media_folder = get_media_folder(usage, attachment.task_id)
+        target_path = media_folder / stored_name
+        file_size = _save_upload_file(file, target_path)
+        file_path = _relative_media_path(target_path)
+        file_url = _public_media_url(usage, attachment.task_id, stored_name)
 
     attachment.file_name = safe_name
-    attachment.file_path = _relative_media_path(target_path)
-    attachment.storage_url = _public_media_url(usage, attachment.task_id, stored_name)
+    attachment.file_path = file_path
+    attachment.storage_url = file_url
     attachment.mime_type = file.content_type
     attachment.file_size = file_size
     attachment.uploaded_at = vietnam_now()
@@ -317,7 +344,7 @@ def replace_task_attachment(
     try:
         media_repository.save_task_attachment(db, attachment)
     except Exception:
-        if target_path.exists():
+        if target_path is not None and target_path.exists():
             target_path.unlink()
         raise
 

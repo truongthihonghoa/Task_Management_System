@@ -20,6 +20,7 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES","1"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS","1"))
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "15"))
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -106,3 +107,21 @@ def create_refresh_token(payload: dict[str, Any]) -> tuple[str, datetime]:
     expires_at = vietnam_now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     token_payload = {**payload, "type": "refresh", "exp": expires_at}
     return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
+
+
+def create_password_reset_token(payload: dict[str, Any]) -> tuple[str, datetime]:
+    expires_at = vietnam_now() + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    token_payload = {
+        **payload,
+        "type": "password_reset",
+        "jti": secrets.token_urlsafe(16),
+        "exp": expires_at,
+    }
+    return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
+
+
+def decode_password_reset_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    if payload.get("type") != "password_reset":
+        raise JWTError("Invalid token type.")
+    return payload

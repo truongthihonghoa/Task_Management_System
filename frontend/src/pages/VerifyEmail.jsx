@@ -24,7 +24,7 @@ export default function VerifyEmail() {
   const location = useLocation();
   const navigate = useNavigate();
   const email = location.state?.email || '';
-  const flow = location.state?.flow || 'forgot';
+  const flow = location.state?.flow || 'register';
   const isRegisterFlow = flow === 'register';
 
   useEffect(() => {
@@ -32,8 +32,12 @@ export default function VerifyEmail() {
   }, []);
 
   useEffect(() => {
+    if (!isRegisterFlow) {
+      navigate('/account-recovery', { replace: true });
+      return;
+    }
     if (!email) {
-      navigate(isRegisterFlow ? '/create-account' : '/account-recovery', { replace: true, state: { flow } });
+      navigate('/create-account', { replace: true, state: { flow } });
     }
   }, [email, flow, isRegisterFlow, navigate]);
 
@@ -81,12 +85,8 @@ export default function VerifyEmail() {
     setMessage('');
 
     try {
-      if (isRegisterFlow) {
-        await verifyEmail({ email, otpCode });
-        navigate('/register', { state: { email, verified: true }, replace: true });
-      } else {
-        navigate('/reset-password', { state: { email, token: otpCode }, replace: true });
-      }
+      await verifyEmail({ email, otpCode });
+      navigate('/register', { state: { email, verified: true }, replace: true });
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {

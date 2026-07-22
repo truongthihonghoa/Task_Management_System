@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,7 @@ from app.schemas.pydantic_models import (
 
 
 router = APIRouter(prefix="/users", tags=["users"])
+superadmin_router = APIRouter(prefix="/superadmin/users", tags=["superadmin users"])
 
 
 def _get_client_ip(request: Request) -> str | None:
@@ -44,7 +47,7 @@ def _validate_pagination(page: int, page_size: int) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="page_size must be between 1 and 100")
 
 
-@router.get("", response_model=UserManagementListResponse)
+@superadmin_router.get("", response_model=UserManagementListResponse)
 def get_users(
     request: Request,
     page: int = Query(default=1),
@@ -131,7 +134,7 @@ def update_profile(
 
 
 @router.put("/profile/avatar", response_model=UpdateAvatarResponse)
-def upload_avatar(
+def update_avatar(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -142,7 +145,7 @@ def upload_avatar(
         user_repo.create_user_audit_log(
             db,
             actor_user_id=current_user.user_id,
-            action="UPLOAD_AVATAR",
+            action="UPDATE_AVATAR",
             entity_id=current_user.user_id,
             payload={"avatar_url": avatar_url},
             ip_address=_get_client_ip(request),
@@ -178,7 +181,7 @@ def change_password(
         raise
 
 
-@router.get("/{user_id}", response_model=UserManagementResponse)
+@superadmin_router.get("/{user_id}", response_model=UserManagementResponse)
 def get_user(
     user_id: str,
     request: Request,
@@ -199,7 +202,7 @@ def get_user(
     return user
 
 
-@router.patch("/{user_id}", response_model=UserManagementResponse)
+@superadmin_router.patch("/{user_id}", response_model=UserManagementResponse)
 def update_user(
     user_id: str,
     request: Request,
@@ -225,7 +228,7 @@ def update_user(
     return user
 
 
-@router.patch("/{user_id}/status", response_model=UserManagementResponse)
+@superadmin_router.patch("/{user_id}/status", response_model=UserManagementResponse)
 def update_user_status(
     user_id: str,
     payload: UserStatusUpdateRequest,
@@ -259,7 +262,7 @@ def update_user_status(
 
     return user
 
-@router.patch("/{user_id}/lock-status", response_model=UserManagementResponse)
+@superadmin_router.patch("/{user_id}/lock-status", response_model=UserManagementResponse)
 def update_user_lock_status(
     user_id: str,
     payload: UserLockUpdateRequest,
