@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { EN_TO_VI, VI_TO_EN } from "../i18n/translations";
 
 const LANGUAGE_STORAGE_KEY = "taskflow-language";
+const MISSING_TRANSLATIONS_STORAGE_KEY = "taskflow-missing-translations";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 const ACCESS_TOKEN_KEYS = ["access_token", "accessToken", "token", "auth_token"];
 const LanguageContext = createContext({
@@ -39,6 +40,62 @@ const EN_TO_VI_MONTHS = {
 const VI_TO_EN_MONTHS = Object.fromEntries(
   Object.entries(EN_TO_VI_MONTHS).map(([english, vietnamese]) => [vietnamese, english])
 );
+const VIETNAMESE_CHARACTER_PATTERN = /[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i;
+const DYNAMIC_TEXT_PATTERN = /(@|https?:\/\/|\b[A-Z]{2,}\d{3,}\b|\b\d{4}-\d{2}-\d{2}\b)/;
+const missingTranslations = new Map();
+let missingTranslationsFlushTimer = null;
+
+function getMissingTranslationStore() {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(MISSING_TRANSLATIONS_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function flushMissingTranslations() {
+  if (typeof window === "undefined" || missingTranslations.size === 0) return;
+  const stored = getMissingTranslationStore();
+  const now = new Date().toISOString();
+
+  missingTranslations.forEach((count, text) => {
+    const current = stored[text] || {};
+    stored[text] = {
+      count: (current.count || 0) + count,
+      firstSeenAt: current.firstSeenAt || now,
+      lastSeenAt: now,
+    };
+  });
+
+  missingTranslations.clear();
+  window.localStorage.setItem(MISSING_TRANSLATIONS_STORAGE_KEY, JSON.stringify(stored));
+  window.__taskflowMissingTranslations = () =>
+    Object.entries(getMissingTranslationStore())
+      .map(([source, meta]) => ({ source, ...meta }))
+      .sort((a, b) => (b.count || 0) - (a.count || 0));
+}
+
+function recordMissingTranslation(value, language) {
+  if (language !== "vi" || typeof value !== "string") return;
+  const text = value.trim().replace(/\s+/g, " ");
+  if (
+    text.length < 2 ||
+    text.length > 180 ||
+    VIETNAMESE_CHARACTER_PATTERN.test(text) ||
+    DYNAMIC_TEXT_PATTERN.test(text) ||
+    !/[A-Za-z]/.test(text)
+  ) {
+    return;
+  }
+
+  missingTranslations.set(text, (missingTranslations.get(text) || 0) + 1);
+  if (missingTranslationsFlushTimer) return;
+  missingTranslationsFlushTimer = window.setTimeout(() => {
+    missingTranslationsFlushTimer = null;
+    flushMissingTranslations();
+  }, 1000);
+}
 
 function translateDateMonths(value, language) {
   if (!/\d/.test(value)) return value;
@@ -90,7 +147,10 @@ function translateValue(value, language) {
     .sort(([a], [b]) => b.length - a.length)
     .reduce((text, [source, target]) => text.split(source).join(target), core);
 
-  return phraseTranslation !== core ? `${leading}${phraseTranslation}${trailing}` : value;
+  if (phraseTranslation !== core) return `${leading}${phraseTranslation}${trailing}`;
+
+  recordMissingTranslation(core, language);
+  return value;
 }
 
 function shouldTranslateTextNode(node) {
