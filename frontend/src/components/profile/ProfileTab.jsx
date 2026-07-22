@@ -5,6 +5,7 @@ import {
   updateProfile,
   uploadAvatar,
 } from '../../api/profileApi';
+import { API_BASE_URL } from '../../api/axiosClient';
 import { useAuth } from '../../context/AuthContext';
 import { clearAuth, setCurrentUser } from '../../services/tokenStorage';
 import ChangePasswordSection from './ChangePasswordSection';
@@ -29,11 +30,20 @@ function displayRole(role) {
   return role === 'SUPER_ADMIN' ? 'Super Admin' : 'User';
 }
 
+function getBackendOrigin() {
+  try {
+    const url = new URL(API_BASE_URL);
+    return url.origin;
+  } catch {
+    return ''; // relative URL — same origin, proxy handles it
+  }
+}
+
 function normalizeAvatarUrl(avatarUrl) {
   if (!avatarUrl) return DEFAULT_AVATAR;
   if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
-  if (avatarUrl.startsWith('/media/')) return avatarUrl;
-  if (avatarUrl.startsWith('media/')) return `/${avatarUrl}`;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (path.startsWith('/media/')) return `${getBackendOrigin()}${path}`;
   return avatarUrl;
 }
 
@@ -229,48 +239,47 @@ export default function ProfileTab() {
   };
 
   const handleSave = async () => {
-    const trimmedFullName = editData.fullName.trim();
-    if (!trimmedFullName) {
-      setErrorMessage('Full name is required.');
-      return;
+  const trimmedFullName = editData.fullName.trim();
+
+  if (!trimmedFullName) {
+    setErrorMessage("Full name is required.");
+    return;
+  }
+
+  setIsSaving(true);
+  setErrorMessage("");
+  setSuccessMessage("");
+
+  try {
+    if (trimmedFullName !== profileData.fullName) {
+      await updateProfile({ fullName: trimmedFullName });
     }
 
-    setIsSaving(true);
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    try {
-      const shouldUpdateName = trimmedFullName !== profileData.fullName;
-      const [updatedProfile, avatarResponse] = await Promise.all([
-        shouldUpdateName ? updateProfile({ fullName: trimmedFullName }) : Promise.resolve(null),
-        selectedAvatarFile ? uploadAvatar(selectedAvatarFile) : Promise.resolve(null),
-      ]);
-
-      let nextProfile = updatedProfile
-        ? normalizeProfile(updatedProfile)
-        : { ...profileData, fullName: trimmedFullName };
-
-      if (avatarResponse?.avatar_url) {
-        nextProfile = {
-          ...nextProfile,
-          avatarUrl: avatarResponse.avatar_url,
-        };
-      }
-
-      setProfileData(nextProfile);
-      setEditData(nextProfile);
-      syncAuthUser(nextProfile);
-      writeProfileCache(nextProfile);
-      setSelectedAvatarFile(null);
-      setAvatarPreview('');
-      setIsEditing(false);
-      setSuccessMessage('Profile updated successfully.');
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsSaving(false);
+    if (selectedAvatarFile) {
+      await uploadAvatar(selectedAvatarFile);
     }
-  };
+
+    // Lấy profile mới nhất từ backend
+    const profile = await getProfile();
+
+    const nextProfile = normalizeProfile(profile);
+
+    setProfileData(nextProfile);
+    setEditData(nextProfile);
+
+    syncAuthUser(nextProfile);
+
+    setSelectedAvatarFile(null);
+    setAvatarPreview("");
+    setIsEditing(false);
+
+    // setSuccessMessage("Profile updated successfully.");
+  } catch (error) {
+    setErrorMessage(getErrorMessage(error));
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const handlePasswordChanged = () => {
     window.setTimeout(() => {

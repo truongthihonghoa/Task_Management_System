@@ -7,6 +7,7 @@ import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import { API_BASE_URL } from '../../api/axiosClient';
 
 import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
 import {
@@ -241,11 +242,20 @@ function getInitials(value = '') {
     .join('');
 }
 
+function getBackendOrigin() {
+  try {
+    const url = new URL(API_BASE_URL);
+    return url.origin;
+  } catch {
+    return ''; // relative URL — same origin, proxy handles it
+  }
+}
+
 function normalizeAvatarUrl(avatarUrl) {
   if (!avatarUrl) return '';
   if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
-  if (avatarUrl.startsWith('/media/')) return avatarUrl;
-  if (avatarUrl.startsWith('media/')) return `/${avatarUrl}`;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (path.startsWith('/media/')) return `${getBackendOrigin()}${path}`;
   return avatarUrl;
 }
 
