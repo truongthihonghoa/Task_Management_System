@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   AtSign,
@@ -15,6 +14,12 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
+import {
+  getNotificationPreference,
+  resetNotificationPreference,
+  updateNotificationPreference,
+} from "../api/notificationPreferencesApi";
+import { useAuth } from "../context/AuthContext";
 
 const MEMBER_NOTIFICATION_GROUPS = [
   {
@@ -46,7 +51,7 @@ const MEMBER_NOTIFICATION_GROUPS = [
         icon: CalendarClock,
       },
       {
-        key: "mentioned_in_comment",
+        key: "task_mentioned",
         label: "Mentioned in comment",
         description: "Notify me when someone mentions me in a comment.",
         icon: AtSign,
@@ -70,7 +75,7 @@ const MEMBER_NOTIFICATION_GROUPS = [
         icon: ShieldCheck,
       },
       {
-        key: "owner_space_updates",
+        key: "owner_space_update",
         label: "Owner-level space updates",
         description: "Notify me about settings, membership, and control updates in spaces where I am Owner.",
         icon: Lock,
@@ -103,10 +108,16 @@ const SUPER_ADMIN_NOTIFICATION_GROUPS = [
         icon: UserCheck,
       },
       {
-        key: "user_activation_changed",
+        key: "user_deactivated",
         label: "User deactivated/reactivated",
         description: "A user account is deactivated or reactivated.",
         icon: Users,
+      },
+      {
+        key: "role_changed",
+        label: "Role changed",
+        description: "A user's system role changes.",
+        icon: ShieldCheck,
       },
     ],
   },
@@ -115,29 +126,36 @@ const SUPER_ADMIN_NOTIFICATION_GROUPS = [
     description: "High-signal system notifications for access control and audit trails.",
     items: [
       {
-        key: "important_permission_changes",
+        key: "permission_changed",
         label: "Important permission changes",
         description: "A user or group receives sensitive permission changes.",
         icon: ShieldCheck,
       },
       {
-        key: "audit_security_events",
+        key: "audit_log_event",
         label: "System audit/security events",
         description: "Security-sensitive events are recorded in audit logs.",
+        icon: AlertCircle,
+      },
+      {
+        key: "system_alert",
+        label: "System alert",
+        description: "A critical system-level alert needs Super Admin visibility.",
         icon: AlertCircle,
       },
     ],
   },
 ];
 
-const FREQUENCY_OPTIONS = ["Instant", "Daily digest", "Weekly digest", "Off"];
-const SUPER_ADMIN_FREQUENCY_OPTIONS = ["Instant", "Daily digest", "Off"];
+const FREQUENCY_OPTIONS = [
+  { label: "Instant", value: "INSTANT" },
+  { label: "Off", value: "OFF" },
+];
 
 const NotificationSettingsPage = () => {
-  const [searchParams] = useSearchParams();
-  const roleParam = searchParams.get("role")?.toUpperCase();
-  const currentRole = roleParam === "USER" ? "USER" : "ADMIN";
-  const isSuperAdmin = currentRole === "ADMIN";
+  const { user: authUser } = useAuth();
+  const isSuperAdmin = authUser?.role === "SUPER_ADMIN";
+  const scope = isSuperAdmin ? "SUPER_ADMIN" : "USER_ACCOUNT";
 
   const notificationGroups = useMemo(() => {
     if (isSuperAdmin) return SUPER_ADMIN_NOTIFICATION_GROUPS;
@@ -154,42 +172,67 @@ const NotificationSettingsPage = () => {
     [notificationItems]
   );
 
-  const storageKey = isSuperAdmin
-    ? "notification-preferences-super-admin"
-    : "notification-preferences-user-account";
-  const legacyStorageKey = "notification-preferences-space-member";
-  const frequencyOptions = isSuperAdmin ? SUPER_ADMIN_FREQUENCY_OPTIONS : FREQUENCY_OPTIONS;
+  const frequencyOptions = FREQUENCY_OPTIONS;
 
-  const getSavedPreferences = () => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) || localStorage.getItem(legacyStorageKey) || "{}");
-    } catch {
-      return {};
-    }
-  };
-
-  const getSavedChannelSettings = (type) => {
-    const saved = getSavedPreferences();
-    return saved[type] ? { ...initialChannelState, ...saved[type] } : initialChannelState;
-  };
-
-  const getSavedEmailFrequency = () => {
-    const savedFrequency = getSavedPreferences().emailFrequency || "Instant";
-    return frequencyOptions.includes(savedFrequency) ? savedFrequency : "Instant";
-  };
-
-  const [emailEnabled, setEmailEnabled] = useState(() => getSavedPreferences().emailEnabled ?? true);
-  const [emailFrequency, setEmailFrequency] = useState(() => getSavedEmailFrequency());
-  const [emailSettings, setEmailSettings] = useState(() => getSavedChannelSettings("emailSettings"));
-  const [appSettings, setAppSettings] = useState(() => getSavedChannelSettings("appSettings"));
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [emailFrequency, setEmailFrequency] = useState("INSTANT");
+  const [emailSettings, setEmailSettings] = useState(initialChannelState);
+  const [appSettings, setAppSettings] = useState(initialChannelState);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    const saved = getSavedPreferences();
-    setEmailEnabled(saved.emailEnabled ?? true);
-    setEmailFrequency(getSavedEmailFrequency());
-    setEmailSettings(getSavedChannelSettings("emailSettings"));
-    setAppSettings(getSavedChannelSettings("appSettings"));
-  }, [storageKey, initialChannelState]);
+    if (!errorMessage && !successMessage) return undefined;
+
+    const timerId = window.setTimeout(() => {
+      setErrorMessage("");
+      setSuccessMessage("");
+    }, 4000);
+
+    return () => window.clearTimeout(timerId);
+  }, [errorMessage, successMessage]);
+
+  const applyPreference = (preference) => {
+    setEmailEnabled(preference.email_enabled ?? true);
+    setEmailFrequency(
+      frequencyOptions.some((option) => option.value === preference.email_frequency)
+        ? preference.email_frequency
+        : "INSTANT",
+    );
+    setEmailSettings({ ...initialChannelState, ...(preference.email_settings || {}) });
+    setAppSettings({ ...initialChannelState, ...(preference.app_settings || {}) });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPreference() {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      try {
+        const preference = await getNotificationPreference(scope);
+        if (!isMounted) return;
+        applyPreference(preference);
+      } catch (error) {
+        if (!isMounted) return;
+        const detail = error?.response?.data?.detail || error?.response?.data?.message;
+        setErrorMessage(typeof detail === "string" ? detail : "Unable to load notification preferences.");
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadPreference();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [scope, initialChannelState]);
 
   const toggleChannel = (channel, key) => {
     const setter = channel === "email" ? setEmailSettings : setAppSettings;
@@ -209,18 +252,43 @@ const NotificationSettingsPage = () => {
 
   const isGroupChecked = (channelSettings, items) => items.every((item) => channelSettings[item.key]);
 
-  const handleSave = () => {
-    const preferences = {
-      scope: isSuperAdmin ? "SUPER_ADMIN" : "USER_ACCOUNT",
-      emailEnabled,
-      emailFrequency,
-      emailSettings,
-      appSettings,
-      savedAt: new Date().toISOString(),
-    };
+  const handleSave = async () => {
+    setIsSaving(true);
+    setErrorMessage("");
+    setSuccessMessage("");
 
-    localStorage.setItem(storageKey, JSON.stringify(preferences));
-    console.log("Notification preferences saved", preferences);
+    try {
+      const preference = await updateNotificationPreference(scope, {
+        email_enabled: emailEnabled,
+        email_frequency: emailFrequency,
+        email_settings: emailSettings,
+        app_settings: appSettings,
+      });
+      applyPreference(preference);
+      setSuccessMessage("Notification preferences saved.");
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.message;
+      setErrorMessage(typeof detail === "string" ? detail : "Unable to save notification preferences.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    setIsSaving(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    try {
+      const preference = await resetNotificationPreference(scope);
+      applyPreference(preference);
+      setSuccessMessage("Notification preferences reset to defaults.");
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.message;
+      setErrorMessage(typeof detail === "string" ? detail : "Unable to reset notification preferences.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const ToggleSwitch = ({ checked, onChange, disabled = false }) => (
@@ -264,6 +332,26 @@ const NotificationSettingsPage = () => {
         </p>
       </div>
 
+      {(isLoading || errorMessage || successMessage) && (
+        <div className="mb-4 flex-shrink-0 space-y-2">
+          {isLoading && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+              Loading notification preferences...
+            </div>
+          )}
+          {errorMessage && (
+            <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {errorMessage}
+            </div>
+          )}
+          {successMessage && (
+            <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+              {successMessage}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8 pr-2">
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100">
@@ -298,8 +386,8 @@ const NotificationSettingsPage = () => {
                 <h3 className="text-sm font-bold text-gray-800">Email frequency</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {isSuperAdmin
-                    ? "System alerts can be sent immediately, grouped daily, or turned off."
-                    : "Choose whether emails are sent immediately or grouped into a digest."}
+                    ? "System alerts can be sent immediately or turned off."
+                    : "Choose whether emails are sent immediately or turned off."}
                 </p>
               </div>
               <select
@@ -309,7 +397,7 @@ const NotificationSettingsPage = () => {
                 className="w-full sm:w-48 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#4C2B74]/20 disabled:bg-gray-50 disabled:text-gray-400"
               >
                 {frequencyOptions.map((option) => (
-                  <option key={option}>{option}</option>
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </div>
@@ -350,7 +438,7 @@ const NotificationSettingsPage = () => {
                   <div className="flex flex-col items-center gap-1 text-[11px] font-bold text-gray-600">
                     <ChannelCheckbox
                       checked={isGroupChecked(emailSettings, group.items)}
-                      disabled={!emailEnabled || emailFrequency === "Off"}
+                      disabled={!emailEnabled || emailFrequency === "OFF"}
                       onChange={(event) => setGroupChannel("email", group.items, event.target.checked)}
                       label={`${group.title} email`}
                     />
@@ -361,7 +449,7 @@ const NotificationSettingsPage = () => {
                 <div className="divide-y divide-gray-100">
                   {group.items.map((item) => {
                     const IconComponent = item.icon;
-                    const emailDisabled = !emailEnabled || emailFrequency === "Off";
+                    const emailDisabled = !emailEnabled || emailFrequency === "OFF";
                     return (
                       <div key={item.key} className="grid grid-cols-[1fr_96px_96px] items-center gap-3 px-4 py-4 hover:bg-[#FAF8FF]/60 transition-colors">
                         <div className="flex items-start gap-3 min-w-0">
@@ -394,12 +482,22 @@ const NotificationSettingsPage = () => {
         </section>
       </div>
 
-      <div className="mt-10 flex justify-end flex-shrink-0">
+      <div className="mt-10 flex justify-end gap-3 flex-shrink-0">
         <button
-          onClick={handleSave}
-          className="px-5 py-2.5 bg-[#2D1B4E] text-white text-sm font-bold rounded-lg hover:bg-[#3E225F] transition-all shadow-md shadow-[#4C2B74]/20"
+          type="button"
+          onClick={handleResetDefaults}
+          disabled={isSaving}
+          className="px-5 py-2.5 rounded-lg bg-gray-100 text-sm font-bold text-gray-700 hover:bg-gray-200 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Save Change
+          Reset defaults
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="px-5 py-2.5 bg-[#2D1B4E] text-white text-sm font-bold rounded-lg hover:bg-[#3E225F] transition-all shadow-md shadow-[#4C2B74]/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : "Save Change"}
         </button>
       </div>
 

@@ -7,6 +7,13 @@ import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import {
+  deleteNotification,
+  getNotificationDetail,
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationsRead,
+} from '../../api/notificationsApi';
 
 import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
 import {
@@ -15,6 +22,7 @@ import {
 } from '../../utils/mainLayoutConfig';
 
 const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
+const NOTIFICATION_POLL_INTERVAL_MS = 25000;
 
 const copyLayoutQueryParams = (search) => {
   const currentParams = new URLSearchParams(search);
@@ -35,141 +43,6 @@ const getLayoutSearch = (search) => {
   return query ? `?${query}` : '';
 };
 
-const INITIAL_NOTIFICATIONS = [
-  {
-    NOTI_id: 1,
-    type: 'task_assigned',
-    task_name: 'Design Dashboard',
-    triggered_by_name: 'Hoa',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'H',
-    is_read: false,
-    created_at: '2 min ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'To Do',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 2,
-    type: 'status_changed',
-    task_name: 'Design System',
-    new_status: 'In Review',
-    triggered_by_name: 'Pham Thi Cam Tien',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'PT',
-    is_read: false,
-    created_at: '33 sec ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 3,
-    type: 'comment_added',
-    task_name: 'Audit Logs Screen',
-    triggered_by_name: 'Trung',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'T',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 4,
-    type: 'due_today',
-    task_name: 'Database Migration',
-    is_read: false,
-    created_at: '3 hours ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'Pending',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 5,
-    type: 'space_member_added',
-    space_name: 'Task Management System',
-    triggered_by_name: 'Trang Nguyen',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'TN',
-    is_read: false,
-    created_at: '1 hour ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 6,
-    type: 'owner_space_update',
-    space_name: 'Task Management System',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 10,
-    type: 'user_registered',
-    target_user: 'Nguyen Van A',
-    is_read: false,
-    created_at: '5 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 11,
-    type: 'account_locked',
-    target_user: 'User123',
-    is_read: false,
-    created_at: '10 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 12,
-    type: 'user_verified',
-    target_user: 'Alex Morgan',
-    is_read: true,
-    created_at: '2 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 13,
-    type: 'permission_changed',
-    target_user: 'Hoang Hoa',
-    is_read: false,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 14,
-    type: 'audit_log_event',
-    message: 'Security audit event recorded for a sensitive permission update.',
-    is_read: true,
-    created_at: '3 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  }
-];
 const SEARCH_TASKS = [
   { id: 'TM-1', spaceId: 'SP-001', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
   { id: 'TM-2', spaceId: 'SP-001', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
@@ -226,6 +99,84 @@ const SEARCH_USERS = [
 ];
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
+
+function formatNotificationTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+  }).format(date);
+}
+
+function notificationGroup(value) {
+  if (!value) return 'Earlier';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Earlier';
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const sameDay = (left, right) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+
+  if (sameDay(date, today)) return 'Today';
+  if (sameDay(date, yesterday)) return 'Yesterday';
+  return 'Earlier';
+}
+
+function mapNotification(notification) {
+  const metadata = notification.metadata || {};
+  const actorName = notification.actor?.full_name || metadata.triggered_by_name || '';
+  const targetUser = metadata.target_user || metadata.target_user_name || '';
+  const taskName = metadata.task_name || metadata.task_title || notification.task?.title || '';
+  const spaceName = metadata.space_name || metadata.name_space || metadata.space || '';
+  const sprintName = metadata.sprint_name || metadata.name_sprint || metadata.sprint || notification.task?.sprint_name || '';
+
+  return {
+    NOTI_id: notification.notification_id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    task_id: notification.task_id,
+    space_id: notification.space_id,
+    target_user_id: metadata.user_id || metadata.target_user_id,
+    audit_log_id: metadata.log_id || metadata.audit_log_id,
+    task_name: taskName,
+    sprint_name: sprintName,
+    space_name: spaceName,
+    target_user: targetUser,
+    triggered_by_name: actorName,
+    triggered_by_avatar: Boolean(actorName),
+    triggered_by_initials: getInitials(actorName),
+    is_read: notification.is_read,
+    created_at: formatNotificationTime(notification.created_at),
+    created_at_raw: notification.created_at,
+    group: notificationGroup(notification.created_at),
+    audience: notification.audience,
+    role: notification.audience === 'SUPER_ADMIN' ? 'ADMIN' : 'USER',
+    task_status: metadata.task_status,
+    new_status: metadata.new_status,
+    new_priority: metadata.new_priority || metadata.priority,
+  };
+}
 
 function getInitials(value = '') {
   const words = value
@@ -310,7 +261,8 @@ export default function MainLayout() {
     []
   );
 
-  const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [allNotifications, setAllNotifications] = useState([]);
+  const [serverUnreadCount, setServerUnreadCount] = useState(0);
 
   const filteredNotifications = allNotifications.filter(n => {
     if (!isNotificationWithinDisplayWindow(n)) {
@@ -319,14 +271,121 @@ export default function MainLayout() {
     if (isSuperAdmin) {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }
-    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+    return n.audience === 'USER' || n.audience === 'OWNER' || n.audience === 'MEMBER' || n.role === 'USER';
   });
-  const unreadCount = filteredNotifications.filter(n => !n.is_read).length;
+  const unreadCount = serverUnreadCount;
 
-  const handleMarkAllRead = () => {
+  useEffect(() => {
+    let isMounted = true;
+    let isLoadingNotifications = false;
+    let pollTimerId;
+
+    async function loadNotifications() {
+      if (isLoadingNotifications || document.visibilityState === 'hidden') return;
+      isLoadingNotifications = true;
+
+      try {
+        const [response, unreadResponse] = await Promise.all([
+          getNotifications({ page: 1, page_size: 50 }),
+          getUnreadNotificationCount(),
+        ]);
+        if (!isMounted) return;
+        setAllNotifications((response.items || []).map(mapNotification));
+        setServerUnreadCount(unreadResponse.unread_count || 0);
+      } catch (error) {
+        if (error?.response?.status !== 401) {
+          console.error('Unable to load notifications', error);
+        }
+      } finally {
+        isLoadingNotifications = false;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        loadNotifications();
+      }
+    }
+
+    if (authUser?.user_id) {
+      loadNotifications();
+      pollTimerId = window.setInterval(loadNotifications, NOTIFICATION_POLL_INTERVAL_MS);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      setAllNotifications([]);
+      setServerUnreadCount(0);
+    }
+
+    return () => {
+      isMounted = false;
+      if (pollTimerId) {
+        window.clearInterval(pollTimerId);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [authUser?.user_id]);
+
+  const handleMarkAllRead = async () => {
+    const visibleIds = new Set(filteredNotifications.map((item) => item.NOTI_id));
     setAllNotifications(prev => prev.map(n =>
-      filteredNotifications.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
+      visibleIds.has(n.NOTI_id) ? { ...n, is_read: true } : n
     ));
+    setServerUnreadCount(0);
+
+    try {
+      await markNotificationsRead({ target: 'all' });
+    } catch (error) {
+      console.error('Unable to mark notifications as read', error);
+    }
+  };
+
+  const handleUpdateNotifications = async (nextNotifications) => {
+    const readIds = nextNotifications
+      .filter((nextNotification) => {
+        const previous = allNotifications.find((item) => item.NOTI_id === nextNotification.NOTI_id);
+        return previous && !previous.is_read && nextNotification.is_read;
+      })
+      .map((notification) => notification.NOTI_id);
+
+    setAllNotifications(nextNotifications);
+    setServerUnreadCount(nextNotifications.filter(item => !item.is_read).length);
+
+    if (!readIds.length) return;
+
+    try {
+      await markNotificationsRead({ target: 'selected', notificationIds: readIds });
+    } catch (error) {
+      console.error('Unable to update notification read state', error);
+    }
+  };
+
+  const handleNotificationRead = async (notification) => {
+    if (!notification || notification.is_read) return;
+
+    setAllNotifications(prev => prev.map(item =>
+      item.NOTI_id === notification.NOTI_id ? { ...item, is_read: true } : item
+    ));
+    setServerUnreadCount(count => Math.max(0, count - 1));
+
+    try {
+      await getNotificationDetail(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to mark notification as read', error);
+    }
+  };
+
+  const handleDeleteNotification = async (notification) => {
+    if (!notification?.NOTI_id) return;
+    setAllNotifications(prev => prev.filter(item => item.NOTI_id !== notification.NOTI_id));
+    if (!notification.is_read) {
+      setServerUnreadCount(count => Math.max(0, count - 1));
+    }
+
+    try {
+      await deleteNotification(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to delete notification', error);
+    }
   };
 
   const [sprintsForModal, setSprintsForModal] = useState([
@@ -943,6 +1002,8 @@ export default function MainLayout() {
                   <NotificationDropdown
                     notifications={filteredNotifications}
                     onMarkAllRead={handleMarkAllRead}
+                    onNotificationClick={handleNotificationRead}
+                    onDeleteNotification={handleDeleteNotification}
                     onViewAll={() => {
                       setShowNotifications(false);
                       setShowNotificationsModal(true);
@@ -1025,7 +1086,8 @@ export default function MainLayout() {
         currentSpaceRole={currentSpaceRole}
         isSuperAdmin={isSuperAdmin}
         notifications={allNotifications}
-        onUpdateNotifications={setAllNotifications}
+        onUpdateNotifications={handleUpdateNotifications}
+        onDeleteNotification={handleDeleteNotification}
       />
     </div>
   );

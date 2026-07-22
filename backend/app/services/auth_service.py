@@ -15,6 +15,7 @@ for any business-rule violation so that the router stays thin.
 """
 
 import os
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
@@ -56,6 +57,11 @@ from app.schemas.pydantic_models import (
     RegisterResponse,
     VerifyEmailResponse,
 )
+from app.services.notification_service import NotificationService
+
+
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -82,6 +88,26 @@ def _otp_expires_at(now: datetime) -> datetime:
 
 def _account_locked_until(now: datetime) -> datetime:
     return now + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
+
+
+def _notify_super_admins(
+    db: Session,
+    *,
+    notification_type: str,
+    title: str,
+    message: str,
+    metadata: dict | None = None,
+) -> None:
+    try:
+        notification_service.create_super_admin_notification(
+            db,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            metadata=metadata,
+        )
+    except Exception:
+        logger.exception("Unable to create super admin notification.")
 
 
 def _get_valid_verification_token(
@@ -369,6 +395,19 @@ def login(db: Session, email: str, password: str) -> LoginResponse:
             if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
                 user.status_user = "Locked"
                 user.locked_until = _account_locked_until(now)
+                _notify_super_admins(
+                    db,
+                    notification_type="account_locked",
+                    title="Account locked",
+                    message=f"User {user.email} account is locked after {MAX_FAILED_LOGIN_ATTEMPTS} failed login attempts.",
+                    metadata={
+                        "user_id": user.user_id,
+                        "email": user.email,
+                        "target_user": user.email,
+                        "failed_login_attempts": user.failed_login_attempts,
+                        "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+                    },
+                )
             db.commit()
         except Exception:
             db.rollback()
@@ -660,6 +699,19 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
             label_title="Register user",
             entity_id=user.user_id,
             payload={"email": user.email, "role": user.role},
+        )
+        _notify_super_admins(
+            db,
+            notification_type="user_registered",
+            title="New user registered",
+            message=f"{user.full_name} registered with {user.email}.",
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "full_name": user.full_name,
+                "role": user.role,
+            },
         )
         db.commit()
         db.refresh(user)

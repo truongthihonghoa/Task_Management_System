@@ -7,6 +7,26 @@ from app.core.notification_constants import NotificationAudience, NotificationTy
 from app.schemas.pydantic_models import UserSummaryResponse
 
 
+class NotificationTaskResponse(BaseModel):
+    task_id: str
+    title: str
+    sprint_name: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def add_sprint_name(cls, value):
+        if isinstance(value, dict):
+            return value
+        sprint = getattr(value, "sprint", None)
+        return {
+            "task_id": getattr(value, "task_id", None),
+            "title": getattr(value, "title", None),
+            "sprint_name": getattr(sprint, "name", None),
+        }
+
+    model_config = {"from_attributes": True}
+
+
 class NotificationResponse(BaseModel):
     notification_id: str
     user_id: str
@@ -22,6 +42,7 @@ class NotificationResponse(BaseModel):
     read_at: datetime | None = None
     created_at: datetime
     actor: UserSummaryResponse | None = None
+    task: NotificationTaskResponse | None = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
