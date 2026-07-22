@@ -24,6 +24,9 @@ class SpaceResponse(BaseModel):
     status_space: str
     created_at: datetime
     updated_at: datetime
+    archived_at: Optional[datetime] = None
+    reopen_until: Optional[datetime] = None
+    can_reopen: bool = False
     deleted_at: Optional[datetime]
 
 

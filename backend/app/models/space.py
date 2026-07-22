@@ -15,6 +15,8 @@ class Space(Base):
     status_space = Column(String(20), nullable=False, default="Active", server_default="Active")
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now())
+    archived_at = Column(DateTime, nullable=True)
+    reopen_until = Column(DateTime, nullable=True)
     deleted_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
