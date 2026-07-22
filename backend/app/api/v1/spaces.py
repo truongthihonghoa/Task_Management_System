@@ -107,6 +107,15 @@ def complete_space(
     return space_crud.archive_space(db, space_id, current_user=current_user)
 
 
+@router.post("/{space_id}/unarchive", response_model=SpaceResponse)
+def unarchive_space(
+    space_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.unarchive_space(db, space_id, current_user=current_user)
+
+
 @router.post("/{space_id}/restore", response_model=SpaceResponse)
 def restore_space(
     space_id: str,

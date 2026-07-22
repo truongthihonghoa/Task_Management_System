@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import CreateSpaceModal from '../components/tasks/CreateSpaceModal';
+import SpaceDetailModal from '../components/spaces/SpaceDetailModal';
+import axiosClient from '../api/axiosClient';
 
 export const DEMO_SPACES = [
   {
@@ -45,17 +47,6 @@ export const DEMO_SPACES = [
   }
 ];
 
-const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
-const getAccessToken = () => {
-  if (typeof window === 'undefined') return null;
-  return (
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('accessToken') ||
-    localStorage.getItem('token')
-  );
-};
-
 const getLayoutQueryParams = (search) => {
   const currentParams = new URLSearchParams(search);
   const nextParams = new URLSearchParams();
@@ -82,74 +73,79 @@ const getSpaceDisplayDate = (space) => {
   return formatSpaceDate(space.date);
 };
 
-const completeSpaceRequest = async (spaceId) => {
-  // Demo spaces use SP-* ids and are local-only. Real backend spaces use SPC* ids.
-  if (!String(spaceId).startsWith('SPC')) return null;
-
-  const token = getAccessToken();
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/complete`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-
-  if (!response.ok) {
-    let message = 'Unable to complete this space.';
-    try {
-      const body = await response.json();
-      message = body.message || body.detail || message;
-    } catch {
-      // Keep the fallback message when the backend returns a non-JSON error.
-    }
-    throw new Error(message);
+const getErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (Array.isArray(detail)) {
+    return detail.map(item => item?.msg || String(item)).join(', ') || fallback;
   }
+  return detail || error?.message || fallback;
+};
 
-  return response.json();
+const mapApiSpace = (space) => ({
+  id: space.space_id,
+  title: space.name_space || 'Untitled Space',
+  description: space.description || 'No description provided.',
+  tasksCount: space.task_count ?? space.tasks_count ?? 0,
+  date: formatSpaceDate(space.created_at),
+  updatedAt: space.updated_at,
+  archivedAt: space.archived_at,
+  reopenUntil: space.reopen_until,
+  canReopen: Boolean(space.can_reopen),
+  deletedAt: space.deleted_at,
+  status: space.status_space || 'Active',
+  ownerId: space.owner_id,
+  memberIds: [],
+  raw: space,
+});
+
+const listSpacesRequest = async ({ includeDeleted = false } = {}) => {
+  const response = await axiosClient.get('/spaces', {
+    params: includeDeleted ? { include_deleted: true } : undefined,
+  });
+  return response.data.map(mapApiSpace);
+};
+
+const listOwnerTrashRequest = async (ownerId) => {
+  if (!ownerId) return [];
+  const response = await axiosClient.get(`/spaces/owners/${ownerId}/trash`);
+  return response.data.map(mapApiSpace);
+};
+
+const createSpaceRequest = async ({ name, title, description, ownerId }) => {
+  const response = await axiosClient.post('/spaces', {
+    name_space: name || title,
+    description: description || null,
+    owner_id: ownerId,
+  });
+  return mapApiSpace(response.data);
+};
+
+const updateSpaceRequest = async (spaceId, { name, title, description }) => {
+  const response = await axiosClient.patch(`/spaces/${spaceId}`, {
+    name_space: name || title,
+    description: description || null,
+  });
+  return mapApiSpace(response.data);
+};
+
+const completeSpaceRequest = async (spaceId) => {
+  const response = await axiosClient.post(`/spaces/${spaceId}/complete`);
+  return mapApiSpace(response.data);
+};
+
+const unarchiveSpaceRequest = async (spaceId) => {
+  const response = await axiosClient.post(`/spaces/${spaceId}/unarchive`);
+  return mapApiSpace(response.data);
 };
 
 const deleteSpaceRequest = async (spaceId) => {
-  if (!String(spaceId).startsWith('SPC')) return null;
-
-  const token = getAccessToken();
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}`, {
-    method: 'DELETE',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-
-  if (!response.ok) {
-    let message = 'Unable to delete this space.';
-    try {
-      const body = await response.json();
-      message = body.message || body.detail || message;
-    } catch {
-      // Keep the fallback message when the backend returns a non-JSON error.
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
+  const response = await axiosClient.delete(`/spaces/${spaceId}`);
+  return mapApiSpace(response.data);
 };
 
 const restoreSpaceRequest = async (spaceId) => {
-  if (!String(spaceId).startsWith('SPC')) return null;
-
-  const token = getAccessToken();
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/restore`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-
-  if (!response.ok) {
-    let message = 'Unable to restore this space.';
-    try {
-      const body = await response.json();
-      message = body.message || body.detail || message;
-    } catch {
-      // Keep the fallback message when the backend returns a non-JSON error.
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
+  const response = await axiosClient.post(`/spaces/${spaceId}/restore`);
+  return mapApiSpace(response.data);
 };
 
 const SpaceManagement = ({ routeContext = null } = {}) => {
@@ -157,44 +153,13 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const location = useLocation();
   const outletContext = useOutletContext() || {};
   const { currentRole = 'ADMIN', currentUser = null } = routeContext || outletContext;
-  
-  // Normalize name by removing accents and lowercasing
-  const normalizeName = (value = '') => {
-    if (!value) return '';
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
-  };
-  
-  // Determine user ID and role based on the logged-in user's name or role
-  const currentUserName = currentUser?.name ? normalizeName(currentUser.name) : '';
-  
-  let currentUserId = null;
-  let resolvedUserRole = 'USER';
-  
-  // Match user by normalized name to demo users
-  if (currentUserName.includes('alex') || currentUserName.includes('morgan')) {
-    currentUserId = 'alex-morgan';
-    resolvedUserRole = 'SUPER_ADMIN';
-  } else if (currentUserName.includes('pham') || currentUserName.includes('tien')) {
-    currentUserId = 'pham-tien';
-    resolvedUserRole = 'OWNER';
-  } else if (currentUserName.includes('trang') || currentUserName.includes('nguyen')) {
-    currentUserId = 'trang-nguyen';
-    resolvedUserRole = 'USER';
-  }
-  
-  // Override role if explicitly set in context
-  if (currentUser?.role === 'SUPER_ADMIN' || currentRole === 'ADMIN') {
-    resolvedUserRole = 'SUPER_ADMIN';
-  }
-  
-  const isSuperAdmin = resolvedUserRole === 'SUPER_ADMIN';
+  const currentUserId = currentUser?.id || currentUser?.user_id || '';
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN' || currentRole === 'ADMIN';
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('Recently Created');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingSpace, setIsCreatingSpace] = useState(false);
+  const [createSpaceError, setCreateSpaceError] = useState('');
   const [spaceToComplete, setSpaceToComplete] = useState(null);
   const [isCompletingSpace, setIsCompletingSpace] = useState(false);
   const [completeSpaceError, setCompleteSpaceError] = useState('');
@@ -202,21 +167,15 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [isSpaceActionSubmitting, setIsSpaceActionSubmitting] = useState(false);
   const [spaceActionError, setSpaceActionError] = useState('');
   const [spaceView, setSpaceView] = useState('active');
+  const [isLoadingSpaces, setIsLoadingSpaces] = useState(false);
+  const [spacesError, setSpacesError] = useState('');
   const [selectedDate, setSelectedDate] = useState(null);
-  const [selectedDemoUser, setSelectedDemoUser] = useState(currentUserId);
-  const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && selectedDemoUser !== 'alex-morgan';
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [spaceDetailSelection, setSpaceDetailSelection] = useState(null);
+  const datePickerRef = useRef(null);
+  const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && Boolean(currentUserId);
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
-  
-  // Read demo user from URL query parameter
-  useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const demoUserParam = searchParams.get('user');
-    
-    if (demoUserParam && ['alex-morgan', 'pham-tien', 'trang-nguyen'].includes(demoUserParam)) {
-      setSelectedDemoUser(demoUserParam);
-    }
-  }, [location.search]);
  
   const getDaysInMonth = (year, month) => {
     const days = [];
@@ -229,34 +188,61 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
  
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
  
-  // Sample data based on image. Owner is scoped per space, not a global role.
-  const [spaces, setSpaces] = useState(DEMO_SPACES);
+  const [spaces, setSpaces] = useState([]);
   const isRecentlyDeletedView = spaceView === 'deleted';
-  
-  const getUserRole = (userId) => {
-    if (userId === 'alex-morgan') return 'SUPER_ADMIN';
-    if (userId === 'pham-tien') return 'OWNER';
-    if (userId === 'trang-nguyen') return 'USER';
-    return 'USER';
+
+  const loadSpaces = async () => {
+    if (!currentUserId && !isSuperAdmin) {
+      setSpaces([]);
+      return;
+    }
+
+    setIsLoadingSpaces(true);
+    setSpacesError('');
+
+    try {
+      const nextSpaces = isRecentlyDeletedView && !isSuperAdmin
+        ? await listOwnerTrashRequest(currentUserId)
+        : await listSpacesRequest({ includeDeleted: isRecentlyDeletedView || isSuperAdmin });
+      setSpaces(nextSpaces);
+    } catch (error) {
+      setSpacesError(getErrorMessage(error, 'Unable to load spaces.'));
+      setSpaces([]);
+    } finally {
+      setIsLoadingSpaces(false);
+    }
   };
-  
+
+  useEffect(() => {
+    loadSpaces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, isSuperAdmin, isRecentlyDeletedView]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+        setIsDatePickerOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
   const canAccessSpace = (space, userId) => {
-    // Super admin can see all spaces
     if (isSuperAdmin || userId === 'alex-morgan') return true;
-    
-    // If no user ID provided, deny access
     if (!userId) return false;
-    
-    // Both Owner and User can see spaces they own or are a member of
-    // The difference in roles is for management permissions, not visibility
-    return space.ownerId === userId || (space.memberIds || []).includes(userId);
+
+    // The backend already scopes /spaces to the logged-in user. If a non-owner
+    // space reaches the UI, the user is an active member of it.
+    return true;
   };
   
   const getUserRoleInSpace = (space, userId) => {
     if (!userId) return null;
     if (space.ownerId === userId) return 'OWNER';
-    if ((space.memberIds || []).includes(userId)) return 'MEMBER';
-    return null;
+    if (isSuperAdmin) return 'SUPER_ADMIN';
+    return 'MEMBER';
   };
 
   const handleViewTasks = (space, isAssigned, isOwner) => {
@@ -269,6 +255,31 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
       const query = params.toString();
       navigate(`/dashboard/tasks/${space.id}${query ? `?${query}` : ''}`);
     }
+  };
+
+  const handleOpenSpaceDetail = (space, isAssigned, isOwner) => {
+    if (!isAssigned) return;
+
+    setSpaceDetailSelection({
+      space,
+      isOwner,
+      roleLabel: isOwner ? 'OWNER' : isSuperAdmin ? 'SUPER ADMIN' : 'MEMBER',
+    });
+  };
+
+  const closeSpaceDetailModal = () => {
+    setSpaceDetailSelection(null);
+  };
+
+  const handleUpdateSpaceDetails = async (spaceId, data) => {
+    const updatedSpace = await updateSpaceRequest(spaceId, data);
+    setSpaces(prev => prev.map(space => (space.id === updatedSpace.id ? updatedSpace : space)));
+    setSpaceDetailSelection(prev => (
+      prev?.space?.id === updatedSpace.id
+        ? { ...prev, space: updatedSpace }
+        : prev
+    ));
+    return updatedSpace;
   };
 
   const openCompleteSpaceModal = (space) => {
@@ -292,12 +303,12 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
       const completedSpace = await completeSpaceRequest(spaceToComplete.id);
       setSpaces(prev => prev.map(space => (
         space.id === spaceToComplete.id
-          ? { ...space, status: completedSpace?.status_space || 'Archived' }
+          ? completedSpace
           : space
       )));
       setSpaceToComplete(null);
     } catch (error) {
-      setCompleteSpaceError(error.message || 'Unable to complete this space.');
+      setCompleteSpaceError(getErrorMessage(error, 'Unable to complete this space.'));
     } finally {
       setIsCompletingSpace(false);
     }
@@ -321,22 +332,24 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
     setSpaceActionError('');
 
     try {
-      const actionRequest = spaceAction.type === 'delete' ? deleteSpaceRequest : restoreSpaceRequest;
+      const actionRequest = spaceAction.type === 'delete'
+        ? deleteSpaceRequest
+        : spaceAction.type === 'restore'
+          ? restoreSpaceRequest
+          : unarchiveSpaceRequest;
       const updatedSpace = await actionRequest(spaceAction.space.id);
-      setSpaces(prev => prev.map(space => (
-        space.id === spaceAction.space.id
-          ? {
-              ...space,
-              status: updatedSpace?.status_space || (spaceAction.type === 'delete' ? 'Deleted' : 'Active'),
-              deletedAt: spaceAction.type === 'delete'
-                ? formatSpaceDate(updatedSpace?.deleted_at || new Date())
-                : null,
-            }
-          : space
-      )));
+      setSpaces(prev => {
+        if (isRecentlyDeletedView && spaceAction.type === 'restore') {
+          return prev.filter(space => space.id !== spaceAction.space.id);
+        }
+        if (!isRecentlyDeletedView && spaceAction.type === 'delete') {
+          return prev.filter(space => space.id !== spaceAction.space.id);
+        }
+        return prev.map(space => (space.id === spaceAction.space.id ? updatedSpace : space));
+      });
       setSpaceAction(null);
     } catch (error) {
-      setSpaceActionError(error.message || `Unable to ${spaceAction.type} this space.`);
+      setSpaceActionError(getErrorMessage(error, `Unable to ${spaceAction.type} this space.`));
     } finally {
       setIsSpaceActionSubmitting(false);
     }
@@ -344,7 +357,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
  
   const filteredAndSortedSpaces = spaces
     .filter(space => {
-      if (!canAccessSpace(space, selectedDemoUser)) return false;
+      if (!canAccessSpace(space, currentUserId)) return false;
       if (isRecentlyDeletedView) {
         if (space.status !== 'Deleted') return false;
       } else if (space.status === 'Deleted') {
@@ -428,9 +441,16 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           {isRecentlyDeletedView ? 'All Spaces' : 'Recently Deleted'}
         </button>
 
-        <div className="w-43">
-          <div className="relative group">
-            <button className="w-full flex items-center justify-between px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer hover:border-[#5e4db2] group-hover:border-[#5e4db2]">
+        <div className="w-43" ref={datePickerRef}>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsDatePickerOpen(prev => !prev)}
+              aria-expanded={isDatePickerOpen}
+              className={`w-full flex items-center justify-between px-3 py-1.5 bg-white border rounded transition-colors shadow-sm cursor-pointer hover:bg-surface-container hover:border-[#5e4db2] ${
+                isDatePickerOpen ? 'border-[#5e4db2]' : 'border-outline-variant'
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#5e4db2] text-[18px]">calendar_month</span>
                 <span className="text-[11px] font-bold text-[#5e4db2]">
@@ -441,7 +461,8 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
             </button>
  
             {/* Calendar Dropdown */}
-            <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+            {isDatePickerOpen && (
+            <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
               <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
@@ -508,6 +529,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                           } else {
                             setSelectedDate(new Date(viewYear, viewMonth, day));
                           }
+                          setIsDatePickerOpen(false);
                         }}
                         className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-all ${isSelected
                           ? 'bg-[#5e4db2] text-white font-bold shadow-sm scale-110'
@@ -523,12 +545,25 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>
  
       {/* Empty State */}
-      {filteredAndSortedSpaces.length === 0 && (
+      {spacesError && (
+        <div className="mb-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-[13px] font-semibold text-red-700">
+          {spacesError}
+        </div>
+      )}
+
+      {isLoadingSpaces && (
+        <div className="mb-5 rounded-lg border border-[#E5E0EF] bg-white px-4 py-3 text-[13px] font-semibold text-[#4C2B74] shadow-sm">
+          Loading spaces...
+        </div>
+      )}
+
+      {!isLoadingSpaces && filteredAndSortedSpaces.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-100">
           <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
             <i data-lucide="folder-open" className="w-10 h-10 text-gray-300"></i>
@@ -556,18 +591,32 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
       {/* Grid of Space Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAndSortedSpaces.map(space => {
-          const isAssigned = canAccessSpace(space, selectedDemoUser);
-          const userSpaceRole = getUserRoleInSpace(space, selectedDemoUser);
+          const isAssigned = canAccessSpace(space, currentUserId);
+          const userSpaceRole = getUserRoleInSpace(space, currentUserId);
           const isOwner = userSpaceRole === 'OWNER';
           const isArchived = space.status === 'Archived';
           const isDeleted = space.status === 'Deleted';
           const canCompleteSpace = isAssigned && isOwner && space.status === 'Active';
+          const canReopenSpace = isAssigned && isOwner && space.status === 'Archived' && space.canReopen;
           const canDeleteSpace = isAssigned && isOwner && !isDeleted;
           const canRestoreSpace = isAssigned && isOwner && isDeleted;
-          const footerActionCount = canCompleteSpace ? 1 : 0;
+          const footerActionCount = (canCompleteSpace ? 1 : 0) + (canReopenSpace ? 1 : 0);
           const displayDate = getSpaceDisplayDate(space);
           return (
-            <div key={space.id} className="group flex min-h-[218px] flex-col overflow-hidden rounded-xl border border-[#ECE7F4] bg-white shadow-[0_10px_28px_rgba(76,43,116,0.07)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D8CDE8] hover:shadow-[0_18px_42px_rgba(76,43,116,0.12)]">
+            <div
+              key={space.id}
+              role="button"
+              tabIndex={isAssigned ? 0 : -1}
+              onClick={() => handleOpenSpaceDetail(space, isAssigned, isOwner)}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleOpenSpaceDetail(space, isAssigned, isOwner);
+                }
+              }}
+              className="group flex min-h-[218px] cursor-pointer flex-col overflow-hidden rounded-xl border border-[#ECE7F4] bg-white shadow-[0_10px_28px_rgba(76,43,116,0.07)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D8CDE8] hover:shadow-[0_18px_42px_rgba(76,43,116,0.12)] focus:outline-none focus:ring-2 focus:ring-[#D9D3F6]"
+            >
               <div className="flex flex-1 flex-col p-5">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <h3 className="min-w-0 flex-1 truncate text-[15px] font-bold leading-6 text-[#4C2B74]">{space.title}</h3>
@@ -602,7 +651,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                   {canDeleteSpace && (
                     <button
                       type="button"
-                      onClick={() => openSpaceActionModal(space, 'delete')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSpaceActionModal(space, 'delete');
+                      }}
                       aria-label={`Delete ${space.title}`}
                       title="Delete space"
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-red-600 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-200 active:scale-95"
@@ -614,7 +666,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                   {canRestoreSpace && (
                     <button
                       type="button"
-                      onClick={() => openSpaceActionModal(space, 'restore')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSpaceActionModal(space, 'restore');
+                      }}
                       aria-label={`Restore ${space.title}`}
                       title="Restore space"
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-[#4C2B74] transition-all hover:border-[#DDD4EA] hover:bg-[#F4F0FA] hover:text-[#3D225E] focus:outline-none focus:ring-2 focus:ring-[#D9D3F6] active:scale-95"
@@ -633,7 +688,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                   >
                     <button
                       disabled={!isAssigned || isDeleted}
-                      onClick={() => handleViewTasks(space, isAssigned, isOwner)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleViewTasks(space, isAssigned, isOwner);
+                      }}
                       className={`w-full py-2.5 rounded-lg font-bold text-[12px] transition-all shadow-sm ${
                         !isAssigned || isDeleted
                           ? 'bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] opacity-50 cursor-not-allowed'
@@ -648,10 +706,26 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                     {canCompleteSpace && (
                       <button
                         type="button"
-                        onClick={() => openCompleteSpaceModal(space)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openCompleteSpaceModal(space);
+                        }}
                         className="w-full py-2.5 rounded-lg border border-[#4C2B74] text-[#4C2B74] bg-white font-bold text-[12px] transition-all shadow-sm hover:bg-[#f0edff] active:scale-95"
                       >
                         Complete
+                      </button>
+                    )}
+
+                    {canReopenSpace && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openSpaceActionModal(space, 'unarchive');
+                        }}
+                        className="w-full py-2.5 rounded-lg border border-[#4C2B74] text-[#4C2B74] bg-white font-bold text-[12px] transition-all shadow-sm hover:bg-[#f0edff] active:scale-95"
+                      >
+                        Reopen
                       </button>
                     )}
                   </div>
@@ -726,7 +800,11 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
           <div className="relative w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
               <h2 className="text-base font-bold text-on-surface">
-                {spaceAction.type === 'delete' ? 'Delete Space' : 'Restore Space'}
+                {spaceAction.type === 'delete'
+                  ? 'Delete Space'
+                  : spaceAction.type === 'restore'
+                    ? 'Restore Space'
+                    : 'Reopen Space'}
               </h2>
               <button
                 type="button"
@@ -744,9 +822,13 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                   <>
                     Are you sure you want to delete <span className="font-bold text-on-surface">{spaceAction.space.title}</span>? This space will be moved to trash and can be restored by the space owner.
                   </>
-                ) : (
+                ) : spaceAction.type === 'restore' ? (
                   <>
                     Restore <span className="font-bold text-on-surface">{spaceAction.space.title}</span> back to active spaces?
+                  </>
+                ) : (
+                  <>
+                    Reopen <span className="font-bold text-on-surface">{spaceAction.space.title}</span> and make it active again?
                   </>
                 )}
               </p>
@@ -778,34 +860,62 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                 }`}
               >
                 {isSpaceActionSubmitting
-                  ? (spaceAction.type === 'delete' ? 'Deleting...' : 'Restoring...')
-                  : (spaceAction.type === 'delete' ? 'Delete Space' : 'Restore Space')}
+                  ? (spaceAction.type === 'delete'
+                    ? 'Deleting...'
+                    : spaceAction.type === 'restore'
+                      ? 'Restoring...'
+                      : 'Reopening...')
+                  : (spaceAction.type === 'delete'
+                    ? 'Delete Space'
+                    : spaceAction.type === 'restore'
+                      ? 'Restore Space'
+                      : 'Reopen Space')}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <SpaceDetailModal
+        isOpen={Boolean(spaceDetailSelection)}
+        spaceId={spaceDetailSelection?.space?.id}
+        previewSpace={spaceDetailSelection?.space}
+        roleLabel={spaceDetailSelection?.roleLabel}
+        canEdit={Boolean(spaceDetailSelection?.isOwner)}
+        onClose={closeSpaceDetailModal}
+        onUpdateSpace={handleUpdateSpaceDetails}
+        onViewTasks={(space, isOwner) => {
+          closeSpaceDetailModal();
+          handleViewTasks(space, true, isOwner);
+        }}
+      />
   
  
       <CreateSpaceModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         currentUser={currentUser}
-        onCreate={(data) => {
+        onCreate={async (data) => {
           if (!canCreateSpace) return;
-          const createdSpace = {
-            id: `SP-${String(spaces.length + 1).padStart(3, '0')}`,
-            title: data?.name || data?.title || 'New Space',
-            description: data?.description || 'Newly created space.',
-            tasksCount: 0,
-            date: new Date().toISOString().slice(0, 10),
-            status: 'Active',
-            ownerId: selectedDemoUser || currentUserId || 'alex-morgan',
-            memberIds: [],
-          };
-          setSpaces(prev => [createdSpace, ...prev]);
-          setIsCreateModalOpen(false);
+          setIsCreatingSpace(true);
+          setCreateSpaceError('');
+          try {
+            const createdSpace = await createSpaceRequest({
+              ...data,
+              ownerId: currentUserId,
+            });
+            setSpaces(prev => [createdSpace, ...prev]);
+            setIsCreateModalOpen(false);
+          } catch (error) {
+            const message = getErrorMessage(error, 'Unable to create this space.');
+            setCreateSpaceError(message);
+            throw new Error(message);
+          } finally {
+            setIsCreatingSpace(false);
+          }
         }}
+        isSubmitting={isCreatingSpace}
+        submitError={createSpaceError}
       />
     </div>
   );

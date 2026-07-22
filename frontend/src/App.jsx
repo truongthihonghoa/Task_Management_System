@@ -15,6 +15,7 @@ import ResetPassword from "./pages/ResetPassword";
 
 import MainLayout from "./components/layout/MainLayout";
 import SpaceManagement from "./pages/SpaceManagement";
+import SpaceDetail from "./pages/SpaceDetail";
 import TaskManagement from "./pages/TaskManagement";
 import Dashboard from "./pages/Dashboard";
 import UserManagement from "./pages/UserManagement";
@@ -59,6 +60,7 @@ function AppRoutes() {
             >
                 <Route index element={<Dashboard />} />
                 <Route path="spaces" element={<SpaceManagement />} />
+                <Route path="spaces/:spaceId" element={<SpaceDetail />} />
                 <Route path="tasks/:spaceId?" element={<TaskManagement />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="profile" element={<ProfilePage />} />
