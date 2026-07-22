@@ -13,6 +13,7 @@ import html
 import logging
 import os
 import smtplib
+import ssl
 
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -51,6 +52,10 @@ class EmailService:
         self.smtp_use_tls = (
             os.getenv("SMTP_USE_TLS", "true").lower() == "true"
         )
+        self.smtp_use_ssl = (
+            os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+            or self.smtp_port == 465
+        )
 
         self.otp_expire_minutes = int(
             os.getenv("OTP_EXPIRE_MINUTES", "15")
@@ -82,6 +87,9 @@ class EmailService:
 
     def _logo_path(self) -> Path | None:
         """Find a local TaskFlow logo file."""
+
+        if os.getenv("EMAIL_EMBED_LOGO", "false").lower() != "true":
+            return None
 
         configured_path = os.getenv("EMAIL_LOGO_PATH")
         candidates: list[Path] = []
@@ -371,19 +379,13 @@ class EmailService:
         detail_lines = message_lines[1:]
 
         logo_url = os.getenv("EMAIL_LOGO_URL")
-        logo_path = self._logo_path()
 
-        if logo_url or logo_path is not None:
-            logo_src = (
-                html.escape(logo_url)
-                if logo_url
-                else "cid:taskflow-logo"
-            )
-
+        if logo_url:
+            logo_src = html.escape(logo_url)
             logo_markup = (
                 f'<img src="{logo_src}" '
                 f'alt="{safe_app_name}" '
-                'width="42" height="42" '
+                'width="44" height="44" '
                 'style="display:block;'
                 'border-radius:10px;'
                 'object-fit:contain;'
@@ -392,16 +394,12 @@ class EmailService:
         else:
             logo_markup = (
                 '<div style="'
-                'width:42px;'
-                'height:42px;'
-                'border-radius:10px;'
-                'background:#2563eb;'
-                'color:#ffffff;'
-                'font-size:21px;'
-                'line-height:42px;'
-                'text-align:center;'
-                'font-weight:800;'
-                '">T</div>'
+                'font-size:22px;'
+                'line-height:1;'
+                'font-weight:900;'
+                'letter-spacing:0;'
+                'color:#4C2B74;'
+                '">TaskFlow</div>'
             )
 
         details_markup = ""
@@ -414,9 +412,9 @@ class EmailService:
                 'cellpadding="0" '
                 'style="'
                 'margin-top:18px;'
-                'border:1px solid #e5e7eb;'
+                'border:1px solid #E0D7F0;'
                 'border-radius:10px;'
-                'background:#f9fafb;'
+                'background:#FAF8FF;'
                 '">'
             )
 
@@ -432,10 +430,10 @@ class EmailService:
   <td style="
       padding:13px 16px;
       width:110px;
-      color:#64748b;
+      color:#6E5A8A;
       font-size:13px;
       font-weight:700;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
   ">
     {safe_label}
   </td>
@@ -444,7 +442,7 @@ class EmailService:
       padding:13px 16px;
       color:#1f2937;
       font-size:14px;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
   ">
     {safe_value}
   </td>
@@ -461,7 +459,7 @@ class EmailService:
       padding:13px 16px;
       color:#1f2937;
       font-size:14px;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid #E0D7F0;
     "
   >
     {safe_detail}
@@ -481,7 +479,7 @@ class EmailService:
       href="{safe_action_url}"
       style="
         display:inline-block;
-        background:#2563eb;
+        background:#6B4A91;
         color:#ffffff;
         text-decoration:none;
         font-weight:700;
@@ -501,7 +499,7 @@ class EmailService:
   <body style="
       margin:0;
       padding:0;
-      background:#f3f6fb;
+      background:#ffffff;
       font-family:Arial,Helvetica,sans-serif;
       color:#111827;
   ">
@@ -510,7 +508,7 @@ class EmailService:
       width="100%"
       cellspacing="0"
       cellpadding="0"
-      style="background:#f3f6fb;padding:28px 14px;"
+      style="background:#ffffff;padding:18px 12px;"
     >
       <tr>
         <td align="center">
@@ -520,19 +518,19 @@ class EmailService:
             cellspacing="0"
             cellpadding="0"
             style="
-              max-width:560px;
+              max-width:640px;
               background:#ffffff;
-              border:1px solid #dbe3ef;
-              border-radius:16px;
+              border:1px solid #E0D7F0;
+              border-radius:14px;
               overflow:hidden;
-              box-shadow:0 16px 36px rgba(15,23,42,0.08);
+              box-shadow:0 16px 42px rgba(76,43,116,0.12);
             "
           >
             <tr>
               <td style="
-                  background:#ffffff;
-                  padding:24px 34px 18px;
-                  border-bottom:1px solid #eef2f7;
+                  background:#FAF8FF;
+                  padding:18px 28px;
+                  border-bottom:1px solid #E0D7F0;
               ">
                 <table
                   role="presentation"
@@ -541,29 +539,22 @@ class EmailService:
                   cellpadding="0"
                 >
                   <tr>
-                    <td style="
-                        vertical-align:middle;
-                        width:42px;
-                    ">
+                    <td style="vertical-align:middle;">
                       {logo_markup}
                     </td>
 
                     <td style="
                         vertical-align:middle;
-                        padding-left:14px;
+                        text-align:right;
                     ">
                       <div style="
-                          font-size:20px;
+                          display:inline-block;
+                          background:#F0EDFF;
+                          color:#4C2B74;
+                          font-size:11px;
                           font-weight:800;
-                          color:#111827;
-                      ">
-                        {safe_app_name}
-                      </div>
-
-                      <div style="
-                          font-size:13px;
-                          color:#64748b;
-                          margin-top:3px;
+                          padding:6px 10px;
+                          border-radius:999px;
                       ">
                         Notification
                       </div>
@@ -574,23 +565,10 @@ class EmailService:
             </tr>
 
             <tr>
-              <td style="padding:28px 34px 10px;">
-                <div style="
-                    display:inline-block;
-                    background:#eff6ff;
-                    color:#1d4ed8;
-                    font-size:12px;
-                    font-weight:700;
-                    padding:6px 10px;
-                    border-radius:999px;
-                    margin-bottom:15px;
-                ">
-                  New update
-                </div>
-
+              <td style="padding:24px 28px 10px;">
                 <h1 style="
-                    margin:0 0 12px;
-                    font-size:24px;
+                    margin:0 0 10px;
+                    font-size:22px;
                     line-height:1.3;
                     color:#0f172a;
                     font-weight:800;
@@ -600,8 +578,8 @@ class EmailService:
 
                 <div style="
                     margin:0;
-                    font-size:15px;
-                    line-height:1.65;
+                    font-size:14px;
+                    line-height:1.55;
                     color:#334155;
                 ">
                   {primary_message}
@@ -614,18 +592,18 @@ class EmailService:
             {action_button}
 
             <tr>
-              <td style="padding:0 34px 30px;">
+              <td style="padding:0 28px 24px;">
                 <div style="
                     height:1px;
-                    background:#e5e7eb;
-                    margin-bottom:14px;
+                    background:#E0D7F0;
+                    margin-bottom:12px;
                 "></div>
 
                 <p style="
                     margin:0;
                     font-size:12px;
                     line-height:1.6;
-                    color:#64748b;
+                    color:#6E5A8A;
                 ">
                   You received this email because your
                   {safe_app_name} notification preferences
@@ -674,6 +652,8 @@ class EmailService:
             if (
                 logo_path is not None
                 and not os.getenv("EMAIL_LOGO_URL")
+                and html_content is not None
+                and "cid:taskflow-logo" in html_content
             ):
                 try:
                     html_part = message.get_payload()[-1]
@@ -723,93 +703,301 @@ class EmailService:
                 html_content=html_content,
             )
 
-            logger.info(
-                "Attempting to send email to %s",
-                to_email,
-            )
-
-            with smtplib.SMTP(
-                self.smtp_host,
-                self.smtp_port,
-                timeout=30,
-            ) as smtp:
-                if self.smtp_use_tls:
-                    smtp.starttls()
-
-                smtp.login(
-                    self.smtp_username,
-                    self.smtp_password,
-                )
-
-                smtp.send_message(message)
-
-            logger.info(
-                "Email sent successfully to %s",
-                to_email,
-            )
-
-            return True
-
         except ValueError as error:
             logger.error(
                 "SMTP configuration error: %s",
                 error,
             )
+            return False
 
-        except smtplib.SMTPAuthenticationError as error:
-            logger.error(
-                "SMTP authentication failed for %s: %s",
-                to_email,
-                error,
-            )
+        for attempt in range(1, 4):
+            try:
+                logger.info(
+                    "Attempting to send email to %s (attempt %s)",
+                    to_email,
+                    attempt,
+                )
 
-        except smtplib.SMTPException as error:
-            logger.error(
-                "SMTP error sending email to %s: %s",
-                to_email,
-                error,
-            )
+                context = ssl.create_default_context()
+                if self.smtp_use_ssl:
+                    smtp = smtplib.SMTP_SSL(
+                        self.smtp_host,
+                        self.smtp_port,
+                        timeout=30,
+                        context=context,
+                    )
+                else:
+                    smtp = smtplib.SMTP(
+                        self.smtp_host,
+                        self.smtp_port,
+                        timeout=30,
+                    )
 
-        except OSError as error:
-            logger.error(
-                "Network error sending email to %s: %s",
-                to_email,
-                error,
-            )
+                with smtp:
+                    smtp.ehlo()
 
-        except Exception:
-            logger.exception(
-                "Unexpected error sending email to %s",
-                to_email,
-            )
+                    if self.smtp_use_tls and not self.smtp_use_ssl:
+                        smtp.starttls(context=context)
+                        smtp.ehlo()
+
+                    smtp.login(
+                        self.smtp_username,
+                        self.smtp_password,
+                    )
+
+                    smtp.send_message(message)
+
+                logger.info(
+                    "Email sent successfully to %s",
+                    to_email,
+                )
+
+                return True
+
+            except smtplib.SMTPAuthenticationError as error:
+                logger.error(
+                    "SMTP authentication failed for %s: %s",
+                    to_email,
+                    error,
+                )
+                return False
+
+            except smtplib.SMTPException as error:
+                logger.warning(
+                    "SMTP error sending email to %s on attempt %s: %s",
+                    to_email,
+                    attempt,
+                    error,
+                )
+
+            except OSError as error:
+                logger.warning(
+                    "Network error sending email to %s on attempt %s: %s",
+                    to_email,
+                    attempt,
+                    error,
+                )
+
+            except Exception:
+                logger.exception(
+                    "Unexpected error sending email to %s",
+                    to_email,
+                )
+                return False
 
         return False
 
-    def send_verification_email(
-        self,
-        to_email: str,
-        otp_code: str,
-    ) -> bool:
-        """Send an OTP verification email."""
-
-        subject = (
-            f"{self.app_name} - Email Verification Code"
+    def send_verification_email(self, to_email: str, otp_code: str) -> bool:
+        """Send an email verification OTP."""
+        subject = f"{self.app_name} - Email Verification"
+        return self.send_email(
+            to_email=to_email,
+            subject=subject,
+            text_content=self._verification_email_body(otp_code),
+            html_content=self._verification_email_html(otp_code),
         )
 
-        text_content = self._verification_email_body(
-            otp_code
+    def send_password_reset_email(self, to_email: str, token_code: str) -> bool:
+        """Send a password reset email containing a reset link and token."""
+        import urllib.parse
+        subject = f"{self.app_name} - Password Reset"
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        query = urllib.parse.urlencode({"email": to_email, "token": token_code})
+        reset_path = f"/reset-password?{query}"
+        reset_url = frontend_url.rstrip("/") + reset_path
+        text_content = (
+            f"Use the following link to reset your password: {reset_url}\n\n"
+            f"Your password reset code is: {token_code}\n\n"
+            f"This link and code expire in {self.otp_expire_minutes} minutes."
         )
-
-        html_content = self._verification_email_html(
-            otp_code
-        )
-
+        html_content = self._password_reset_email_html(reset_url)
         return self.send_email(
             to_email=to_email,
             subject=subject,
             text_content=text_content,
             html_content=html_content,
         )
+
+    def _password_reset_email_html(self, reset_url: str) -> str:
+        """Create HTML content for password reset email with a button link."""
+        safe_app_name = html.escape(self.app_name)
+        safe_reset_url = html.escape(reset_url)
+
+        logo_url = os.getenv("EMAIL_LOGO_URL")
+        if logo_url:
+            logo_src = html.escape(logo_url)
+            logo_markup = (
+                f'<img src="{logo_src}" '
+                f'alt="{safe_app_name}" '
+                'width="44" height="44" '
+                'style="display:block;'
+                'border-radius:10px;'
+                'object-fit:contain;'
+                'background:#ffffff;">'
+            )
+        else:
+            logo_markup = (
+                '<div style="'
+                'font-size:22px;'
+                'line-height:1;'
+                'font-weight:900;'
+                'letter-spacing:0;'
+                'color:#4C2B74;'
+                '">TaskFlow</div>'
+            )
+
+        return f"""<!doctype html>
+<html>
+  <body style="
+      margin:0;
+      padding:0;
+      background:#ffffff;
+      font-family:Arial,Helvetica,sans-serif;
+      color:#111827;
+  ">
+    <table
+      role="presentation"
+      width="100%"
+      cellspacing="0"
+      cellpadding="0"
+      style="background:#ffffff;padding:18px 12px;"
+    >
+      <tr>
+        <td align="center">
+          <table
+            role="presentation"
+            width="100%"
+            cellspacing="0"
+            cellpadding="0"
+            style="
+              max-width:640px;
+              background:#ffffff;
+              border:1px solid #E0D7F0;
+              border-radius:14px;
+              overflow:hidden;
+              box-shadow:0 16px 42px rgba(76,43,116,0.12);
+            "
+          >
+            <tr>
+              <td style="
+                  background:#FAF8FF;
+                  padding:18px 28px;
+                  border-bottom:1px solid #E0D7F0;
+              ">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                >
+                  <tr>
+                    <td style="vertical-align:middle;">
+                      {logo_markup}
+                    </td>
+
+                    <td style="
+                        vertical-align:middle;
+                        text-align:right;
+                    ">
+                      <div style="
+                          display:inline-block;
+                          background:#F0EDFF;
+                          color:#4C2B74;
+                          font-size:11px;
+                          font-weight:800;
+                          padding:6px 10px;
+                          border-radius:999px;
+                      ">
+                        Password Reset
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:24px 28px 10px;">
+                <h1 style="
+                    margin:0 0 10px;
+                    font-size:22px;
+                    line-height:1.3;
+                    color:#0f172a;
+                    font-weight:800;
+                ">
+                  Reset Your Password
+                </h1>
+
+                <div style="
+                    margin:0;
+                    font-size:14px;
+                    line-height:1.55;
+                    color:#334155;
+                ">
+                  We received a request to reset the password for your {safe_app_name} account. Use the button below to set a new password. This link will expire in {self.otp_expire_minutes} minutes.
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:14px 28px 20px;">
+                <a
+                  href="{safe_reset_url}"
+                  style="
+                    display:inline-block;
+                    background:#6B4A91;
+                    color:#ffffff;
+                    text-decoration:none;
+                    font-weight:700;
+                    font-size:14px;
+                    padding:12px 18px;
+                    border-radius:8px;
+                  "
+                >
+                  Reset Password
+                </a>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 28px 10px;">
+                <div style="
+                    margin:0;
+                    font-size:12px;
+                    line-height:1.5;
+                    color:#6E5A8A;
+                ">
+                  Or copy & paste the following URL into your browser:<br>
+                  <a href="{safe_reset_url}" style="color:#6B4A91; word-break:break-all;">{safe_reset_url}</a>
+                </div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:20px 28px 24px;">
+                <div style="
+                    height:1px;
+                    background:#E0D7F0;
+                    margin-bottom:12px;
+                "></div>
+
+                <p style="
+                    margin:0;
+                    font-size:12px;
+                    line-height:1.6;
+                    color:#6E5A8A;
+                ">
+                  If you did not request a password reset, you can safely ignore this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
 
     def send_notification_email(
         self,

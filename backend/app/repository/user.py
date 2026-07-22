@@ -3,7 +3,7 @@ user_repository.py — Pure database operations for user management.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import Session

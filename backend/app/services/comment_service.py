@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +14,11 @@ from app.schemas.pydantic_models import (
     TaskCommentResponse,
     TaskCommentUpdate,
 )
+from app.services.notification_service import NotificationService
+
+
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
 
 
 def _get_active_task_or_404(db: Session, task_id: str) -> Task:
@@ -21,9 +27,16 @@ def _get_active_task_or_404(db: Session, task_id: str) -> Task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    if task.space is None or task.space.deleted_at is not None or task.space.status_space == "Deleted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is deleted")
+    return task
+
+
+def _ensure_task_space_active(task: Task) -> None:
+    if task.space is not None and task.space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if task.space is None or task.space.deleted_at is not None or task.space.status_space != "Active":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
-    return task
 
 
 def _get_comment_or_404(db: Session, comment_id: str) -> TaskComment:
@@ -103,6 +116,42 @@ def _validate_parent_comment(db: Session, task_id: str, parent_comment_id: str |
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent comment is deleted")
 
 
+def _task_assignee_ids(task: Task) -> list[str]:
+    return [assignee.assignee_id for assignee in (getattr(task, "assignees", None) or []) if assignee.assignee_id]
+
+
+def _notify_comment_event(
+    db: Session,
+    task: Task,
+    *,
+    current_user: User,
+    notification_type: str,
+    title: str,
+    message: str,
+    metadata: dict | None = None,
+) -> None:
+    try:
+        notification_service.create_notifications_for_users(
+            db,
+            user_ids=_task_assignee_ids(task),
+            actor_id=current_user.user_id,
+            task_id=task.task_id,
+            space_id=task.space_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            audience="USER",
+            metadata={
+                "task_title": task.title,
+                "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
+                "space_name": task.space.name_space if task.space else None,
+                **(metadata or {}),
+            },
+        )
+    except Exception:
+        logger.exception("Unable to create comment notification.")
+
+
 def list_task_comments(
     db: Session,
     task_id: str,
@@ -139,6 +188,7 @@ def create_task_comment(
     current_user: User,
 ) -> TaskCommentResponse:
     task = _get_active_task_or_404(db, task_id)
+    _ensure_task_space_active(task)
     _ensure_can_create_comment(db, task, current_user)
     _validate_parent_comment(db, task_id, payload.parent_comment_id)
 
@@ -153,6 +203,15 @@ def create_task_comment(
         updated_at=now,
     )
     comment_repository.create_comment(db, comment)
+    _notify_comment_event(
+        db,
+        task,
+        current_user=current_user,
+        notification_type="comment_added",
+        title="New comment",
+        message=f"{current_user.full_name} commented on {task.title}.",
+        metadata={"comment_id": comment.comment_id},
+    )
     return TaskCommentResponse.model_validate(_get_comment_or_404(db, comment.comment_id))
 
 
@@ -173,6 +232,7 @@ def update_task_comment(
 ) -> TaskCommentResponse:
     comment = _get_comment_or_404(db, comment_id)
     task = _get_active_task_or_404(db, comment.task_id)
+    _ensure_task_space_active(task)
     _ensure_can_create_comment(db, task, current_user)
     _ensure_can_update_comment(comment, current_user)
     if comment.deleted_at is not None:
@@ -182,12 +242,22 @@ def update_task_comment(
     comment.is_edited = True
     comment.updated_at = datetime.utcnow()
     comment_repository.save_comment(db, comment)
+    _notify_comment_event(
+        db,
+        task,
+        current_user=current_user,
+        notification_type="comment_edited",
+        title="Comment edited",
+        message=f"{current_user.full_name} edited a comment on {task.title}.",
+        metadata={"comment_id": comment.comment_id},
+    )
     return TaskCommentResponse.model_validate(_get_comment_or_404(db, comment_id))
 
 
 def delete_task_comment(db: Session, comment_id: str, current_user: User) -> TaskCommentResponse:
     comment = _get_comment_or_404(db, comment_id)
-    _get_active_task_or_404(db, comment.task_id)
+    task = _get_active_task_or_404(db, comment.task_id)
+    _ensure_task_space_active(task)
     _ensure_can_delete_comment(comment, current_user)
     if comment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Comment is already deleted")
@@ -196,4 +266,13 @@ def delete_task_comment(db: Session, comment_id: str, current_user: User) -> Tas
     comment.deleted_at = now
     comment.updated_at = now
     comment_repository.save_comment(db, comment)
+    _notify_comment_event(
+        db,
+        task,
+        current_user=current_user,
+        notification_type="comment_deleted",
+        title="Comment deleted",
+        message=f"{current_user.full_name} deleted a comment on {task.title}.",
+        metadata={"comment_id": comment.comment_id, "deleted_at": now.isoformat()},
+    )
     return TaskCommentResponse.model_validate(_get_comment_or_404(db, comment_id))

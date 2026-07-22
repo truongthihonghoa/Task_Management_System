@@ -89,6 +89,7 @@ class TaskAssignmentService:
                     audience="USER",
                     metadata={
                         "task_title": task.title,
+                        "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                         "space_name": task.space.name_space if task.space else None,
                     },
                 )
@@ -146,6 +147,7 @@ class TaskAssignmentService:
                     audience="USER",
                     metadata={
                         "task_title": task.title,
+                        "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                         "space_name": task.space.name_space if task.space else None,
                         "previous_assignee_id": payload.previous_assignee_id,
                     },
@@ -163,6 +165,7 @@ class TaskAssignmentService:
                     metadata={
                         "event": "assignee_replaced",
                         "task_title": task.title,
+                        "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                         "new_assignee_id": payload.new_assignee_id,
                     },
                 )
@@ -284,6 +287,7 @@ class TaskAssignmentService:
             metadata={
                 "event": "assignee_removed",
                 "task_title": task.title,
+                "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
                 "space_name": task.space.name_space if task.space else None,
             },
         )

@@ -68,6 +68,15 @@ def delete_sprint(
     return sprint_service.delete_sprint(db, sprint_id, current_user)
 
 
+@router.post("/sprints/{sprint_id}/activate", response_model=SprintResponse)
+def activate_sprint(
+    sprint_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SprintResponse:
+    return sprint_service.activate_sprint(db, sprint_id, current_user)
+
+
 @router.post("/sprints/{sprint_id}/complete", response_model=SprintResponse)
 def complete_sprint(
     sprint_id: str,

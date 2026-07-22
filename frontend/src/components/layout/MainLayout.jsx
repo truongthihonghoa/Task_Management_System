@@ -1,153 +1,48 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
-import Dashboard from '../../pages/Dashboard';
-import SpaceManagement from '../../pages/SpaceManagement';
-import TaskManagement from '../../pages/TaskManagement';
-import UserManagement from '../../pages/UserManagement';
-import ProfilePage from '../../pages/ProfilePage';
-import HelpCenter from '../../pages/HelpCenter';
-import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
 import { useLanguage } from '../../context/LanguageContext';
-const INITIAL_NOTIFICATIONS = [
-  {
-    NOTI_id: 1,
-    type: 'task_assigned',
-    task_name: 'Design Dashboard',
-    triggered_by_name: 'Hoa',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'H',
-    is_read: false,
-    created_at: '2 min ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'To Do',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 2,
-    type: 'status_changed',
-    task_name: 'Design System',
-    new_status: 'In Review',
-    triggered_by_name: 'Pham Thi Cam Tien',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'PT',
-    is_read: false,
-    created_at: '33 sec ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 3,
-    type: 'comment_added',
-    task_name: 'Audit Logs Screen',
-    triggered_by_name: 'Trung',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'T',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 4,
-    type: 'due_today',
-    task_name: 'Database Migration',
-    is_read: false,
-    created_at: '3 hours ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'Pending',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 5,
-    type: 'space_member_added',
-    space_name: 'Task Management System',
-    triggered_by_name: 'Trang Nguyen',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'TN',
-    is_read: false,
-    created_at: '1 hour ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 6,
-    type: 'owner_space_update',
-    space_name: 'Task Management System',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 10,
-    type: 'user_registered',
-    target_user: 'Nguyen Van A',
-    is_read: false,
-    created_at: '5 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 11,
-    type: 'account_locked',
-    target_user: 'User123',
-    is_read: false,
-    created_at: '10 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 12,
-    type: 'user_verified',
-    target_user: 'Alex Morgan',
-    is_read: true,
-    created_at: '2 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 13,
-    type: 'permission_changed',
-    target_user: 'Hoang Hoa',
-    is_read: false,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 14,
-    type: 'audit_log_event',
-    message: 'Security audit event recorded for a sensitive permission update.',
-    is_read: true,
-    created_at: '3 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  }
-];
+import { useAuth } from '../../context/AuthContext';
+import {
+  deleteNotification,
+  getNotificationDetail,
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationsRead,
+} from '../../api/notificationsApi';
+
+import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
+import {
+  getPrimaryNavigationItems,
+  getSupportNavigationItems,
+} from '../../utils/mainLayoutConfig';
+
+const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
+const NOTIFICATION_POLL_INTERVAL_MS = 25000;
+
+const copyLayoutQueryParams = (search) => {
+  const currentParams = new URLSearchParams(search);
+  const nextParams = new URLSearchParams();
+
+  LAYOUT_QUERY_KEYS.forEach((key) => {
+    const value = currentParams.get(key);
+    if (value) {
+      nextParams.set(key, value);
+    }
+  });
+
+  return nextParams;
+};
+
+const getLayoutSearch = (search) => {
+  const query = copyLayoutQueryParams(search).toString();
+  return query ? `?${query}` : '';
+};
+
 const SEARCH_TASKS = [
   { id: 'TM-1', spaceId: 'SP-001', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
   { id: 'TM-2', spaceId: 'SP-001', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
@@ -205,6 +100,106 @@ const SEARCH_USERS = [
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
 
+function formatNotificationTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+  }).format(date);
+}
+
+function notificationGroup(value) {
+  if (!value) return 'Earlier';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Earlier';
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const sameDay = (left, right) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+
+  if (sameDay(date, today)) return 'Today';
+  if (sameDay(date, yesterday)) return 'Yesterday';
+  return 'Earlier';
+}
+
+function mapNotification(notification) {
+  const metadata = notification.metadata || {};
+  const actorName = notification.actor?.full_name || metadata.triggered_by_name || '';
+  const targetUser = metadata.target_user || metadata.target_user_name || '';
+  const taskName = metadata.task_name || metadata.task_title || notification.task?.title || '';
+  const spaceName = metadata.space_name || metadata.name_space || metadata.space || '';
+  const sprintName = metadata.sprint_name || metadata.name_sprint || metadata.sprint || notification.task?.sprint_name || '';
+
+  return {
+    NOTI_id: notification.notification_id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    task_id: notification.task_id,
+    space_id: notification.space_id,
+    target_user_id: metadata.user_id || metadata.target_user_id,
+    audit_log_id: metadata.log_id || metadata.audit_log_id,
+    task_name: taskName,
+    sprint_name: sprintName,
+    space_name: spaceName,
+    target_user: targetUser,
+    triggered_by_name: actorName,
+    triggered_by_avatar: Boolean(actorName),
+    triggered_by_initials: getInitials(actorName),
+    is_read: notification.is_read,
+    created_at: formatNotificationTime(notification.created_at),
+    created_at_raw: notification.created_at,
+    group: notificationGroup(notification.created_at),
+    audience: notification.audience,
+    role: notification.audience === 'SUPER_ADMIN' ? 'ADMIN' : 'USER',
+    task_status: metadata.task_status,
+    new_status: metadata.new_status,
+    new_priority: metadata.new_priority || metadata.priority,
+  };
+}
+
+function getInitials(value = '') {
+  const words = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return 'U';
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join('');
+}
+
+function normalizeAvatarUrl(avatarUrl) {
+  if (!avatarUrl) return '';
+  if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
+  if (avatarUrl.startsWith('/media/')) return avatarUrl;
+  if (avatarUrl.startsWith('media/')) return `/${avatarUrl}`;
+  return avatarUrl;
+}
+
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -225,6 +220,7 @@ export default function MainLayout() {
   const avatarDropdownRef = useRef(null);
   const [showApps, setShowApps] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const { user: authUser, logout } = useAuth();
 
   const appsRef = useRef(null);
   const appsDropdownRef = useRef(null);
@@ -235,33 +231,161 @@ export default function MainLayout() {
   const settingsDropdownRef = useRef(null);
   const searchRef = useRef(null);
 
-  const roleParam = searchParams.get('role')?.toUpperCase();
-  const currentRole = roleParam === 'USER' ? 'USER' : 'ADMIN';
-  const isSuperAdmin = currentRole === 'ADMIN';
+  const authRole = authUser?.role || 'USER';
+  const isSuperAdmin = authRole === 'SUPER_ADMIN';
+  const currentRole = isSuperAdmin ? 'ADMIN' : 'USER';
   const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
-  const currentUser = isSuperAdmin
-    ? { id: 'admin-demo-user', name: 'Alex Morgan', initials: 'AM', role: 'SUPER_ADMIN', displayRole: 'Super Admin' }
-    : { id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trang Nguyễn', initials: 'TN', role: 'USER' };
+  const currentUserName = authUser?.full_name || authUser?.email || 'User';
 
-  if (!isSuperAdmin) {
-    currentUser.name = 'Trang Nguyen';
-    currentUser.displayRole = currentSpaceRole === 'OWNER' ? 'Owner in this space' : 'User';
-  }
+  const currentUser = {
+    id: authUser?.user_id || '',
+    name: currentUserName,
+    email: authUser?.email || '',
+    initials: getInitials(currentUserName),
+    avatarUrl: normalizeAvatarUrl(authUser?.avatar_url || ''),
+    role: authRole,
+    displayRole: isSuperAdmin
+      ? 'Super Admin'
+      : currentSpaceRole === 'OWNER'
+        ? 'Owner in this space'
+        : 'User',
+  };
 
-  const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const primaryNavigationItems = useMemo(
+    () => getPrimaryNavigationItems({ isSuperAdmin }),
+    [isSuperAdmin]
+  );
+
+  const supportNavigationItems = useMemo(
+    () => getSupportNavigationItems(),
+    []
+  );
+
+  const [allNotifications, setAllNotifications] = useState([]);
+  const [serverUnreadCount, setServerUnreadCount] = useState(0);
 
   const filteredNotifications = allNotifications.filter(n => {
+    if (!isNotificationWithinDisplayWindow(n)) {
+      return false;
+    }
     if (isSuperAdmin) {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }
-    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+    return n.audience === 'USER' || n.audience === 'OWNER' || n.audience === 'MEMBER' || n.role === 'USER';
   });
-  const unreadCount = filteredNotifications.filter(n => !n.is_read).length;
+  const unreadCount = serverUnreadCount;
 
-  const handleMarkAllRead = () => {
+  useEffect(() => {
+    let isMounted = true;
+    let isLoadingNotifications = false;
+    let pollTimerId;
+
+    async function loadNotifications() {
+      if (isLoadingNotifications || document.visibilityState === 'hidden') return;
+      isLoadingNotifications = true;
+
+      try {
+        const [response, unreadResponse] = await Promise.all([
+          getNotifications({ page: 1, page_size: 50 }),
+          getUnreadNotificationCount(),
+        ]);
+        if (!isMounted) return;
+        setAllNotifications((response.items || []).map(mapNotification));
+        setServerUnreadCount(unreadResponse.unread_count || 0);
+      } catch (error) {
+        if (error?.response?.status !== 401) {
+          console.error('Unable to load notifications', error);
+        }
+      } finally {
+        isLoadingNotifications = false;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        loadNotifications();
+      }
+    }
+
+    if (authUser?.user_id) {
+      loadNotifications();
+      pollTimerId = window.setInterval(loadNotifications, NOTIFICATION_POLL_INTERVAL_MS);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      setAllNotifications([]);
+      setServerUnreadCount(0);
+    }
+
+    return () => {
+      isMounted = false;
+      if (pollTimerId) {
+        window.clearInterval(pollTimerId);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [authUser?.user_id]);
+
+  const handleMarkAllRead = async () => {
+    const visibleIds = new Set(filteredNotifications.map((item) => item.NOTI_id));
     setAllNotifications(prev => prev.map(n =>
-      filteredNotifications.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
+      visibleIds.has(n.NOTI_id) ? { ...n, is_read: true } : n
     ));
+    setServerUnreadCount(0);
+
+    try {
+      await markNotificationsRead({ target: 'all' });
+    } catch (error) {
+      console.error('Unable to mark notifications as read', error);
+    }
+  };
+
+  const handleUpdateNotifications = async (nextNotifications) => {
+    const readIds = nextNotifications
+      .filter((nextNotification) => {
+        const previous = allNotifications.find((item) => item.NOTI_id === nextNotification.NOTI_id);
+        return previous && !previous.is_read && nextNotification.is_read;
+      })
+      .map((notification) => notification.NOTI_id);
+
+    setAllNotifications(nextNotifications);
+    setServerUnreadCount(nextNotifications.filter(item => !item.is_read).length);
+
+    if (!readIds.length) return;
+
+    try {
+      await markNotificationsRead({ target: 'selected', notificationIds: readIds });
+    } catch (error) {
+      console.error('Unable to update notification read state', error);
+    }
+  };
+
+  const handleNotificationRead = async (notification) => {
+    if (!notification || notification.is_read) return;
+
+    setAllNotifications(prev => prev.map(item =>
+      item.NOTI_id === notification.NOTI_id ? { ...item, is_read: true } : item
+    ));
+    setServerUnreadCount(count => Math.max(0, count - 1));
+
+    try {
+      await getNotificationDetail(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to mark notification as read', error);
+    }
+  };
+
+  const handleDeleteNotification = async (notification) => {
+    if (!notification?.NOTI_id) return;
+    setAllNotifications(prev => prev.filter(item => item.NOTI_id !== notification.NOTI_id));
+    if (!notification.is_read) {
+      setServerUnreadCount(count => Math.max(0, count - 1));
+    }
+
+    try {
+      await deleteNotification(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to delete notification', error);
+    }
   };
 
   const [sprintsForModal, setSprintsForModal] = useState([
@@ -317,24 +441,16 @@ export default function MainLayout() {
     }
   }, [location.pathname, showNotifications, showSettings, showAvatarDropdown, showSearchDropdown,showApps]);
 
-  const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
-  const isTasksActive = location.pathname === '/dashboard/spaces' || location.pathname.includes('/dashboard/tasks');
-  const isUsersActive = location.pathname === '/dashboard/users';
-  const isProfileActive = location.pathname === '/dashboard/profile';
-  const isNotificationsActive = location.pathname === '/dashboard/notifications';
-  const isSettingsActive = location.pathname === '/dashboard/notification-settings';
-  const isHelpActive = location.pathname === '/dashboard/help';
-
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
     if (!isSuperAdmin) {
       // If on Dashboard (index) redirect to Space Management
       if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
       // If trying to access Users page, redirect to Space Management
       if (location.pathname.startsWith('/dashboard/users')) {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
     }
   }, [isSuperAdmin, location.pathname, location.search, navigate]);
@@ -374,8 +490,8 @@ export default function MainLayout() {
 
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
-  const buildSearchParams = (updates = {}) => {
-    const params = new URLSearchParams(location.search);
+  const buildSearchParams = (updates = {}, { preservePageParams = false } = {}) => {
+    const params = preservePageParams ? new URLSearchParams(location.search) : copyLayoutQueryParams(location.search);
     Object.entries(updates).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') {
         params.delete(key);
@@ -385,6 +501,27 @@ export default function MainLayout() {
     });
     const query = params.toString();
     return query ? `?${query}` : '';
+  };
+
+  const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
+  const openDashboardPath = (path, updates = {}) => {
+    const targetPath = dashboardPath(path, updates);
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+
+    if (isLeavingTaskPage && typeof window !== 'undefined') {
+      window.location.assign(targetPath);
+      return;
+    }
+
+    navigate(targetPath);
+  };
+
+  const handleDashboardLinkClick = (event, path, updates = {}) => {
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+    if (!isLeavingTaskPage) return;
+
+    event.preventDefault();
+    openDashboardPath(path, updates);
   };
 
   const handleSearchSpaceClick = (taskId) => {
@@ -402,7 +539,7 @@ export default function MainLayout() {
 
   const handleSearchUserClick = (user) => {
     if (!isSuperAdmin || !user?.id) return;
-    navigate(`/dashboard/users${buildSearchParams({ userId: user.id, mode: 'edit' })}`);
+    openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -422,10 +559,9 @@ export default function MainLayout() {
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
-  const handleLogoutClick = () => {
-    // In a real application, this would involve clearing authentication tokens/state
-    console.log("User logged out"); // Placeholder for actual logout logic
-    navigate('/'); // Redirect to login or home page
+  const handleLogoutClick = async () => {
+    await logout();
+    navigate('/', { replace: true });
     setShowAvatarDropdown(false); // Close dropdown after logout
   };
   const handleChangeLanguage = (lang) => {
@@ -443,49 +579,6 @@ export default function MainLayout() {
     currentUser,
     currentSpaceRole,
     isSuperAdmin
-  };
-
-  const renderMainContent = () => {
-    const pathname = location.pathname.replace(/\/+$/, '') || '/dashboard';
-
-    if (pathname === '/dashboard') {
-      return <Dashboard />;
-    }
-
-    if (pathname === '/dashboard/spaces') {
-      return <SpaceManagement routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/users') {
-      return <UserManagement />;
-    }
-
-    if (pathname === '/dashboard/profile') {
-      return <ProfilePage routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/help') {
-      return <HelpCenter />;
-    }
-
-    if (pathname === '/dashboard/notification-settings') {
-      return <NotificationSettingsPage />;
-    }
-
-    if (pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/')) {
-      const spaceId = pathname.startsWith('/dashboard/tasks/')
-        ? decodeURIComponent(pathname.slice('/dashboard/tasks/'.length))
-        : undefined;
-
-      return (
-        <TaskManagement
-          routeContext={layoutContext}
-          spaceIdOverride={spaceId}
-        />
-      );
-    }
-
-    return <Dashboard />;
   };
 
   return (
@@ -518,106 +611,125 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 space-y-1 mt-4">
-          {/* Dashboard Item */}
-          {isSuperAdmin && (isDashboardActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
-                <span className="text-sm font-bold">Dashboard</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
-              <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
-              <span className="text-sm font-medium">Dashboard</span>
-            </Link>
-          ))}
+<nav className="flex-1 px-3 space-y-1 mt-4">
+  {primaryNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
 
-          {/* Tasks Item */}
-          {isTasksActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
-                <div className="flex items-center">
-                  <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
-                  <span className="text-sm font-bold">Tasks</span>
-                </div>
-                <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
-              <div className="flex items-center">
-                <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
-                <span className="text-sm font-medium">Tasks</span>
-              </div>
-              <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-            </Link>
-          )}
+    const linkContent = (
+      <>
+        <div className="flex items-center min-w-0">
+          <i
+            className={`w-5 h-5 mr-3 shrink-0 ${
+              isActive ? 'text-[#2D1B4E]' : ''
+            }`}
+            data-lucide={item.icon}
+          ></i>
 
-          {/* Users Item */}
-          {isSuperAdmin && (isUsersActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
-                <span className="text-sm font-bold">Users</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
-              <i className="w-5 h-5 mr-3" data-lucide="users"></i>
-              <span className="text-sm font-medium">Users</span>
-            </Link>
-          ))}
-        </nav>
-
-        {/* Bottom Navigation */}
-        <div className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${showSettings ? '-translate-y-[100px]' : ''}`}>
-          {/* Help Item */}
-          {isHelpActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
-                <span className="text-sm font-bold">Help</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
-              <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
-              <span className="text-sm font-medium">Help</span>
-            </Link>
-          )}
-          <div className="relative" ref={settingsRef}>
-            <button
-              onClick={() => openDashboardPath('/dashboard/notification-settings')}
-              className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
-                isSettingsActive
-                  ? "bg-[#E0E8FF] text-[#2D1B4E]"
-                  : "text-[#6B7280] hover:bg-gray-50"
-              }`}
-            >
-              {isSettingsActive && <div className="sidebar-active-indicator"></div>}
-
-              <div className="flex items-center flex-1">
-                <i
-                  className={`w-5 h-5 mr-3 ${
-                    isSettingsActive ? "text-[#2D1B4E]" : ""
-                  }`}
-                  data-lucide="settings"
-                ></i>
-
-                <span className={`text-sm ${isSettingsActive ? "font-bold" : "font-medium"}`}>
-                  Settings
-                </span>
-              </div>
-            </button>
-          </div>
+          <span
+            className={`text-sm ${
+              isActive ? 'font-bold' : 'font-medium'
+            }`}
+          >
+            {item.label}
+          </span>
         </div>
+
+        {item.badge !== undefined && (
+          <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </>
+    );
+
+    return isActive ? (
+      <div className="relative flex items-center" key={item.key}>
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className={`flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 ${
+            item.badge !== undefined ? 'justify-between' : ''
+          }`}
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          {linkContent}
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className={`flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors ${
+          item.badge !== undefined ? 'justify-between' : ''
+        }`}
+        key={item.key}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        {linkContent}
+      </Link>
+    );
+  })}
+</nav>
+        {/* Bottom Navigation */}
+<div
+  className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${
+    showSettings ? '-translate-y-[100px]' : ''
+  }`}
+>
+  {supportNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
+
+    return isActive ? (
+      <div
+        className="relative flex items-center"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+      >
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2"
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          <i
+            className="w-5 h-5 mr-3 text-[#2D1B4E]"
+            data-lucide={item.icon}
+          ></i>
+
+          <span className="text-sm font-bold">
+            {item.label}
+          </span>
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        <i
+          className="w-5 h-5 mr-3"
+          data-lucide={item.icon}
+        ></i>
+
+        <span className="text-sm font-medium">
+          {item.label}
+        </span>
+      </Link>
+    );
+  })}
+</div>
       </aside>
       {/* END: LeftSidebar */}
 
@@ -890,6 +1002,8 @@ export default function MainLayout() {
                   <NotificationDropdown
                     notifications={filteredNotifications}
                     onMarkAllRead={handleMarkAllRead}
+                    onNotificationClick={handleNotificationRead}
+                    onDeleteNotification={handleDeleteNotification}
                     onViewAll={() => {
                       setShowNotifications(false);
                       setShowNotificationsModal(true);
@@ -907,11 +1021,15 @@ export default function MainLayout() {
                 onClick={() => setShowAvatarDropdown(prev => !prev)}
                 className="flex items-center space-x-3 border-l pl-6 border-gray-200 font-['Inter']">
                 <div className="w-10 h-10 rounded-full bg-purple-100 border border-[#2D1B4E] flex items-center justify-center overflow-hidden shrink-0">
-                  <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
-                    <span className="text-[#2D1B4E] text-xs font-bold">
-                      {currentUser.initials}
-                    </span>
-                  </div>
+                  {currentUser.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
+                      <span className="text-[#2D1B4E] text-xs font-bold">
+                        {currentUser.initials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Name Section - flex-1 để đẩy icon sang phải */}
@@ -927,6 +1045,7 @@ export default function MainLayout() {
                 >
                     <AvatarDropdown
                         currentRole={currentRole}
+                        currentUser={currentUser}
                         onClose={() => setShowAvatarDropdown(false)}
                         onProfileClick={handleProfileClick}
                         onNotificationClick={handleNotificationClick}
@@ -942,9 +1061,7 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <React.Fragment key={location.pathname}>
-            {renderMainContent()}
-          </React.Fragment>
+          <Outlet key={`${location.pathname}${location.search}`} context={layoutContext} />
         </main>
         {/* END: MainContentArea */}
 
@@ -958,6 +1075,7 @@ export default function MainLayout() {
         initialSprint={createTaskInitialSprint}
         onCreateTask={createTaskHandler}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
       />
 
@@ -968,7 +1086,8 @@ export default function MainLayout() {
         currentSpaceRole={currentSpaceRole}
         isSuperAdmin={isSuperAdmin}
         notifications={allNotifications}
-        onUpdateNotifications={setAllNotifications}
+        onUpdateNotifications={handleUpdateNotifications}
+        onDeleteNotification={handleDeleteNotification}
       />
     </div>
   );

@@ -9,6 +9,7 @@ from app.models import (  # noqa: E402,F401
     RecentView,
     Space,
     SpaceMember,
+    SpaceMemberRequest,
     Sprint,
     Task,
     TaskAssignee,

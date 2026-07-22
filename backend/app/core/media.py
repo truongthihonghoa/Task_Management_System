@@ -6,6 +6,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", BACKEND_DIR / "media")).resolve()
 MEDIA_FOLDERS = {
     "attachment": "attachments",
+    "avatar": "avatars",
     "comment": "comments",
     "description": "descriptions",
 }

@@ -24,6 +24,9 @@ class SpaceResponse(BaseModel):
     status_space: str
     created_at: datetime
     updated_at: datetime
+    archived_at: Optional[datetime] = None
+    reopen_until: Optional[datetime] = None
+    can_reopen: bool = False
     deleted_at: Optional[datetime]
 
 
@@ -56,6 +59,61 @@ class SpaceMemberCreate(BaseModel):
 
 class SpaceMemberUpdate(BaseModel):
     role: Literal["MEMBER", "OWNER"]
+
+
+class SpaceAddPeopleRequest(BaseModel):
+    user_id: Optional[str] = Field(default=None, max_length=15)
+    email: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        email = normalize_email(value)
+        if not EMAIL_PATTERN.fullmatch(email):
+            raise ValueError("Invalid email format.")
+        return email
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        name = value.strip()
+        return name or None
+
+    @model_validator(mode="after")
+    def validate_identifier(self) -> "SpaceAddPeopleRequest":
+        if not self.user_id and not self.email and not self.name:
+            raise ValueError("Provide user_id, email, or name.")
+        return self
+
+
+class SpaceMemberRequestResponse(BaseModel):
+    space_member_request_id: str
+    space_id: str
+    requester_id: str
+    requested_user_id: Optional[str]
+    requested_email: str
+    requested_name: Optional[str]
+    owner_id: str
+    status: str
+    requested_at: datetime
+    reviewed_at: Optional[datetime]
+    requester: Optional[UserSummaryResponse] = None
+    requested_user: Optional[UserSummaryResponse] = None
+    owner: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceAddPeopleResponse(BaseModel):
+    status: Literal["PENDING_OWNER", "PENDING_INVITEE", "APPROVED", "REJECTED"]
+    message: str
+    member: Optional[SpaceMemberResponse] = None
+    request: Optional[SpaceMemberRequestResponse] = None
 
 
 class AssignTaskAssigneesRequest(BaseModel):
@@ -112,7 +170,7 @@ class SprintCreate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     duration_weeks: Optional[int] = Field(default=2, ge=1, le=52)
-    status: Literal["Planned", "Active"] = "Active"
+    status: Literal["Planned", "Active"] = "Planned"
     auto_start: bool = False
     auto_complete: bool = False
 
@@ -315,6 +373,8 @@ class TaskListItemResponse(BaseModel):
     priority: str
     task_status: str
     completed_at: Optional[datetime]
+    is_overdue: bool = False
+    is_due_today: bool = False
     story_points: Optional[float]
     created_at: datetime
     updated_at: datetime
@@ -490,18 +550,11 @@ class LoginResponse(BaseModel):
     user: LoginUserResponse
 
 
-class VerifyResetCodeRequest(EmailRequest):
-    code: str = Field(..., min_length=6, max_length=6)
 
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, value: str) -> str:
-        if not value.isdigit() or len(value) != 6:
-            raise ValueError("Code must be exactly 6 digits.")
-        return value
 
 
 class ResetPasswordRequest(EmailRequest):
+    token: str = Field(..., min_length=6, max_length=6)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
 
@@ -533,11 +586,21 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class RegisterUserResponse(BaseModel):
+    full_name: str
+    email: str
+    role: str
+
+    model_config = {"from_attributes": True}
 
 class RegisterResponse(MessageResponse):
-    user: UserResponse
+    email: str
+    full_name: str
+    role: str
     access_token: str
     refresh_token: str
+    token_type: str = "Bearer"
+    user: LoginUserResponse
 
 
 UserStatus = Literal["Pending", "Active", "Inactive", "Locked"]
@@ -576,6 +639,12 @@ class UserManagementUpdateRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+class UserStatusUpdateRequest(BaseModel):
+    status: Literal["Active", "Inactive"]
+
+
+class UserLockUpdateRequest(BaseModel):
+    locked: bool
 
 class UserProfileResponse(BaseModel):
     avatar_url: str | None
@@ -622,3 +691,9 @@ class ChangePasswordRequest(BaseModel):
         if self.current_password == self.new_password:
             raise ValueError("New password must not be the same as current password.")
         return self
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+    

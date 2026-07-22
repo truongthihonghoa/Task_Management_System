@@ -1,23 +1,14 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class CurrentUserLayoutResponse(BaseModel):
-    user_id: str
-    full_name: str
-    email: str
-    initials: str
-    avatar_url: str | None
-    system_role: str
-    display_role: str
+class MainLayoutResponse(BaseModel):
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class SidebarSummaryResponse(BaseModel):
-    task_count: int
-    can_view_dashboard: bool = False
-    can_view_users: bool = False
-    can_create_task: bool = False
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class MainLayoutPreferencesResponse(BaseModel):
@@ -26,17 +17,6 @@ class MainLayoutPreferencesResponse(BaseModel):
 
 class MainLayoutLanguageRequest(BaseModel):
     language: Literal["en", "vi"]
-
-
-class MainLayoutNotificationResponse(BaseModel):
-    unread_count: int
-
-
-class MainLayoutResponse(BaseModel):
-    current_user: CurrentUserLayoutResponse
-    sidebar: SidebarSummaryResponse
-    preferences: MainLayoutPreferencesResponse
-    notification: MainLayoutNotificationResponse
 
 
 class SpacePermissionResponse(BaseModel):

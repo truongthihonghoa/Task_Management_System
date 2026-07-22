@@ -49,6 +49,11 @@ class NotificationEmailFrequency(str, Enum):
     OFF = "OFF"
 
 
+class NotificationEmailDeliveryMode(str, Enum):
+    INSTANT = "INSTANT"
+    OFF = "OFF"
+
+
 class NotificationReadStatus(str, Enum):
     READ = "read"
     UNREAD = "unread"

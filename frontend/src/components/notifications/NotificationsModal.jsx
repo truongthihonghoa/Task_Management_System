@@ -2,17 +2,31 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, BellOff, X } from 'lucide-react';
 import NotificationItem from './NotificationItem';
+import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
-const NotificationsModal = ({ isOpen, onClose, currentRole, currentSpaceRole = 'USER', isSuperAdmin = false, notifications = [], onUpdateNotifications }) => {
+const NotificationsModal = ({
+  isOpen,
+  onClose,
+  currentRole,
+  currentSpaceRole = 'USER',
+  isSuperAdmin = false,
+  notifications = [],
+  onUpdateNotifications,
+  onDeleteNotification,
+}) => {
   const [filter, setFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
   if (!isOpen) return null;
 
   const roleFiltered = notifications.filter(n => {
+    if (!isNotificationWithinDisplayWindow(n)) {
+      return false;
+    }
     if (isSuperAdmin || currentRole === 'ADMIN') {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }
-    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+    return n.audience === 'USER' || n.audience === 'OWNER' || n.audience === 'MEMBER' || n.role === 'USER';
   });
 
   const filteredNotifications = roleFiltered.filter(n => {
@@ -34,6 +48,7 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, currentSpaceRole = '
   });
 
   const markAllAsRead = () => {
+    setOpenActionMenuId(null);
     const updated = notifications.map(n =>
       roleFiltered.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
     );
@@ -41,6 +56,7 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, currentSpaceRole = '
   };
 
   const handleNotificationClick = (clickedNoti) => {
+    setOpenActionMenuId(null);
     const updated = notifications.map(n =>
       n.NOTI_id === clickedNoti.NOTI_id ? { ...n, is_read: true } : n
     );
@@ -132,13 +148,26 @@ const NotificationsModal = ({ isOpen, onClose, currentRole, currentSpaceRole = '
         {/* Dynamic List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-gray-50">
           {filteredNotifications.length > 0 ? (
-            filteredNotifications.map(notification => (
-              <NotificationItem
-                key={notification.NOTI_id}
-                notification={notification}
-                onClick={handleNotificationClick}
-              />
-            ))
+            <>
+              {filteredNotifications.map(notification => (
+                <NotificationItem
+                  key={notification.NOTI_id}
+                  notification={notification}
+                  onClick={handleNotificationClick}
+                  onDelete={onDeleteNotification}
+                  isMenuOpen={openActionMenuId === notification.NOTI_id}
+                  onMenuToggle={(notificationId) => {
+                    setOpenActionMenuId((currentId) => (
+                      currentId === notificationId ? null : notificationId
+                    ));
+                  }}
+                  onMenuClose={() => setOpenActionMenuId(null)}
+                />
+              ))}
+              <div className="py-4 text-center text-xs font-semibold text-gray-400">
+                {notificationLimitMessage}
+              </div>
+            </>
           ) : (
             <div className="py-20 flex flex-col items-center justify-center text-center px-10">
               <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">

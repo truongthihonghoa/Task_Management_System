@@ -1,23 +1,34 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
  
-const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser }) => {
+const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser, isSubmitting = false, submitError = '' }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: ''
   });
+  const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalError('');
+    }
+  }, [isOpen]);
  
   if (!isOpen) return null;
  
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Include owner information when creating space
-    onCreate({
-      ...formData,
-      owner: currentUser?.id,
-      ownerName: currentUser?.name
-    });
-    onClose();
-    setFormData({ title: '', description: '' });
+    setLocalError('');
+
+    try {
+      await onCreate({
+        ...formData,
+        owner: currentUser?.id,
+        ownerName: currentUser?.name
+      });
+      setFormData({ title: '', description: '' });
+    } catch (error) {
+      setLocalError(error?.message || 'Unable to create this space.');
+    }
   };
  
   return (
@@ -57,20 +68,28 @@ const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser }) => {
               onChange={(e) => setFormData({...formData, description: e.target.value})}
             />
           </div>
+
+          {(localError || submitError) && (
+            <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-700">
+              {localError || submitError}
+            </div>
+          )}
  
           <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
+              disabled={isSubmitting}
               className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-gray-500 hover:bg-gray-100 transition-all border border-gray-100"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4C2B74] hover:bg-[#3D225E] transition-all shadow-md shadow-purple-200 active:scale-95"
+              disabled={isSubmitting}
+              className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4C2B74] hover:bg-[#3D225E] transition-all shadow-md shadow-purple-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Create Space
+              {isSubmitting ? 'Creating...' : 'Create Space'}
             </button>
           </div>
         </form>

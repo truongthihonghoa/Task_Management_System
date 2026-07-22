@@ -1,214 +1,242 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from 'react';
+import { changePassword } from '../../api/profileApi';
 
-export default function ChangePasswordSection() {
+function getErrorMessage(error) {
+  const detail = error?.response?.data?.detail;
+  const message = error?.response?.data?.message;
+
+  if (message) return message;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+  if (detail?.message) return detail.message;
+
+  return 'Unable to change password. Please try again.';
+}
+
+export default function ChangePasswordSection({ onPasswordChanged }) {
   const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
-
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
     confirm: false,
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const [passwordStrength, setPasswordStrength] = useState(0);
+  const requirements = useMemo(() => ({
+    length: passwordData.newPassword.length >= 8,
+    upper: /[A-Z]/.test(passwordData.newPassword),
+    lower: /[a-z]/.test(passwordData.newPassword),
+    number: /[0-9]/.test(passwordData.newPassword),
+    special: /[^A-Za-z0-9]/.test(passwordData.newPassword),
+  }), [passwordData.newPassword]);
 
-  useEffect(() => {
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
-  }, [showPasswords, passwordStrength]);
-
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target;
-
-    setPasswordData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    if (name === "newPassword") {
-      let strength = 0;
-
-      if (value.length >= 8) strength += 20;
-      if (/[A-Z]/.test(value)) strength += 20;
-      if (/[a-z]/.test(value)) strength += 20;
-      if (/[0-9]/.test(value)) strength += 20;
-      if (/[^A-Za-z0-9]/.test(value)) strength += 20;
-
-      setPasswordStrength(strength);
-    }
-  };
-
-  const togglePasswordVisibility = (field) => {
-    setShowPasswords((prev) => ({
-      ...prev,
-      [field]: !prev[field],
-    }));
-  };
+  const passwordStrength = Object.values(requirements).filter(Boolean).length * 20;
 
   const getStrengthColor = () => {
-    if (passwordStrength <= 20) return "bg-red-500";
-    if (passwordStrength <= 40) return "bg-orange-500";
-    if (passwordStrength <= 60) return "bg-yellow-500";
-    if (passwordStrength <= 80) return "bg-blue-500";
-    return "bg-green-500";
+    if (passwordStrength <= 20) return 'bg-red-500';
+    if (passwordStrength <= 40) return 'bg-orange-500';
+    if (passwordStrength <= 60) return 'bg-yellow-500';
+    if (passwordStrength <= 80) return 'bg-blue-500';
+    return 'bg-green-500';
   };
 
   const getStrengthText = () => {
-    if (passwordStrength <= 20) return "Weak";
-    if (passwordStrength <= 40) return "Fair";
-    if (passwordStrength <= 60) return "Good";
-    if (passwordStrength <= 80) return "Strong";
-    return "Very Strong";
+    if (!passwordData.newPassword) return 'None';
+    if (passwordStrength <= 20) return 'Weak';
+    if (passwordStrength <= 40) return 'Fair';
+    if (passwordStrength <= 60) return 'Good';
+    if (passwordStrength <= 80) return 'Strong';
+    return 'Very Strong';
   };
 
-  const isMinLength = passwordData.newPassword.length >= 8;
-  const hasUppercase = /[A-Z]/.test(passwordData.newPassword);
-  const hasLowercase = /[a-z]/.test(passwordData.newPassword);
-  const hasNumber = /[0-9]/.test(passwordData.newPassword);
-  const hasSpecialChar = /[^A-Za-z0-9]/.test(passwordData.newPassword);
+  const handlePasswordChange = (event) => {
+    const { name, value } = event.target;
+    setPasswordData((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+    setErrorMessage('');
+    setSuccessMessage('');
+  };
+
+  const togglePasswordVisibility = (field) => {
+    setShowPasswords((previous) => ({
+      ...previous,
+      [field]: !previous[field],
+    }));
+  };
+
+  const resetForm = () => {
+    setPasswordData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    });
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setErrorMessage('Confirm password mismatch.');
+      return;
+    }
+
+    if (passwordData.currentPassword === passwordData.newPassword) {
+      setErrorMessage('New password must not be the same as current password.');
+      return;
+    }
+
+    if (!Object.values(requirements).every(Boolean)) {
+      setErrorMessage('New password must meet all requirements.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await changePassword(passwordData);
+      resetForm();
+      setSuccessMessage(response.message || 'Password changed successfully.');
+      onPasswordChanged?.(response);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const renderStatusIcon = (isValid) => (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={
-        isValid
-          ? "text-green-600 flex-shrink-0"
-          : "text-gray-400 flex-shrink-0"
-      }
+    <span
+      className={`material-symbols-outlined text-[16px] ${isValid ? 'text-green-600' : 'text-gray-400'}`}
+      style={{ fontVariationSettings: isValid ? "'FILL' 1" : "'FILL' 0" }}
     >
-      {isValid ? (
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4l-12 10.01-3-3" />
-      ) : (
-        <circle cx="12" cy="12" r="10" />
-      )}
-    </svg>
+      {isValid ? 'check_circle' : 'circle'}
+    </span>
   );
 
   return (
-    <div className="border-t border-gray-200 pt-6 mt-6">
+    <form className="space-y-4" onSubmit={handleSubmit} autoComplete="off">
+      <input className="hidden" type="text" name="fake-profile-username" autoComplete="username" tabIndex={-1} aria-hidden="true" />
+      <input className="hidden" type="password" name="fake-profile-password" autoComplete="current-password" tabIndex={-1} aria-hidden="true" />
 
-      <h3 className="text-lg font-semibold text-gray-900 mb-5">
-        Change Password
-      </h3>
+      <h3 className="text-lg font-semibold text-gray-900">Change Password</h3>
 
-      <div className="space-y-4">
+      {[
+        {
+          label: 'Current Password',
+          stateName: 'currentPassword',
+          inputName: 'profile-current-password',
+          key: 'current',
+          autoComplete: 'current-password',
+        },
+        {
+          label: 'New Password',
+          stateName: 'newPassword',
+          inputName: 'profile-new-password',
+          key: 'new',
+          autoComplete: 'new-password',
+        },
+        {
+          label: 'Confirm Password',
+          stateName: 'confirmPassword',
+          inputName: 'profile-confirm-password',
+          key: 'confirm',
+          autoComplete: 'new-password',
+        },
+      ].map((item) => (
+        <div key={item.key}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {item.label}
+          </label>
 
-        {[
-          {
-            label: "Current Password",
-            name: "currentPassword",
-            key: "current",
-          },
-          {
-            label: "New Password",
-            name: "newPassword",
-            key: "new",
-          },
-          {
-            label: "Confirm Password",
-            name: "confirmPassword",
-            key: "confirm",
-          },
-        ].map((item) => (
-          <div key={item.key}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {item.label}
-            </label>
+          <div className="relative">
+            <input
+              type={showPasswords[item.key] ? 'text' : 'password'}
+              name={item.stateName}
+              autoComplete={item.autoComplete}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              value={passwordData[item.stateName]}
+              onChange={handlePasswordChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2D1B4E] pr-12"
+              disabled={isSubmitting}
+              required
+            />
 
-            <div className="relative">
-              <input
-                type={showPasswords[item.key] ? "text" : "password"}
-                name={item.name}
-                value={passwordData[item.name]}
-                onChange={handlePasswordChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#2D1B4E] pr-12"
-              />
-
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility(item.key)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-              >
-                <i
-                  className="w-4 h-4 text-gray-500"
-                  data-lucide={
-                    showPasswords[item.key] ? "eye-off" : "eye"
-                  }
-                ></i>
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {passwordData.newPassword && (
-          <div className="bg-gray-50 rounded-lg p-3">
-
-            <div className="flex justify-between text-sm mb-2">
-              <span>Password Strength</span>
-
-              <span className="font-semibold">
-                {getStrengthText()}
+            <button
+              type="button"
+              onClick={() => togglePasswordVisibility(item.key)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                {showPasswords[item.key] ? 'visibility_off' : 'visibility'}
               </span>
-            </div>
-
-            <div className="w-full h-2 bg-gray-200 rounded-full">
-              <div
-                className={`h-2 rounded-full transition-all ${getStrengthColor()}`}
-                style={{ width: `${passwordStrength}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        <div>
-
-          <p className="text-sm font-semibold mb-2">
-            Password Requirements
-          </p>
-
-          <div className="space-y-2 text-sm">
-
-            <div className="flex items-center gap-2">
-              {renderStatusIcon(isMinLength)}
-              <span>Minimum 8 characters</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {renderStatusIcon(hasUppercase)}
-              <span>One uppercase letter</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {renderStatusIcon(hasLowercase)}
-              <span>One lowercase letter</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {renderStatusIcon(hasNumber)}
-              <span>One number</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {renderStatusIcon(hasSpecialChar)}
-              <span>One special character</span>
-            </div>
-
+            </button>
           </div>
         </div>
+      ))}
 
+      {passwordData.newPassword && (
+        <div className="bg-gray-50 rounded-lg p-3">
+          <div className="flex justify-between text-sm mb-2">
+            <span>Password Strength</span>
+            <span className="font-semibold">{getStrengthText()}</span>
+          </div>
+          <div className="w-full h-2 bg-gray-200 rounded-full">
+            <div
+              className={`h-2 rounded-full transition-all ${getStrengthColor()}`}
+              style={{ width: `${passwordStrength}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-sm font-semibold mb-2">Password Requirements</p>
+        <div className="space-y-2 text-sm">
+          {[
+            ['length', 'Minimum 8 characters'],
+            ['upper', 'One uppercase letter'],
+            ['lower', 'One lowercase letter'],
+            ['number', 'One number'],
+            ['special', 'One special character'],
+          ].map(([key, label]) => (
+            <div key={key} className="flex items-center gap-2">
+              {renderStatusIcon(requirements[key])}
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {errorMessage && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {errorMessage}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+          {successMessage}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="px-4 py-2 bg-[#2D1B4E] text-white rounded-lg hover:bg-opacity-90 font-bold disabled:opacity-70 disabled:cursor-not-allowed"
+      >
+        {isSubmitting ? 'Saving...' : 'Change Password'}
+      </button>
+    </form>
   );
 }

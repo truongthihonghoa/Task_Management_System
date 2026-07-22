@@ -2,6 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 
+const getLayoutQueryString = (search) => {
+  const currentParams = new URLSearchParams(search);
+  const nextParams = new URLSearchParams();
+  ['role', 'spaceRole', 'user'].forEach((key) => {
+    const value = currentParams.get(key);
+    if (value) {
+      nextParams.set(key, value);
+    }
+  });
+  const query = nextParams.toString();
+  return query ? `?${query}` : '';
+};
 
 const userActivities = [
   {
@@ -634,10 +646,57 @@ const spaceSummaryAssignedTasks = [
 
 
 const adminAssignedTasks = [
-  { title: "User Assignment - Alice to SCRUM-13", subtitle: "HIST-001", status: "done", group: "Assignment" },
-  { title: "Role Change - Bob to Developer", subtitle: "HIST-002", status: "done", group: "Role" },
-  { title: "New Task - SCRUM-14 Created", subtitle: "HIST-003", status: "done", group: "System" }
+  {
+    assignment_history_id: "HIST-001",
+    task_id: "SCRUM-13",
+    task_title: "Design Base Layout",
+    space_name: "Task Management System",
+    previous_assignee: { full_name: "Alice Chen", initials: "AC", color: "#6366f1" },
+    new_assignee: { full_name: "Minh Tran", initials: "MT", color: "#10b981" },
+    changed_by: { full_name: "Alex Morgan", initials: "AM", color: "#7c3aed" },
+    reason: "Rebalanced sprint workload after priority change.",
+    status: "in_progress",
+    group: "Today",
+    changed_at: "2026-06-25 09:20"
+  },
+  {
+    assignment_history_id: "HIST-002",
+    task_id: "SCRUM-09",
+    task_title: "Build Notification Preferences",
+    space_name: "Productivity Pro",
+    previous_assignee: { full_name: "Bob Martin", initials: "BM", color: "#f97316" },
+    new_assignee: { full_name: "Emma Wilson", initials: "EW", color: "#2563eb" },
+    changed_by: { full_name: "Sarah Lee", initials: "SL", color: "#db2777" },
+    reason: "Owner requested handoff to backend maintainer.",
+    status: "done",
+    group: "Yesterday",
+    changed_at: "2026-06-24 15:45"
+  },
+  {
+    assignment_history_id: "HIST-003",
+    task_id: "SCRUM-04",
+    task_title: "Security Protocols Audit",
+    space_name: "Security",
+    previous_assignee: { full_name: "Pham Tien", initials: "PT", color: "#2f3650" },
+    new_assignee: { full_name: "Trang Nguyen", initials: "TN", color: "#14b8a6" },
+    changed_by: { full_name: "System Bot", initials: "SB", color: "#475569" },
+    reason: "Auto reassigned after previous owner became inactive.",
+    status: "need_revision",
+    group: "In the last week",
+    changed_at: "2026-06-22 08:10"
+  }
 ];
+
+const assignmentStatusStyles = {
+  done: "bg-green-50 text-green-700 border-green-100",
+  in_progress: "bg-blue-50 text-blue-700 border-blue-100",
+  need_revision: "bg-red-50 text-red-700 border-red-100",
+  pending_review: "bg-amber-50 text-amber-700 border-amber-100",
+  new: "bg-gray-100 text-gray-700 border-gray-200",
+  cancelled: "bg-slate-100 text-slate-700 border-slate-200"
+};
+
+const formatAssignmentStatus = (status = "") => status.replace(/_/g, " ").toUpperCase();
 
 const userStatusData = [
   { label: 'Done', count: 28, color: '#4C2B74', dash: 59.6, offset: 0, tPos: { left: '95%', top: '35%' } },
@@ -755,7 +814,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   // Modal specific filters
   const [modalSearch, setModalSearch] = useState("");
   const [modalEventType, setModalEventType] = useState("All Events");
-  const [modalTimeRange, setModalTimeRange] = useState("Last 7 days");
+  const [modalTimeRange, setModalTimeRange] = useState("All time");
   const [modalSortOrder, setModalSortOrder] = useState("Newest First");
   const [selectedOperation, setSelectedOperation] = useState("User Management");
   const [showStatusFilter, setShowStatusFilter] = useState(false);
@@ -772,7 +831,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
 
   useEffect(() => {
     if (!embedded && roleParam === 'USER') {
-      navigate(`/dashboard/tasks${location.search}`, { replace: true });
+      navigate(`/dashboard/spaces${getLayoutQueryString(location.search)}`, { replace: true });
     }
   }, [embedded, location.search, navigate, roleParam]);
 
@@ -982,8 +1041,20 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
   const getFilteredData = (data) => {
     if (!isAdmin) return data;
     return data.filter(item => {
-      const matchSearch = item.title.toLowerCase().includes(modalSearch.toLowerCase()) ||
-        (item.subtitle && item.subtitle.toLowerCase().includes(modalSearch.toLowerCase()));
+      const normalizedSearch = modalSearch.toLowerCase();
+      const searchableText = [
+        item.title,
+        item.subtitle,
+        item.assignment_history_id,
+        item.task_id,
+        item.task_title,
+        item.space_name,
+        item.previous_assignee?.full_name,
+        item.new_assignee?.full_name,
+        item.changed_by?.full_name,
+        item.reason,
+      ].filter(Boolean).join(" ").toLowerCase();
+      const matchSearch = searchableText.includes(normalizedSearch);
 
       // Filter by operation card selection
       const matchOp = !item.operation || item.operation === selectedOperation;
@@ -1010,7 +1081,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
     const matchType = modalEventType === "All Events" || log.labelTitle.toLowerCase() === modalEventType.toLowerCase();
 
     // Time range filtering (simplified for mock)
-    const matchTime = modalTimeRange === "All Time" ||
+    const matchTime = modalTimeRange === "All time" ||
       (modalTimeRange === "Today" && log.group === "Today") ||
       (modalTimeRange === "Yesterday" && log.group === "Yesterday");
 
@@ -1037,10 +1108,6 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
     } else if (modalTimeRange === "Last 7 days") {
       const dateVal = new Date(log.createdAt.replace(' ', 'T')).getTime();
       const cutoff = new Date("2026-06-18T00:00:00").getTime();
-      matchDate = dateVal >= cutoff;
-    } else if (modalTimeRange === "Last 30 days") {
-      const dateVal = new Date(log.createdAt.replace(' ', 'T')).getTime();
-      const cutoff = new Date("2026-05-26T00:00:00").getTime();
       matchDate = dateVal >= cutoff;
     }
 
@@ -1264,7 +1331,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
                         setIsRefreshing(true);
                         setModalSearch("");
                         setModalEventType("All Events");
-                        setModalTimeRange("Last 7 days");
+                        setModalTimeRange("All time");
                         setModalSortOrder("Newest First");
                         setModalLabelTitle("All Labels");
                         setModalPage(1);
@@ -1289,10 +1356,10 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
                           onChange={(e) => { setModalTimeRange(e.target.value); setModalPage(1); }}
                           className="w-full appearance-none bg-white border border-outline-variant rounded-lg py-2 pl-10 pr-10 font-body-md focus:border-slate-600 focus:ring-0 transition-all cursor-pointer hover:bg-slate-100"
                         >
-                          <option value="Last 7 days">Last 7 days</option>
+                          <option value="All time">All time</option>
                           <option value="Today">Today</option>
                           <option value="Yesterday">Yesterday</option>
-                          <option value="Last 30 days">Last 30 days</option>
+                          <option value="Last 7 days">Last 7 days</option>
                         </select>
                         <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] pointer-events-none">expand_more</span>
                       </div>
@@ -1548,7 +1615,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
             <div className={isEmbeddedSummary ? 'mb-4' : 'mb-6'}>
               <div className="flex items-center justify-between">
                 <h4 className="text-lg font-bold text-[#170338]">Status Overview</h4>
-                <Link to={`/dashboard/spaces${location.search}`} className="text-[#170338] text-xs font-bold hover:underline">View all</Link>
+                <Link to={`/dashboard/spaces${getLayoutQueryString(location.search)}`} className="text-[#170338] text-xs font-bold hover:underline">View all</Link>
               </div>
               <p className="text-[#5e636e] text-sm mt-1">Snapshot of your work item statuses.</p>
             </div>
@@ -2096,26 +2163,100 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0 }
               {(activeTaskTab === 'Assigned to me' || activeTaskTab === 'Assign History') && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                   {(isAdmin || isPrivilegedSpaceSummary) ? (
-                    <div className="divide-y divide-gray-50">
-                      <div className="px-8 py-3 bg-gray-50/50">
-                        <p className="text-[10px] font-black text-[#8c8c8c] uppercase tracking-widest">TASK ASSIGNMENT HISTORY</p>
+                    <div>
+                      <div className="hidden xl:block px-8 py-3 bg-gradient-to-r from-[#faf7ff] via-white to-[#f8fafc] border-y border-[#ede7f6] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                        <div className="grid grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px] gap-6 items-center">
+                          {[
+                            { label: "Task", icon: "assignment" },
+                            { label: "Assignee Change", icon: "compare_arrows" },
+                            { label: "Changed By", icon: "manage_accounts" },
+                            { label: "Status", icon: "verified", align: "justify-end" },
+                          ].map(column => (
+                            <div key={column.label} className={`flex items-center gap-2 ${column.align || ""}`}>
+                              <span className="w-6 h-6 rounded-lg bg-white border border-[#e9ddf5] text-[#4C2B74] shadow-sm flex items-center justify-center material-symbols-outlined text-[15px]">
+                                {column.icon}
+                              </span>
+                              <span className="text-[10px] font-black text-[#4C2B74] uppercase tracking-[0.16em]">
+                                {column.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
-                      {filteredAssigned.map((task, idx) => (
-                        <div key={idx} className="px-8 py-5 flex items-center justify-between hover:bg-[#f9f1fc]/40 transition-all cursor-pointer group">
-                          <div className="flex items-center gap-4">
-                            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm group-hover:scale-110 transition-transform bg-amber-50 text-amber-600 border-amber-100">
-                              <span className="material-symbols-outlined text-[20px]">history</span>
-                            </div>
-                            <div>
-                              <h5 className="font-bold text-[#170338] text-[13.5px] group-hover:text-[#4C2B74] transition-colors">{task.title}</h5>
-                              <p className="text-[11px] text-[#5e636e] mt-0.5 font-medium">{task.subtitle}</p>
-                            </div>
-                          </div>
-                          <span className="px-2 py-1 rounded text-[9px] font-black bg-[#f4f5f7] text-[#5e636e] border border-[#dfe1e6] uppercase">DONE</span>
-                        </div>
+                      <div className="divide-y divide-gray-50">
+                        {filteredAssigned.map((task, idx) => {
+                          const statusClass = assignmentStatusStyles[task.status] || "bg-gray-100 text-gray-700 border-gray-200";
+                          return (
+                            <div key={task.assignment_history_id || idx} className="px-8 py-5 hover:bg-[#f9f1fc]/40 transition-all cursor-pointer group">
+                              <div className="grid grid-cols-1 xl:grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px] gap-5 xl:gap-6 items-start xl:items-center">
+                                <div className="flex items-start gap-4 min-w-0">
+                                  <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm group-hover:scale-105 transition-transform bg-amber-50 text-amber-600 border-amber-100">
+                                    <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <h5 className="font-bold text-[#170338] text-[13.5px] group-hover:text-[#4C2B74] transition-colors truncate">
+                                        {task.task_title || task.title}
+                                      </h5>
+                                      <span className="px-2 py-0.5 rounded-md bg-[#f4f5f7] text-[#5e636e] text-[9px] font-black border border-[#dfe1e6] shrink-0">
+                                        {task.task_id}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-[#5e636e] mt-1 font-semibold truncate">{task.space_name}</p>
+                                    <p className="text-[10px] text-[#8c8c8c] mt-1 font-bold">{task.assignment_history_id}</p>
+                                  </div>
+                                </div>
 
-                      ))}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    {[task.previous_assignee, task.new_assignee].map((person, personIdx) => (
+                                      <React.Fragment key={`${task.assignment_history_id}-${personIdx}`}>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <div
+                                            className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                                            style={{ backgroundColor: person?.color || "#64748b" }}
+                                            title={person?.full_name}
+                                          >
+                                            {person?.initials || "--"}
+                                          </div>
+                                          <span className="text-[12px] font-bold text-[#170338] truncate">{person?.full_name || "Unassigned"}</span>
+                                        </div>
+                                        {personIdx === 0 && (
+                                          <span className="material-symbols-outlined text-[18px] text-[#5e636e] shrink-0">arrow_forward</span>
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                  {task.reason && (
+                                    <p className="text-[11px] text-[#5e636e] mt-2 line-clamp-1">{task.reason}</p>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div
+                                    className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                                    style={{ backgroundColor: task.changed_by?.color || "#4C2B74" }}
+                                    title={task.changed_by?.full_name}
+                                  >
+                                    {task.changed_by?.initials || "--"}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[12px] font-bold text-[#170338] truncate">{task.changed_by?.full_name || "Unknown"}</p>
+                                    <p className="text-[10px] text-[#5e636e] font-semibold truncate">{task.changed_at}</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex xl:justify-end">
+                                  <span className={`px-2.5 py-1 rounded-md text-[9px] font-black border uppercase whitespace-nowrap ${statusClass}`}>
+                                    {formatAssignmentStatus(task.status)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : (
                     ["IN PROGRESS", "IN REVIEW", "TO DO"].map(group => {

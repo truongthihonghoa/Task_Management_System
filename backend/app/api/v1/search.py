@@ -8,7 +8,7 @@ from app.schemas.main_layout import GlobalSearchResponse
 from app.services import main_layout_service
 
 
-router = APIRouter(prefix="/search", tags=["Search"])
+router = APIRouter(prefix="/search", tags=["search"])
 
 
 @router.get("/global", response_model=GlobalSearchResponse)

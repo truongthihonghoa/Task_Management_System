@@ -4,28 +4,43 @@ user_service.py — Business logic for user management and profiles.
 
 import os
 import uuid
+import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.media import MEDIA_FOLDERS, MEDIA_ROOT
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.repository import user as user_repo
 from app.schemas.pydantic_models import (
     ChangePasswordRequest,
-    UpdateProfileRequest,
+    UpdateProfileRequest, 
     UserManagementListResponse,
     UserManagementResponse,
     UserProfileResponse,
+    UserStatusUpdateRequest,
+    UserLockUpdateRequest,
 )
+from app.services.notification_service import NotificationService
 
 SUPPORTED_STATUSES = {"Pending", "Active", "Inactive", "Locked"}
 SORT_FIELDS = {"created_at", "full_name", "email", "last_login"}
 READ_ONLY_UPDATE_FIELDS = {"email", "full_name", "password_hash"}
 ALLOWED_UPDATE_FIELDS = {"status", "is_verified", "failed_login_attempts", "locked_until"}
 ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "15"))
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
+
+
+def _notify_super_admins(db: Session, **kwargs) -> None:
+    try:
+        notification_service.create_super_admin_notification(db, **kwargs)
+    except Exception:
+        logger.exception("Unable to create super admin user-management notification.")
 
 
 def _user_response(user: User) -> UserManagementResponse:
@@ -132,30 +147,105 @@ def update_user(db: Session, user_id: str, update_data: dict[str, Any]) -> UserM
     return _user_response(user)
 
 
-def activate_user(db: Session, user_id: str) -> UserManagementResponse:
+def update_user_status(
+    db: Session,
+    user_id: str,
+    new_status: str,
+    actor_id: str | None = None,
+) -> UserManagementResponse:
+    if new_status not in {"Active", "Inactive"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid status.",
+        )
+
     user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Active"})
+    previous_status = user.status_user
+
+    user_repo.update_user_fields(
+        db,
+        user,
+        {"status_user": new_status},
+    )
+    if previous_status != new_status:
+        _notify_super_admins(
+            db,
+            notification_type="user_deactivated",
+            title="User status changed",
+            message=f"User {user.email} status changed from {previous_status} to {new_status}.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "new_status": new_status,
+            },
+        )
+
     return _user_response(user)
 
+def update_user_lock_status(
+    db: Session,
+    user_id: str,
+    locked: bool,
+    actor_id: str | None = None,
+) -> UserManagementResponse:
 
-def deactivate_user(db: Session, user_id: str) -> UserManagementResponse:
     user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Inactive"})
+    previous_status = user.status_user
+
+    if locked:
+        locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
+
+        user_repo.update_user_fields(
+            db,
+            user,
+            {
+                "status_user": "Locked",
+                "locked_until": locked_until,
+            },
+        )
+        _notify_super_admins(
+            db,
+            notification_type="account_locked",
+            title="Account locked",
+            message=f"User {user.email} account was locked by a Super Admin.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "locked_until": locked_until.isoformat(),
+            },
+        )
+    else:
+        user_repo.update_user_fields(
+            db,
+            user,
+            {
+                "status_user": "Active",
+                "failed_login_attempts": 0,
+                "locked_until": None,
+            },
+        )
+        _notify_super_admins(
+            db,
+            notification_type="user_deactivated",
+            title="Account unlocked",
+            message=f"User {user.email} account was unlocked and set to Active.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "new_status": "Active",
+            },
+        )
+
     return _user_response(user)
-
-
-def lock_user(db: Session, user_id: str) -> UserManagementResponse:
-    user = get_user_or_404(db, user_id)
-    locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
-    user_repo.update_user_fields(db, user, {"status_user": "Locked", "locked_until": locked_until})
-    return _user_response(user)
-
-
-def unlock_user(db: Session, user_id: str) -> UserManagementResponse:
-    user = get_user_or_404(db, user_id)
-    user_repo.update_user_fields(db, user, {"status_user": "Active", "failed_login_attempts": 0, "locked_until": None})
-    return _user_response(user)
-
 
 def get_user_profile(db: Session, user_id: str) -> UserProfileResponse:
     user = get_user_or_404(db, user_id)
@@ -183,27 +273,37 @@ def update_user_avatar(db: Session, user_id: str, file: UploadFile) -> str:
     if file_size > 5 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds 5 MB limit.")
 
-    avatar_dir = "media/avatars/"
-    os.makedirs(avatar_dir, exist_ok=True)
+    avatar_dir = MEDIA_ROOT / MEDIA_FOLDERS["avatar"]
+    avatar_dir.mkdir(parents=True, exist_ok=True)
 
-    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
+    ext = Path(file.filename or "").suffix.lower().lstrip(".") or "jpg"
     filename = f"{uuid.uuid4()}.{ext}"
-    filepath = os.path.join(avatar_dir, filename).replace("\\", "/")
+    filepath = avatar_dir / filename
+    avatar_url = f"/media/{MEDIA_FOLDERS['avatar']}/{filename}"
 
-    with open(filepath, "wb") as f:
+    with filepath.open("wb") as f:
         f.write(file.file.read())
 
     old_avatar = user.avatar_url
-    user_repo.update_user_fields(db, user, {"avatar_url": filepath})
+    user_repo.update_user_fields(db, user, {"avatar_url": avatar_url})
+    db.flush()
 
-    if old_avatar and os.path.exists(old_avatar):
-        if not old_avatar.endswith("default.png") and not old_avatar.endswith("default.jpg"):
+    if old_avatar and not old_avatar.endswith(("default.png", "default.jpg")):
+        old_path = None
+        if old_avatar.startswith("/media/"):
+            old_path = MEDIA_ROOT / old_avatar.removeprefix("/media/")
+        elif old_avatar.startswith("media/"):
+            old_path = MEDIA_ROOT / old_avatar.removeprefix("media/")
+        else:
+            old_path = Path(old_avatar)
+
+        if old_path.exists() and old_path.is_file():
             try:
-                os.remove(old_avatar)
+                old_path.unlink()
             except OSError:
                 pass
 
-    return filepath
+    return avatar_url
 
 
 def change_user_password(db: Session, user_id: str, password_data: ChangePasswordRequest) -> None:

@@ -1,11 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
+import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
-const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose }) => {
+const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose, onNotificationClick, onDeleteNotification }) => {
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const visibleNotifications = useMemo(
+    () => notifications.filter(isNotificationWithinDisplayWindow),
+    [notifications]
+  );
+
   const groupedNotifications = useMemo(() => {
     const groups = { Today: [], Yesterday: [], Earlier: [] };
-    notifications.forEach(n => {
+    visibleNotifications.forEach(n => {
       if (groups[n.group]) {
         groups[n.group].push(n);
       } else {
@@ -13,12 +20,13 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
       }
     });
     return groups;
-  }, [notifications]);
+  }, [visibleNotifications]);
 
-  const hasNotifications = notifications.length > 0;
+  const hasNotifications = visibleNotifications.length > 0;
 
   // Open the full notifications modal from the header dropdown.
   const handleNavigateToAll = () => {
+    setOpenActionMenuId(null);
     onViewAll?.();
     onClose?.();
   };
@@ -30,7 +38,10 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
         <h3 className="font-bold text-[#4C2B74]">Notifications</h3>
         <div className="flex items-center space-x-4">
           <button 
-            onClick={onMarkAllRead}
+            onClick={() => {
+              setOpenActionMenuId(null);
+              onMarkAllRead?.();
+            }}
             className="text-xs font-semibold text-[#4C2B74] hover:underline"
           >
             Mark all as read
@@ -57,7 +68,19 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
                   <NotificationItem 
                     key={item.NOTI_id} 
                     notification={item} 
-                    onClick={onClose}
+                    onClick={(notification) => {
+                      setOpenActionMenuId(null);
+                      onNotificationClick?.(notification);
+                      onClose?.();
+                    }}
+                    onDelete={onDeleteNotification}
+                    isMenuOpen={openActionMenuId === item.NOTI_id}
+                    onMenuToggle={(notificationId) => {
+                      setOpenActionMenuId((currentId) => (
+                        currentId === notificationId ? null : notificationId
+                      ));
+                    }}
+                    onMenuClose={() => setOpenActionMenuId(null)}
                   />
                 ))}
               </div>
@@ -70,6 +93,11 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
             </div>
             <h4 className="font-bold text-gray-700 mb-1">You're all caught up!</h4>
             <p className="text-xs text-gray-400">No new notifications.</p>
+          </div>
+        )}
+        {hasNotifications && (
+          <div className="px-5 py-3 text-center text-[11px] font-semibold text-gray-400 border-t border-gray-100">
+            {notificationLimitMessage}
           </div>
         )}
       </div>
