@@ -145,6 +145,8 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
         {"status": "Active"},
         {"status": "Inactive"},
         {"status": "Locked"},
+        {"role": "SUPER_ADMIN"},
+        {"role": "USER"},
         {"is_verified": True},
         {"is_verified": False},
         {"failed_login_attempts": 0},
@@ -153,6 +155,7 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
         {"locked_until": None},
         {
             "status": "Locked",
+            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
             "locked_until": datetime.utcnow(),
@@ -174,7 +177,8 @@ def test_validate_update_payload_accepts_allowed_fields(payload):
             {"email": "new@example.com", "full_name": "New Name"},
             "Read-only fields cannot be modified after registration: email, full_name",
         ),
-        ({"role": "SUPER_ADMIN"}, "Invalid update fields: role"),
+        ({"role": "OWNER"}, "Invalid role value"),
+        ({"role": "super_admin"}, "Invalid role value"),
         ({"avatar_url": "https://example.com/a.png"}, "Invalid update fields: avatar_url"),
         ({"status": "Deleted"}, "Invalid status value"),
         ({"status": "active"}, "Invalid status value"),
@@ -194,12 +198,14 @@ def test_update_request_schema_accepts_allowed_fields():
 
     payload = UserManagementUpdateRequest(
         status="Locked",
+        role="SUPER_ADMIN",
         is_verified=True,
         failed_login_attempts=4,
         locked_until=locked_until,
     )
 
     assert payload.status == "Locked"
+    assert payload.role == "SUPER_ADMIN"
     assert payload.is_verified is True
     assert payload.failed_login_attempts == 4
     assert payload.locked_until == locked_until
@@ -209,6 +215,7 @@ def test_update_request_schema_accepts_allowed_fields():
     "payload",
     [
         {"status": "Deleted"},
+        {"role": "OWNER"},
         {"failed_login_attempts": -1},
         {"locked_until": "not-a-date"},
         {"email": "new@example.com"},
@@ -244,6 +251,7 @@ def test_update_user_updates_only_allowed_fields():
         full_name="Read Only",
         password_hash="original-hash",
         status_user="Active",
+        role="USER",
         is_verified=False,
         failed_login_attempts=1,
         locked_until=None,
@@ -257,6 +265,7 @@ def test_update_user_updates_only_allowed_fields():
         user.user_id,
         {
             "status": "Locked",
+            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
             "locked_until": locked_until,
@@ -264,6 +273,7 @@ def test_update_user_updates_only_allowed_fields():
     )
 
     assert response.status_user == "Locked"
+    assert response.role == "SUPER_ADMIN"
     assert response.is_verified is True
     assert response.failed_login_attempts == 5
     assert response.locked_until == locked_until
