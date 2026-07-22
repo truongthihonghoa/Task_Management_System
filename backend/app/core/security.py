@@ -14,6 +14,7 @@ from app.repository.auth import get_user_by_id, get_user_token
 from app.db.session import get_db
 from app.models.user import User
 from jose import JWTError, ExpiredSignatureError, jwt
+from app.core.timezone import vietnam_now
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -45,7 +46,7 @@ def get_current_user(
     token = credentials.credentials
     user_id: str | None = None
     stored_token = get_user_token(db, token)
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
@@ -96,12 +97,12 @@ def generate_otp() -> str:
 
 
 def create_access_token(payload: dict[str, Any]) -> tuple[str, datetime]:
-    expires_at = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expires_at = vietnam_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token_payload = {**payload, "type": "access", "exp": expires_at}
     return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
 
 
 def create_refresh_token(payload: dict[str, Any]) -> tuple[str, datetime]:
-    expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = vietnam_now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     token_payload = {**payload, "type": "refresh", "exp": expires_at}
     return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at

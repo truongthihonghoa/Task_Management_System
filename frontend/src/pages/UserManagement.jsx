@@ -167,7 +167,7 @@ export default function UserManagement() {
       {/* Thanh công cụ tìm kiếm & bộ lọc */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
         <div className="space-y-1.5">
-          <label className="block text-[11px] font-bold text-[#6B7280] tracking-wider uppercase">
+          <label className="block text-[10px] font-bold text-outline uppercase mb-1.5 ml-0.5">
             Search User
           </label>
           
@@ -275,7 +275,7 @@ export default function UserManagement() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-blue-50 border-b border-blue-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              <tr className="bg-blue-50 border-b border-blue-100 text-[14px] font-bold text-gray-500 uppercase tracking-wider">
                 <th className="px-6 py-3.5">User</th>
                 <th className="px-6 py-3.5">Role</th>
                 <th className="px-6 py-3.5">Status</th>

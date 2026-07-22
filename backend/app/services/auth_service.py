@@ -16,6 +16,7 @@ for any business-rule violation so that the router stays thin.
 
 import os
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -183,7 +184,7 @@ def _materialize_accepted_space_invitations(db: Session, user, now: datetime) ->
 
 def check_email(db: Session, email: str) -> MessageResponse:
     """Verify email is not taken, generate & send a verification OTP."""
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     if get_user_by_email(db, email):
         raise HTTPException(
@@ -232,7 +233,7 @@ def check_email(db: Session, email: str) -> MessageResponse:
 
 def verify_email(db: Session, email: str, otp_code: str) -> VerifyEmailResponse:
     """Validate the EMAIL_VERIFICATION OTP and mark it as used."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = get_verification_token(db, email)
 
     if token is None:
@@ -274,7 +275,7 @@ def verify_email(db: Session, email: str, otp_code: str) -> VerifyEmailResponse:
 
 def resend_verification(db: Session, email: str) -> MessageResponse:
     """Rate-limit and resend the email-verification OTP."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = get_verification_token(db, email)
 
     if token is None:
@@ -330,7 +331,7 @@ def resend_verification(db: Session, email: str) -> MessageResponse:
 
 def login(db: Session, email: str, password: str) -> LoginResponse:
     """Authenticate a user and issue JWT access + refresh tokens."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -420,7 +421,7 @@ def login(db: Session, email: str, password: str) -> LoginResponse:
 
 def forgot_password(db: Session, email: str) -> MessageResponse:
     """Send a password reset link to the user's email."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -469,7 +470,7 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
 
 def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse:
     """Validate the PASSWORD_RESET OTP and mark it as used."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -502,7 +503,7 @@ def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse
 
 def resend_reset_code(db: Session, email: str) -> MessageResponse:
     """Rate-limit and resend the PASSWORD_RESET OTP."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -561,7 +562,7 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
 
 def reset_password(db: Session, email: str, token: str, new_password: str) -> MessageResponse:
     """Reset password using a token from the reset link."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -605,7 +606,7 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
 def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
     """Register a new user after email verification, issue tokens."""
     email = payload.email
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     if payload.password != payload.confirm_password:
         raise HTTPException(
@@ -708,7 +709,7 @@ def refresh_tokens(db: Session, refresh_token: str) -> LoginResponse:
     """Validate a refresh token and return a new access token."""
     from jose import jwt, JWTError
     from app.core.security import JWT_SECRET_KEY, JWT_ALGORITHM
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     # 1. Decode and validate JWT refresh token
     try:

@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.dialects.postgresql import insert
@@ -47,7 +48,7 @@ def record_recent_view(
     if entity_type not in RECENT_ENTITY_TYPES:
         raise ValueError("Invalid recent view entity type.")
 
-    now = viewed_at or datetime.utcnow()
+    now = viewed_at or vietnam_now()
     statement = (
         insert(RecentView)
         .values(

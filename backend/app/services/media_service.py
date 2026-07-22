@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from pathlib import Path
 from uuid import uuid4
 
@@ -160,7 +161,7 @@ def _create_attachment_record(
         mime_type=mime_type,
         file_size=file_size,
         uploaded_by=uploaded_by,
-        uploaded_at=datetime.utcnow(),
+        uploaded_at=vietnam_now(),
     )
     return media_repository.create_task_attachment(db, attachment)
 
@@ -281,7 +282,7 @@ def delete_task_attachment(db: Session, attachment_id: str, current_user: User) 
     _ensure_attachment_active(attachment)
     _ensure_can_delete_attachment(attachment, current_user)
 
-    attachment.deleted_at = datetime.utcnow()
+    attachment.deleted_at = vietnam_now()
     media_repository.save_task_attachment(db, attachment)
     return TaskAttachmentResponse.model_validate(attachment)
 
@@ -311,7 +312,7 @@ def replace_task_attachment(
     attachment.storage_url = _public_media_url(usage, attachment.task_id, stored_name)
     attachment.mime_type = file.content_type
     attachment.file_size = file_size
-    attachment.uploaded_at = datetime.utcnow()
+    attachment.uploaded_at = vietnam_now()
 
     try:
         media_repository.save_task_attachment(db, attachment)

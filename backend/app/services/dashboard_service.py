@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -369,7 +370,7 @@ def _date_range_bounds(date_range: str | None) -> tuple[datetime | None, datetim
     normalized = date_range.lower().replace(" ", "_").replace("-", "_")
     if normalized in {"all_time", "all"}:
         return None, None
-    now = datetime.utcnow()
+    now = vietnam_now()
     today_start = datetime(now.year, now.month, now.day)
     if normalized == "today":
         return today_start, now

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from types import SimpleNamespace
 
 import pytest
@@ -37,7 +38,7 @@ def make_user(**overrides):
         "failed_login_attempts": 0,
         "locked_until": None,
         "last_login": None,
-        "updated_at": datetime.utcnow() - timedelta(days=1),
+        "updated_at": vietnam_now() - timedelta(days=1),
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -48,10 +49,10 @@ def make_token(**overrides):
         "email": "minhtrang@gmail.com",
         "otp_code": "483921",
         "token_type": PASSWORD_RESET,
-        "expires_at": datetime.utcnow() + timedelta(minutes=15),
+        "expires_at": vietnam_now() + timedelta(minutes=15),
         "used_at": None,
         "resend_count": 0,
-        "created_at": datetime.utcnow(),
+        "created_at": vietnam_now(),
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -64,7 +65,7 @@ def assert_http_error(exc_info, status_code, message):
 
 def test_login_success_generates_tokens_saves_user_token_and_audit(monkeypatch):
     db = FakeDb()
-    user = make_user(role="SUPER_ADMIN", failed_login_attempts=2, locked_until=datetime.utcnow())
+    user = make_user(role="SUPER_ADMIN", failed_login_attempts=2, locked_until=vietnam_now())
     saved_tokens = []
     audit_logs = []
     token_payloads = []
@@ -74,12 +75,12 @@ def test_login_success_generates_tokens_saves_user_token_and_audit(monkeypatch):
     monkeypatch.setattr(
         auth_service,
         "create_access_token",
-        lambda payload: (token_payloads.append(payload) or ("access-token", datetime.utcnow() + timedelta(minutes=30))),
+        lambda payload: (token_payloads.append(payload) or ("access-token", vietnam_now() + timedelta(minutes=30))),
     )
     monkeypatch.setattr(
         auth_service,
         "create_refresh_token",
-        lambda payload: ("refresh-token", datetime.utcnow() + timedelta(days=7)),
+        lambda payload: ("refresh-token", vietnam_now() + timedelta(days=7)),
     )
     monkeypatch.setattr(auth_service, "create_user_token", lambda _db, **kwargs: saved_tokens.append(kwargs))
     monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audit_logs.append(kwargs))
@@ -151,7 +152,7 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
         (make_user(status_user="Pending"), "Please verify your email first."),
         (make_user(status_user="Inactive"), "Account has been deactivated."),
         (
-            make_user(status_user="Locked", locked_until=datetime.utcnow() + timedelta(minutes=10)),
+            make_user(status_user="Locked", locked_until=vietnam_now() + timedelta(minutes=10)),
             "Account temporarily locked.",
         ),
     ],
@@ -198,7 +199,7 @@ def test_forgot_password_email_not_found(monkeypatch):
 def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
     db = FakeDb()
     user = make_user()
-    token = make_token(otp_code="111111", resend_count=1, used_at=datetime.utcnow())
+    token = make_token(otp_code="111111", resend_count=1, used_at=vietnam_now())
     sent = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
@@ -219,7 +220,7 @@ def test_resend_reset_code_replaces_code_and_sends_email(monkeypatch):
 
 def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
     db = FakeDb()
-    user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=datetime.utcnow())
+    user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=vietnam_now())
     token = make_token(used_at=None)
     audits = []
     revoked = []
@@ -245,7 +246,7 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
 
 def test_reset_password_rejects_used_reset_link(monkeypatch):
     user = make_user()
-    token = make_token(used_at=datetime.utcnow())
+    token = make_token(used_at=vietnam_now())
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)

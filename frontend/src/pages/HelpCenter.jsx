@@ -20,14 +20,11 @@ const HelpCenter = () => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        <div className="w-full lg:w-[70%] space-y-6">
+        <div className="w-full lg:w-[90%] space-y-6">
           <AIChatSection />
           <GuideSection />
           <FAQSection />
         </div>
-        <aside className="w-full lg:w-[30%]">
-          <SupportSidebar />
-        </aside>
       </div>
     </div>
   );

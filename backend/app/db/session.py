@@ -29,7 +29,11 @@ if not SQLALCHEMY_DATABASE_URL:
         database=db_name,
     )
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"options": "-c timezone=Asia/Ho_Chi_Minh"}
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

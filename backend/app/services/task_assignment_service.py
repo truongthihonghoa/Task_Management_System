@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -63,7 +64,7 @@ class TaskAssignmentService:
                     detail=f"User already assigned: {assignee_id}",
                 )
 
-        now = datetime.utcnow()
+        now = vietnam_now()
         try:
             for assignee_id in payload.assignee_ids:
                 create_task_assignee(db, task_id, assignee_id)
@@ -127,7 +128,7 @@ class TaskAssignmentService:
                     detail="New assignee must be different from previous assignee.",
                 )
 
-        now = datetime.utcnow()
+        now = vietnam_now()
         try:
             if payload.new_assignee_id is None:
                 delete_task_assignee(db, current_assignment)
@@ -199,7 +200,7 @@ class TaskAssignmentService:
         if current_assignment is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Previous assignee not found.")
 
-        now = datetime.utcnow()
+        now = vietnam_now()
         try:
             delete_task_assignee(db, current_assignment)
             create_assignment_history(
@@ -255,7 +256,7 @@ class TaskAssignmentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found: {user_id}")
         if user.status_user != "Active":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is inactive: {user_id}")
-        if user.locked_until is not None and user.locked_until > datetime.utcnow():
+        if user.locked_until is not None and user.locked_until > vietnam_now():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is locked: {user_id}")
         if not self._is_active_space_member(db, task, user_id):
             raise HTTPException(

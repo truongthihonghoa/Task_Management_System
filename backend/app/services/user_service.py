@@ -5,6 +5,7 @@ user_service.py — Business logic for user management and profiles.
 import os
 import uuid
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from pathlib import Path
 from typing import Any
 
@@ -166,7 +167,7 @@ def update_user_lock_status(
     user = get_user_or_404(db, user_id)
 
     if locked:
-        locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
+        locked_until = vietnam_now() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
 
         user_repo.update_user_fields(
             db,
