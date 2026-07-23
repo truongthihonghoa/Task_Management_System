@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -138,7 +139,7 @@ def get_profile(user: User) -> UserProfileResponse:
 
 def update_profile(db: Session, *, user: User, payload: UpdateProfileRequest) -> UserProfileResponse:
     user.full_name = payload.full_name
-    user.updated_at = datetime.utcnow()
+    user.updated_at = vietnam_now()
     return UserProfileResponse.model_validate(user)
 
 

@@ -30,30 +30,28 @@ if not SQLALCHEMY_DATABASE_URL:
         database=db_name,
     )
 
-engine_options = {"pool_pre_ping": True}
+engine_options = {
+    "pool_pre_ping": True,
+    "connect_args": {
+        "options": "-c timezone=Asia/Ho_Chi_Minh"
+    },
+}
+
 database_url_text = str(SQLALCHEMY_DATABASE_URL)
 
 if "supabase.com" in database_url_text:
+    # Supabase nên dùng NullPool
     engine_options["poolclass"] = NullPool
 else:
-    engine_options["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
-    engine_options["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL, **engine_options)
-DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "3"))
-DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "2"))
-DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "10"))
-DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "300"))
+    engine_options["pool_size"] = int(os.getenv("DB_POOL_SIZE", "3"))
+    engine_options["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "2"))
+    engine_options["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+    engine_options["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=DB_POOL_SIZE,
-    max_overflow=DB_MAX_OVERFLOW,
-    pool_timeout=DB_POOL_TIMEOUT,
-    pool_recycle=DB_POOL_RECYCLE,
+    **engine_options,
 )
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

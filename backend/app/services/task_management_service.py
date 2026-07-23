@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from typing import Iterable
 import logging
 
@@ -104,7 +105,7 @@ def _is_task_overdue(task: Task, *, now: datetime | None = None) -> bool:
     if task.task_status in {"done", "cancelled"}:
         return False
 
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return task.completed_at.date() < current_time.date()
 
 
@@ -114,7 +115,7 @@ def _is_task_due_today(task: Task, *, now: datetime | None = None) -> bool:
     if task.task_status in {"done", "cancelled"}:
         return False
 
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return task.completed_at.date() == current_time.date()
 
 
@@ -223,7 +224,7 @@ def create_task(
     _ensure_can_modify_space_tasks(db, space, current_user)
     _get_sprint_for_space_or_404(db, space_id, payload.sprint_id)
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     task = Task(
         space_id=space_id,
         sprint_id=payload.sprint_id,
@@ -380,7 +381,7 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
 
     for field, value in update_data.items():
         setattr(task, field, value)
-    task.updated_at = datetime.utcnow()
+    task.updated_at = vietnam_now()
 
     task_repository.save_task(db, task)
     sprint_service.apply_sprint_automation(db, task.space_id)
@@ -440,7 +441,7 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     _ensure_space_active(space)
     _ensure_space_owner(space, current_user)
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     task.deleted_at = now
     task.updated_at = now
     task_repository.save_task(db, task, refresh=False)

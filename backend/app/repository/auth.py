@@ -6,6 +6,7 @@ and perform exactly one DB concern.
 """
 
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from typing import Any
 
 from sqlalchemy import select
@@ -60,7 +61,7 @@ def upsert_email_verification_token(
 ) -> VerificationToken:
     """Create or update the EMAIL_VERIFICATION token for *email*."""
     token = get_verification_token(db, email, EMAIL_VERIFICATION)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if token is None:
         token = VerificationToken(
@@ -96,7 +97,7 @@ def upsert_verification_token(
 ) -> VerificationToken:
     """Create or update any verification token (generic)."""
     token = get_verification_token(db, email, token_type)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if token is None:
         token = VerificationToken(
@@ -203,7 +204,7 @@ def revoke_refresh_token_for_access_token(
         return None
 
     user_token.refresh_token = ""
-    user_token.refresh_expires_at = revoked_at or datetime.utcnow()
+    user_token.refresh_expires_at = revoked_at or vietnam_now()
     user_token.is_revoked = True
     return user_token
 

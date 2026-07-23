@@ -9,6 +9,7 @@ import html
 import os
 import secrets
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from typing import List
 
 from fastapi import HTTPException, status
@@ -57,7 +58,7 @@ def _is_trash_expired(space: Space, now: datetime | None = None) -> bool:
     expires_at = _trash_expires_at(space)
     if not expires_at:
         return False
-    return expires_at <= (now or datetime.utcnow())
+    return expires_at <= (now or vietnam_now())
 
 
 def _space_reopen_until(archived_at: datetime) -> datetime:
@@ -70,7 +71,7 @@ def _can_reopen_space(space: Space, now: datetime | None = None) -> bool:
     reopen_until = getattr(space, "reopen_until", None)
     if reopen_until is None:
         return False
-    return reopen_until > (now or datetime.utcnow())
+    return reopen_until > (now or vietnam_now())
 
 
 def _normalize_space_name(name: str) -> str:
@@ -246,7 +247,7 @@ def _ensure_user_can_join(user: User) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is not active",
         )
-    if user.locked_until is not None and user.locked_until > datetime.utcnow():
+    if user.locked_until is not None and user.locked_until > vietnam_now():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is locked",
@@ -269,7 +270,7 @@ def _add_or_restore_space_member(db: Session, space: Space, user: User) -> Space
             detail="User is already an active member",
         )
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     role = "OWNER" if space.owner_id == user.user_id else "MEMBER"
 
     if existing_member:
@@ -624,7 +625,7 @@ def list_owner_trash(db: Session, owner_id: str, current_user: User | None = Non
             detail="Owner user not found",
         )
 
-    trash_cutoff = datetime.utcnow() - timedelta(days=TRASH_RETENTION_DAYS)
+    trash_cutoff = vietnam_now() - timedelta(days=TRASH_RETENTION_DAYS)
     spaces = (
         db.query(Space)
         .filter(
@@ -669,7 +670,7 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate, current_user:
     for field, value in update_data.items():
         setattr(space, field, value)
 
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     notification_service.create_notification(
         db,
         user_id=space.owner_id,
@@ -701,7 +702,7 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
             detail="Cannot archive deleted space",
         )
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     space.status_space = "Archived"
     space.archived_at = now
     space.reopen_until = _space_reopen_until(now)
@@ -764,7 +765,7 @@ def unarchive_space(db: Session, space_id: str, current_user: User | None = None
     space.status_space = "Active"
     space.archived_at = None
     space.reopen_until = None
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     notification_service.create_notification(
         db,
         user_id=space.owner_id,
@@ -813,7 +814,7 @@ def restore_space(db: Session, space_id: str, current_user: User | None = None) 
     space.archived_at = None
     space.reopen_until = None
     space.deleted_at = None
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     notification_service.create_notification(
         db,
         user_id=space.owner_id,
@@ -835,7 +836,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     if current_user is not None:
         _ensure_space_owner(space, current_user)
     _ensure_space_can_be_deleted(space)
-    now = datetime.utcnow()
+    now = vietnam_now()
     space.status_space = "Deleted"
     space.deleted_at = now
     space.reopen_until = None
@@ -857,7 +858,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
 
 
 def list_expired_deleted_space_records(db: Session, *, now: datetime | None = None) -> list[Space]:
-    cutoff = (now or datetime.utcnow()) - timedelta(days=TRASH_RETENTION_DAYS)
+    cutoff = (now or vietnam_now()) - timedelta(days=TRASH_RETENTION_DAYS)
     return (
         db.query(Space)
         .filter(
@@ -931,7 +932,7 @@ def cleanup_expired_deleted_spaces(db: Session, *, now: datetime | None = None) 
 
 
 def list_expired_archived_space_reopen_records(db: Session, *, now: datetime | None = None) -> list[Space]:
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return (
         db.query(Space)
         .filter(
@@ -952,7 +953,7 @@ def cleanup_expired_archived_space_reopen_windows(db: Session, *, now: datetime 
     try:
         for space in expired_spaces:
             space.reopen_until = None
-            space.updated_at = now or datetime.utcnow()
+            space.updated_at = now or vietnam_now()
             expired_count += 1
         if expired_count:
             db.commit()
@@ -1053,7 +1054,7 @@ def add_people_to_space(
         owner_id=space.owner_id,
         status=request_status,
         review_token=secrets.token_urlsafe(32),
-        requested_at=datetime.utcnow(),
+        requested_at=vietnam_now(),
     )
     member_request.requester = current_user
     member_request.requested_user = requested_user
@@ -1112,7 +1113,7 @@ def review_space_member_request(
     if member_request.status not in ("PENDING_OWNER", "PENDING_INVITEE"):
         return f"Request was already {member_request.status.lower()}."
 
-    member_request.reviewed_at = datetime.utcnow()
+    member_request.reviewed_at = vietnam_now()
     if not approve:
         member_request.status = "REJECTED"
         db.commit()

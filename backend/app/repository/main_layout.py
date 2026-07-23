@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 import unicodedata
 
 from sqlalchemy import and_, func, or_
@@ -114,7 +115,7 @@ def create_user_preference(db: Session, *, user_id: str, language: str) -> UserP
 
 def update_user_preference(preference: UserPreference, *, language: str) -> UserPreference:
     preference.language = language
-    preference.updated_at = datetime.utcnow()
+    preference.updated_at = vietnam_now()
     return preference
 
 

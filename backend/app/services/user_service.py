@@ -6,6 +6,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from app.core.media import MEDIA_FOLDERS, MEDIA_ROOT
 from app.core.security import hash_password, verify_password
 from app.models.user import User
 from app.repository import user as user_repo
+from app.services import storage_service
 from app.schemas.pydantic_models import (
     ChangePasswordRequest,
     UpdateProfileRequest, 
@@ -196,7 +198,7 @@ def update_user_lock_status(
     previous_status = user.status_user
 
     if locked:
-        locked_until = datetime.utcnow() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
+        locked_until = vietnam_now() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
 
         user_repo.update_user_fields(
             db,
@@ -273,22 +275,33 @@ def update_user_avatar(db: Session, user_id: str, file: UploadFile) -> str:
     if file_size > 5 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds 5 MB limit.")
 
-    avatar_dir = MEDIA_ROOT / MEDIA_FOLDERS["avatar"]
-    avatar_dir.mkdir(parents=True, exist_ok=True)
-
     ext = Path(file.filename or "").suffix.lower().lstrip(".") or "jpg"
     filename = f"{uuid.uuid4()}.{ext}"
-    filepath = avatar_dir / filename
-    avatar_url = f"/media/{MEDIA_FOLDERS['avatar']}/{filename}"
 
-    with filepath.open("wb") as f:
-        f.write(file.file.read())
+    if storage_service.is_cloudinary_enabled():
+        uploaded = storage_service.upload_to_cloudinary(
+            file,
+            folder=f"{MEDIA_FOLDERS['avatar']}/{user_id}",
+            public_id=filename,
+            max_size=5 * 1024 * 1024,
+            resource_type="image",
+        )
+        avatar_url = uploaded.file_url
+    else:
+        avatar_dir = MEDIA_ROOT / MEDIA_FOLDERS["avatar"]
+        avatar_dir.mkdir(parents=True, exist_ok=True)
+
+        filepath = avatar_dir / filename
+        avatar_url = f"/media/{MEDIA_FOLDERS['avatar']}/{filename}"
+
+        with filepath.open("wb") as f:
+            f.write(file.file.read())
 
     old_avatar = user.avatar_url
     user_repo.update_user_fields(db, user, {"avatar_url": avatar_url})
     db.flush()
 
-    if old_avatar and not old_avatar.endswith(("default.png", "default.jpg")):
+    if not storage_service.is_cloudinary_enabled() and old_avatar and not old_avatar.endswith(("default.png", "default.jpg")):
         old_path = None
         if old_avatar.startswith("/media/"):
             old_path = MEDIA_ROOT / old_avatar.removeprefix("/media/")

@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 
 import pytest
 from fastapi import HTTPException
@@ -24,7 +25,7 @@ class FakeDb:
 
 
 def make_user(user_id="USR00000001", role="USER", full_name="Trang Nguyen"):
-    now = datetime.utcnow()
+    now = vietnam_now()
     return SimpleNamespace(
         user_id=user_id,
         role=role,
@@ -43,7 +44,7 @@ def make_preference(language="en"):
         preference_id="UPR00000001",
         user_id="USR00000001",
         language=language,
-        updated_at=datetime.utcnow(),
+        updated_at=vietnam_now(),
     )
 
 
@@ -199,7 +200,7 @@ def test_current_user_accepts_stored_matching_access_token(monkeypatch):
     )
     stored_token = SimpleNamespace(
         user_id=user.user_id,
-        access_expires_at=datetime.utcnow() + timedelta(minutes=5),
+        access_expires_at=vietnam_now() + timedelta(minutes=5),
     )
 
     monkeypatch.setattr(security, "get_user_token", lambda db, token: stored_token)
@@ -220,7 +221,7 @@ def test_current_user_rejects_refresh_token_even_when_stored(monkeypatch):
     )
     stored_token = SimpleNamespace(
         user_id=user.user_id,
-        access_expires_at=datetime.utcnow() + timedelta(minutes=5),
+        access_expires_at=vietnam_now() + timedelta(minutes=5),
     )
 
     monkeypatch.setattr(security, "get_user_token", lambda db, token: stored_token)

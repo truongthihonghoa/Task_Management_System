@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -88,6 +89,6 @@ def update_preference(
         preference.email_settings = email_settings
     if app_settings is not None:
         preference.app_settings = app_settings
-    preference.updated_at = datetime.utcnow()
+    preference.updated_at = vietnam_now()
     db.flush()
     return preference

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from sqlalchemy.orm import Session
 from app.models.user_token import UserToken
 from app.core.config import settings
@@ -6,8 +7,8 @@ from app.core.config import settings
 
 def create_user_token(db: Session, user_id: str, access_token: str, refresh_token: str) -> UserToken:
     """Create a new user token with access and refresh tokens."""
-    access_expires_at = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    refresh_expires_at = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    access_expires_at = vietnam_now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    refresh_expires_at = vietnam_now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
     user_token = UserToken(
         user_id=user_id,
@@ -16,7 +17,7 @@ def create_user_token(db: Session, user_id: str, access_token: str, refresh_toke
         access_expires_at=access_expires_at,
         refresh_expires_at=refresh_expires_at,
         is_revoked=False,
-        created_at=datetime.utcnow()
+        created_at=vietnam_now()
     )
     db.add(user_token)
     db.commit()
@@ -43,5 +44,5 @@ def get_valid_token(db: Session, access_token: str) -> UserToken:
     return db.query(UserToken).filter(
         UserToken.access_token == access_token,
         UserToken.is_revoked == False,
-        UserToken.access_expires_at > datetime.utcnow()
+        UserToken.access_expires_at > vietnam_now()
     ).first()

@@ -17,8 +17,10 @@ for any business-rule violation so that the router stays thin.
 import os
 import logging
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
+from jose import ExpiredSignatureError, JWTError
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -26,7 +28,9 @@ from sqlalchemy.orm import Session
 from app.core.email import EmailService, send_verification_email
 from app.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
+    decode_password_reset_token,
     generate_otp,
     hash_password,
     verify_password,
@@ -120,6 +124,7 @@ def _get_valid_verification_token(
 ):
     """Fetch a verification token and raise 4xx if invalid, expired, or used."""
     token = get_verification_token(db, email, token_type)
+    is_password_reset = token_type == PASSWORD_RESET
 
     if token is None:
         raise HTTPException(
@@ -129,19 +134,40 @@ def _get_valid_verification_token(
     if token.otp_code != code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is incorrect."},
+            detail={"message": "The password reset link is invalid." if is_password_reset else "The verification code is incorrect."},
         )
     if token.expires_at < now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code has expired."},
+            detail={"message": "The password reset link has expired." if is_password_reset else "The verification code has expired."},
         )
     if token.used_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "The verification code is no longer valid."},
+            detail={"message": "The password reset link is no longer valid." if is_password_reset else "The verification code is no longer valid."},
         )
     return token
+
+
+def _decode_password_reset_link_token(token: str, *, email: str, user_id: str) -> None:
+    try:
+        payload = decode_password_reset_token(token)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The password reset link has expired."},
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The password reset link is invalid."},
+        )
+
+    if payload.get("email") != email or payload.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "The password reset link is invalid."},
+        )
 
 
 def _get_verified_password_reset_token(db: Session, *, email: str, now: datetime):
@@ -151,7 +177,7 @@ def _get_verified_password_reset_token(db: Session, *, email: str, now: datetime
     if token is None or token.used_at is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"message": "Password reset code must be verified before resetting password."},
+            detail={"message": "Password reset link must be verified before resetting password."},
         )
     if token.expires_at < now:
         raise HTTPException(
@@ -209,7 +235,7 @@ def _materialize_accepted_space_invitations(db: Session, user, now: datetime) ->
 
 def check_email(db: Session, email: str) -> MessageResponse:
     """Verify email is not taken, generate & send a verification OTP."""
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     if get_user_by_email(db, email):
         raise HTTPException(
@@ -258,7 +284,7 @@ def check_email(db: Session, email: str) -> MessageResponse:
 
 def verify_email(db: Session, email: str, otp_code: str) -> VerifyEmailResponse:
     """Validate the EMAIL_VERIFICATION OTP and mark it as used."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = get_verification_token(db, email)
 
     if token is None:
@@ -300,7 +326,7 @@ def verify_email(db: Session, email: str, otp_code: str) -> VerifyEmailResponse:
 
 def resend_verification(db: Session, email: str) -> MessageResponse:
     """Rate-limit and resend the email-verification OTP."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = get_verification_token(db, email)
 
     if token is None:
@@ -356,7 +382,7 @@ def resend_verification(db: Session, email: str) -> MessageResponse:
 
 def login(db: Session, email: str, password: str) -> LoginResponse:
     """Authenticate a user and issue JWT access + refresh tokens."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -459,7 +485,7 @@ def login(db: Session, email: str, password: str) -> LoginResponse:
 
 def forgot_password(db: Session, email: str) -> MessageResponse:
     """Send a password reset link to the user's email."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -468,15 +494,14 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             detail={"message": "Email does not exist."},
         )
 
-    # Generate a token (using OTP for simplicity) and store it
-    token_code = generate_otp()
+    token_code, expires_at = create_password_reset_token({"user_id": user.user_id, "email": user.email})
     try:
         upsert_verification_token(
             db,
             email=email,
             otp_code=token_code,
             token_type=PASSWORD_RESET,
-            expires_at=_otp_expires_at(now),
+            expires_at=expires_at,
             resend_count=0,
             used_at=None,
             created_at=now,
@@ -484,7 +509,7 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
         create_audit_log(
             db,
             user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_CODE",
+            action="SEND_PASSWORD_RESET_LINK",
             label_title="USER",
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
@@ -507,8 +532,8 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
 
 
 def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse:
-    """Validate the PASSWORD_RESET OTP and mark it as used."""
-    now = datetime.utcnow()
+    """Validate the PASSWORD_RESET token and mark it as used."""
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -526,7 +551,7 @@ def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse
         create_audit_log(
             db,
             user_id=user.user_id,
-            action="VERIFY_PASSWORD_RESET_CODE",
+            action="VERIFY_PASSWORD_RESET_TOKEN",
             label_title="USER",
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
@@ -536,12 +561,12 @@ def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse
         db.rollback()
         raise
 
-    return VerifyEmailResponse(verified=True, message="Password reset code verified successfully.")
+    return VerifyEmailResponse(verified=True, message="Password reset token verified successfully.")
 
 
 def resend_reset_code(db: Session, email: str) -> MessageResponse:
-    """Rate-limit and resend the PASSWORD_RESET OTP."""
-    now = datetime.utcnow()
+    """Rate-limit and resend the PASSWORD_RESET link."""
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -564,23 +589,23 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
             detail={"message": "Too many resend attempts. Please try again later."},
         )
 
-    otp_code = generate_otp()
+    token_code, expires_at = create_password_reset_token({"user_id": user.user_id, "email": user.email})
 
     try:
-        token.otp_code = otp_code
-        token.expires_at = _otp_expires_at(now)
+        token.otp_code = token_code
+        token.expires_at = expires_at
         token.used_at = None
         token.resend_count += 1
         create_audit_log(
             db,
             user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_CODE",
+            action="SEND_PASSWORD_RESET_LINK",
             label_title="USER",
             entity_id=user.user_id,
             payload={"email": email, "token_type": PASSWORD_RESET},
         )
         
-        email_sent = send_password_reset_email(email, otp_code)
+        email_sent = send_password_reset_email(email, token_code)
         if not email_sent:
             db.rollback()
             raise HTTPException(
@@ -595,12 +620,12 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
         db.rollback()
         raise
 
-    return MessageResponse(message="Verification code has been resent.")
+    return MessageResponse(message="Password reset link has been resent.")
 
 
 def reset_password(db: Session, email: str, token: str, new_password: str) -> MessageResponse:
     """Reset password using a token from the reset link."""
-    now = datetime.utcnow()
+    now = vietnam_now()
     user = get_user_by_email(db, email)
 
     if user is None:
@@ -608,6 +633,8 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Email does not exist."},
         )
+
+    _decode_password_reset_link_token(token, email=user.email, user_id=user.user_id)
 
     # Validate token (must be valid, not used, not expired)
     token_obj = _get_valid_verification_token(
@@ -644,7 +671,7 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
 def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
     """Register a new user after email verification, issue tokens."""
     email = payload.email
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     if payload.password != payload.confirm_password:
         raise HTTPException(
@@ -760,7 +787,7 @@ def refresh_tokens(db: Session, refresh_token: str) -> LoginResponse:
     """Validate a refresh token and return a new access token."""
     from jose import jwt, JWTError
     from app.core.security import JWT_SECRET_KEY, JWT_ALGORITHM
-    now = datetime.utcnow()
+    now = vietnam_now()
 
     # 1. Decode and validate JWT refresh token
     try:

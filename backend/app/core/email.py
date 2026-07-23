@@ -11,6 +11,7 @@ Responsibilities:
 
 import html
 import logging
+import re
 import os
 import smtplib
 import ssl
@@ -797,18 +798,17 @@ class EmailService:
             html_content=self._verification_email_html(otp_code),
         )
 
-    def send_password_reset_email(self, to_email: str, token_code: str) -> bool:
-        """Send a password reset email containing a reset link and token."""
+    def send_password_reset_email(self, to_email: str, reset_token: str) -> bool:
+        """Send a password reset email containing a reset link token."""
         import urllib.parse
         subject = f"{self.app_name} - Password Reset"
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        query = urllib.parse.urlencode({"email": to_email, "token": token_code})
+        query = urllib.parse.urlencode({"email": to_email, "token": reset_token})
         reset_path = f"/reset-password?{query}"
         reset_url = frontend_url.rstrip("/") + reset_path
         text_content = (
             f"Use the following link to reset your password: {reset_url}\n\n"
-            f"Your password reset code is: {token_code}\n\n"
-            f"This link and code expire in {self.otp_expire_minutes} minutes."
+            f"This link expires in {self.otp_expire_minutes} minutes."
         )
         html_content = self._password_reset_email_html(reset_url)
         return self.send_email(
@@ -956,20 +956,6 @@ class EmailService:
                 >
                   Reset Password
                 </a>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:0 28px 10px;">
-                <div style="
-                    margin:0;
-                    font-size:12px;
-                    line-height:1.5;
-                    color:#6E5A8A;
-                ">
-                  Or copy & paste the following URL into your browser:<br>
-                  <a href="{safe_reset_url}" style="color:#6B4A91; word-break:break-all;">{safe_reset_url}</a>
-                </div>
               </td>
             </tr>
 

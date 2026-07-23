@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
@@ -19,7 +20,7 @@ def create_audit_log(
         label_title=label_title,
         entity_id=entity_id,
         payload=payload,
-        created_at=datetime.utcnow()
+        created_at=vietnam_now()
     )
     db.add(audit_log)
     db.commit()

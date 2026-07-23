@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
@@ -160,7 +161,7 @@ def get_member_task_priority_counts(db: Session, space_id: str, user_id: str) ->
 
 
 def count_overdue_tasks(db: Session, *, now: datetime | None = None) -> int:
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return int(
         db.query(func.count(Task.task_id))
         .filter(
@@ -175,7 +176,7 @@ def count_overdue_tasks(db: Session, *, now: datetime | None = None) -> int:
 
 
 def count_space_overdue_tasks(db: Session, space_id: str, *, now: datetime | None = None) -> int:
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return int(
         db.query(func.count(Task.task_id))
         .filter(
@@ -191,7 +192,7 @@ def count_space_overdue_tasks(db: Session, space_id: str, *, now: datetime | Non
 
 
 def count_member_overdue_tasks(db: Session, space_id: str, user_id: str, *, now: datetime | None = None) -> int:
-    current_time = now or datetime.utcnow()
+    current_time = now or vietnam_now()
     return int(
         db.query(func.count(Task.task_id))
         .filter(

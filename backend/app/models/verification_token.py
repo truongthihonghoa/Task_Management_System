@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint, Column, DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Column, DateTime, Integer, String, Text, UniqueConstraint, func
 
 from app.core.id_generator import prefixed_id_column
 from app.db.base_class import Base
@@ -9,7 +9,7 @@ class VerificationToken(Base):
 
     token_id = prefixed_id_column("VTK", "verification_token_token_id_seq")
     email = Column(String(255), nullable=False)
-    otp_code = Column(String(6), nullable=False)
+    otp_code = Column(Text, nullable=False)
     token_type = Column(String(30), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
@@ -22,7 +22,9 @@ class VerificationToken(Base):
             name="check_verification_token_token_type",
         ),
         CheckConstraint(
-            "otp_code ~ '^[0-9]{6}$'",
+            "(token_type = 'EMAIL_VERIFICATION' AND otp_code ~ '^[0-9]{6}$') "
+            "OR (token_type = 'PASSWORD_RESET' "
+            "AND otp_code ~ '^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$')",
             name="check_verification_token_otp_code",
         ),
         UniqueConstraint("email", "token_type", name="uq_verification_token_email_token_type"),
