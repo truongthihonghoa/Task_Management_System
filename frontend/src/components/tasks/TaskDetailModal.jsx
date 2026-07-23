@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import '../../styles/CreateTaskModal.css';
+import axiosClient, { API_BASE_URL } from '../../api/axiosClient';
 import RichTextEditor from './RichTextEditor';
 
 const getCompletedDateValue = (task = {}) => task.completed_at || task.completedAt || task.date;
@@ -11,6 +12,27 @@ const formatCompletedDate = (value, fallback = 'Jun 26, 2026') => {
   if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const formatTimelineDateTime = (value, fallback = '2 mins ago') => {
+  if (!value) return fallback;
+
+  const normalizedValue = typeof value === 'string' &&
+    value.includes('T') &&
+    !/(Z|[+-]\d{2}:?\d{2})$/.test(value)
+    ? `${value}Z`
+    : value;
+  const date = new Date(normalizedValue);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return `${date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })} ${date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })}`;
 };
 
 const isCompletedDateOverdue = (value, status, apiOverdue = undefined) => {
@@ -48,8 +70,117 @@ const isCompletedDateDueToday = (value, status, apiDueToday = undefined) => {
 const DUE_TODAY_COLOR = '#92400E';
 const DUE_TODAY_BACKGROUND = '#FEF3C7';
 
+const resolveMediaUrl = (url) => {
+  if (!url) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(url)) return url;
+  if (!url.startsWith('/media/')) return url;
 
-export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${url}`;
+    } catch {
+      return url;
+    }
+  }
+
+  return url;
+};
+
+const normalizeApiDateValue = (value) => {
+  if (
+    typeof value === 'string' &&
+    value.includes('T') &&
+    !/(Z|[+-]\d{2}:?\d{2})$/.test(value)
+  ) {
+    return `${value}Z`;
+  }
+  return value;
+};
+
+const formatApiDate = (value, fallback = '') => {
+  if (!value) return fallback;
+  const date = new Date(normalizeApiDateValue(value));
+  if (Number.isNaN(date.getTime())) return fallback || value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail;
+  if (Array.isArray(detail)) return detail.map(item => item.msg || item.message).filter(Boolean).join(', ') || fallback;
+  if (typeof detail === 'string') return detail;
+  return error?.message || fallback;
+};
+
+const isImageAttachment = (attachment = {}) => {
+  const mimeType = attachment.mime_type || attachment.mimeType || '';
+  const name = attachment.file_name || attachment.name || '';
+  return mimeType.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+};
+
+const mapApiAttachment = (attachment = {}) => {
+  const name = attachment.file_name || attachment.name || attachment.fileName || 'attachment';
+  const isImage = isImageAttachment(attachment);
+  const fileUrl = resolveMediaUrl(attachment.url || attachment.previewUrl || attachment.storage_url || attachment.file_url || '');
+  const sizeLabel = attachment.size || (typeof attachment.file_size === 'number' ? formatFileSizeValue(attachment.file_size) : '');
+
+  return {
+    ...attachment,
+    id: attachment.attachment_id || attachment.id || `${name}-${attachment.uploaded_at || Date.now()}`,
+    attachmentId: attachment.attachment_id || attachment.id,
+    name,
+    size: sizeLabel,
+    date: formatApiDate(attachment.uploaded_at || attachment.created_at, ''),
+    icon: name.endsWith('.zip') ? 'folder_zip' : name.endsWith('.pdf') ? 'picture_as_pdf' : isImage ? 'image' : 'upload_file',
+    color: name.endsWith('.zip') ? '#4C2B74' : name.endsWith('.pdf') ? '#DE350B' : '#4C2B74',
+    bg: name.endsWith('.zip') ? '#EBF5FF' : name.endsWith('.pdf') ? '#FFF5F5' : '#EEF3FF',
+    type: isImage ? 'image' : 'file',
+    previewUrl: isImage ? fileUrl : '',
+    url: fileUrl,
+    uploadedBy: attachment.uploaded_by || attachment.uploadedBy || attachment.uploaderId || '',
+    uploaderId: attachment.uploaded_by || attachment.uploaderId || '',
+    raw: attachment,
+  };
+};
+
+const hydrateInitialAttachments = (attachmentList = []) => {
+  return attachmentList.map((attachment) => {
+    const mapped = mapApiAttachment(attachment);
+    if (mapped.type === 'image' && !mapped.previewUrl && mapped.url) {
+      return { ...mapped, previewUrl: mapped.url };
+    }
+    return mapped;
+  });
+};
+
+const mapApiComment = (comment = {}) => {
+  const user = comment.user || {};
+  const author = user.full_name || user.name || comment.author || 'Unknown User';
+
+  return {
+    ...comment,
+    id: comment.comment_id || comment.id,
+    commentId: comment.comment_id || comment.id,
+    taskId: comment.task_id || comment.taskId,
+    author,
+    authorId: comment.user_id || comment.authorId || user.user_id || user.id || '',
+    date: formatTimelineDateTime(comment.updated_at || comment.created_at, ''),
+    text: comment.comment || comment.text || '',
+    parentId: comment.parent_comment_id || comment.parentId || null,
+    isEdited: Boolean(comment.is_edited || comment.isEdited),
+    createdAt: comment.created_at || comment.createdAt,
+    updatedAt: comment.updated_at || comment.updatedAt,
+    raw: comment,
+  };
+};
+
+function formatFileSizeValue(bytes = 0) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+
+export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOptions = [], onUpdateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
   const [activeTab, setActiveTab] = useState('comments');
   const [commentText, setCommentText] = useState('');
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -73,27 +204,20 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   const [editCommentId, setEditCommentId] = useState(null);
   const [deleteConfirmCommentId, setDeleteConfirmCommentId] = useState(null);
   const [isUploadAreaOpen, setIsUploadAreaOpen] = useState(false);
-  const [attachments, setAttachments] = useState(task?.attachments || []);
-  const [comments, setComments] = useState(task?.comments || [
-    {
-      id: 1,
-      author: 'Peter Tan',
-      date: 'Jun 22, 2026',
-      text: 'Can we get more info on the validation rules for the email field?',
-      parentId: null
-    }
-  ]);
+  const [attachments, setAttachments] = useState(hydrateInitialAttachments(task?.attachments || []));
+  const [comments, setComments] = useState((task?.comments || []).map(mapApiComment));
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [tempTitle, setTempTitle] = useState(task?.title || '');
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [assignHistory, setAssignHistory] = useState([]);
 
-  const availableAssignees = [
+  const fallbackAssignees = [
     { user_id: null, name: 'Unassigned', initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF', icon: 'person' },
     { user_id: 'c2ed9d7f-f0ea-4d1a-bbe9-042d94a6de8b', name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
     { user_id: '9e7291f0-8f6e-41c4-8ec5-5a86d0ecb02d', name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
     { user_id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' }
   ];
+  const availableAssignees = assigneeOptions.length > 0 ? assigneeOptions : fallbackAssignees;
 
   const [completedMonth, setCompletedMonth] = useState(5);
   const [completedYear, setCompletedYear] = useState(2026);
@@ -102,6 +226,10 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   const uploadInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const [replaceTargetId, setReplaceTargetId] = useState(null);
+  const [commentError, setCommentError] = useState('');
+  const [attachmentError, setAttachmentError] = useState('');
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [isLoadingAttachments, setIsLoadingAttachments] = useState(false);
 
   const currentUserId = currentUser?.id || currentUser?.user_id || null;
   const currentUserName = currentUser?.name || currentUser?.authorName || 'Unknown User';
@@ -133,15 +261,25 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   };
 
   const formatFileSize = (bytes) => {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${bytes} B`;
+    return formatFileSizeValue(bytes);
   };
 
-  const syncComments = (nextComments) => {
+  const syncComments = (nextComments, options = { notifyParent: true }) => {
     setComments(nextComments);
-    setLocalTask(prev => ({ ...prev, comments: nextComments }));
-    syncTask({ comments: nextComments });
+    setLocalTask(prev => {
+      const nextTask = { ...prev, comments: nextComments };
+      if (options.notifyParent && onUpdateTask) onUpdateTask(nextTask);
+      return nextTask;
+    });
+  };
+
+  const syncAttachments = (nextAttachments, options = { notifyParent: true }) => {
+    setAttachments(nextAttachments);
+    setLocalTask(prev => {
+      const nextTask = { ...prev, attachments: nextAttachments };
+      if (options.notifyParent && onUpdateTask) onUpdateTask(nextTask);
+      return nextTask;
+    });
   };
 
   const createAttachmentFromFile = (file, index = 0, uploaderId = null) => {
@@ -176,7 +314,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   };
 
   const hydrateAttachments = (attachmentList = []) => {
-    return attachmentList.map((att) => {
+    return attachmentList.map((attachment) => mapApiAttachment(attachment)).map((att) => {
       if (att && att.type === 'image' && !att.previewUrl && att.url) {
         return { ...att, previewUrl: att.url };
       }
@@ -185,13 +323,119 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
   };
 
   const addAttachments = (newAttachments, options = { persistImmediately: true }) => {
-    setAttachments(prev => {
-      const next = [...prev, ...newAttachments];
-      if (options.persistImmediately) {
-        setLocalTask(prevTask => ({ ...prevTask, attachments: next }));
-        syncTask({ attachments: next });
-      }
-      return next;
+    const next = [...attachments, ...newAttachments];
+    if (options.persistImmediately) {
+      syncAttachments(next);
+      return;
+    }
+    setAttachments(next);
+  };
+
+  const getTaskId = () => localTask.task_id || localTask.taskId || localTask.id || task?.task_id || task?.taskId || task?.id;
+
+  const loadComments = async (taskId) => {
+    if (!taskId) return;
+    setIsLoadingComments(true);
+    setCommentError('');
+    try {
+      const response = await axiosClient.get(`/tasks/${taskId}/comments`, {
+        params: { page: 1, page_size: 100 },
+      });
+      syncComments((response.data?.items || []).map(mapApiComment), { notifyParent: false });
+    } catch (error) {
+      setCommentError(getApiErrorMessage(error, 'Unable to load comments.'));
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  const loadAttachments = async (taskId) => {
+    if (!taskId) return;
+    setIsLoadingAttachments(true);
+    setAttachmentError('');
+    try {
+      const response = await axiosClient.get(`/tasks/${taskId}/attachments`, {
+        params: { page: 1, page_size: 100 },
+      });
+      syncAttachments((response.data?.items || []).map(mapApiAttachment), { notifyParent: false });
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, 'Unable to load attachments.'));
+    } finally {
+      setIsLoadingAttachments(false);
+    }
+  };
+
+  const createComment = async (text, parentId = null) => {
+    const taskId = getTaskId();
+    if (!taskId || !text.trim()) return false;
+
+    setCommentError('');
+    try {
+      const response = await axiosClient.post(`/tasks/${taskId}/comments`, {
+        comment: text,
+        parent_comment_id: parentId,
+      });
+      const createdComment = mapApiComment(response.data);
+      syncComments([createdComment, ...comments.filter(comment => comment.id !== createdComment.id)]);
+      return true;
+    } catch (error) {
+      setCommentError(getApiErrorMessage(error, 'Unable to save comment.'));
+      return false;
+    }
+  };
+
+  const updateComment = async (commentId, text) => {
+    if (!commentId || !text.trim()) return false;
+
+    setCommentError('');
+    try {
+      const response = await axiosClient.patch(`/comments/${commentId}`, { comment: text });
+      const updatedComment = mapApiComment(response.data);
+      syncComments(comments.map(comment => comment.id === commentId ? updatedComment : comment));
+      return true;
+    } catch (error) {
+      setCommentError(getApiErrorMessage(error, 'Unable to update comment.'));
+      return false;
+    }
+  };
+
+  const removeComment = async (commentId) => {
+    if (!commentId) return false;
+
+    setCommentError('');
+    try {
+      await axiosClient.delete(`/comments/${commentId}`);
+      syncComments(comments.filter(comment => comment.id !== commentId));
+      return true;
+    } catch (error) {
+      setCommentError(getApiErrorMessage(error, 'Unable to delete comment.'));
+      return false;
+    }
+  };
+
+  const uploadAttachmentFile = async (file, usage = 'attachment') => {
+    const taskId = getTaskId();
+    if (!taskId || !file) return null;
+
+    const formData = new FormData();
+    formData.append('usage', usage);
+    formData.append('file', file);
+
+    const uploadResponse = await axiosClient.post(`/tasks/${taskId}/media`, formData);
+    const attachmentId = uploadResponse.data?.attachment_id;
+    if (attachmentId) {
+      const attachmentResponse = await axiosClient.get(`/attachments/${attachmentId}`);
+      return mapApiAttachment(attachmentResponse.data);
+    }
+
+    return mapApiAttachment({
+      file_name: uploadResponse.data?.file_name || file.name,
+      file_path: uploadResponse.data?.file_path,
+      storage_url: uploadResponse.data?.file_url,
+      mime_type: uploadResponse.data?.mime_type || file.type,
+      file_size: uploadResponse.data?.file_size || file.size,
+      uploaded_by: currentUserId,
+      uploaded_at: new Date().toISOString(),
     });
   };
 
@@ -200,53 +444,51 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     replaceInputRef.current?.click();
   };
 
-  const handleReplaceFile = (e) => {
+  const handleReplaceFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file || replaceTargetId == null) return;
-    const newAtt = createAttachmentFromFile(file);
-    setAttachments(prev => {
-      const next = prev.map(a => {
-        if (a.id !== replaceTargetId) return a;
-        if (a.previewUrl) {
-          try { URL.revokeObjectURL(a.previewUrl); } catch (_) { }
-        }
-        return {
-          ...a,
-          name: newAtt.name,
-          size: newAtt.size,
-          date: newAtt.date,
-          icon: newAtt.icon,
-          color: newAtt.color,
-          bg: newAtt.bg,
-          type: newAtt.type,
-          previewUrl: newAtt.previewUrl,
-          url: newAtt.url
-        };
-      });
-      setLocalTask(prevTask => ({ ...prevTask, attachments: next }));
-      syncTask({ attachments: next });
-      return next;
-    });
-    setReplaceTargetId(null);
-    e.target.value = '';
+
+    const currentAttachment = attachments.find(attachment => attachment.id === replaceTargetId);
+    const attachmentId = currentAttachment?.attachmentId || currentAttachment?.attachment_id || currentAttachment?.id;
+    if (!attachmentId) {
+      const newAtt = createAttachmentFromFile(file);
+      syncAttachments(attachments.map(attachment => (
+        attachment.id === replaceTargetId ? { ...attachment, ...newAtt, id: attachment.id } : attachment
+      )));
+      setReplaceTargetId(null);
+      e.target.value = '';
+      return;
+    }
+
+    setAttachmentError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axiosClient.put(`/attachments/${attachmentId}`, formData);
+      const updatedAttachment = mapApiAttachment(response.data);
+      syncAttachments(attachments.map(attachment => (
+        attachment.id === replaceTargetId ? updatedAttachment : attachment
+      )));
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, 'Unable to replace attachment.'));
+    } finally {
+      setReplaceTargetId(null);
+      e.target.value = '';
+    }
   };
 
-  const deleteAttachment = (id) => {
-    setAttachments(prev => {
-      const toDelete = prev.find(a => a.id === id);
-      if (toDelete && toDelete.previewUrl) {
-        try { URL.revokeObjectURL(toDelete.previewUrl); } catch (_) { }
-      }
-      const next = prev.filter(a => a.id !== id);
-      // only remove from attachments list; do not alter description or comments
-      setLocalTask(prevTask => {
-        const updated = { ...prevTask, attachments: next };
-        if (onUpdateTask) onUpdateTask(updated);
-        return updated;
-      });
-      syncTask({ attachments: next });
-      return next;
-    });
+  const deleteAttachment = async (id) => {
+    const currentAttachment = attachments.find(attachment => attachment.id === id);
+    const attachmentId = currentAttachment?.attachmentId || currentAttachment?.attachment_id || currentAttachment?.id;
+    if (!attachmentId) return;
+
+    setAttachmentError('');
+    try {
+      await axiosClient.delete(`/attachments/${attachmentId}`);
+      syncAttachments(attachments.filter(attachment => attachment.id !== id));
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, 'Unable to delete attachment.'));
+    }
   };
 
   const downloadAttachment = (att, e) => {
@@ -271,22 +513,37 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     }
   };
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
-    addAttachments(files.map((file, index) => createAttachmentFromFile(file, index, currentUserId)));
-    setIsUploadAreaOpen(false);
-    event.target.value = '';
+    setAttachmentError('');
+    try {
+      const uploadedAttachments = await Promise.all(files.map(file => uploadAttachmentFile(file, 'attachment')));
+      syncAttachments([...uploadedAttachments.filter(Boolean), ...attachments]);
+      setIsUploadAreaOpen(false);
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, 'Unable to upload attachment.'));
+    } finally {
+      event.target.value = '';
+    }
   };
 
-  const handleFileUploadObject = (file) => {
+  const handleFileUploadObject = async (file) => {
     if (!file) return;
-    const attachment = createAttachmentFromFile(file, 0, currentUserId);
-    if (isDescriptionEditing) {
-      setPendingDescriptionAttachments(prev => [...prev, attachment]);
-    } else {
-      addAttachments([attachment]);
+    setAttachmentError('');
+    try {
+      const usage = isDescriptionEditing ? 'description' : isCommentEditing ? 'comment' : 'attachment';
+      const attachment = await uploadAttachmentFile(file, usage);
+      if (!attachment) return;
+
+      if (isDescriptionEditing) {
+        setPendingDescriptionAttachments(prev => [...prev, attachment]);
+      } else {
+        syncAttachments([attachment, ...attachments]);
+      }
+    } catch (error) {
+      setAttachmentError(getApiErrorMessage(error, 'Unable to upload file.'));
     }
   };
 
@@ -316,21 +573,21 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
       setAssignHistory(sortAssignHistory(task.assignmentHistory || []));
       setTempDescription(task.description || '');
       setTempTitle(task.title || '');
-      setComments(task.comments || [
-        {
-          id: 1,
-          author: 'Peter Tan',
-          date: 'Jun 22, 2026',
-          text: 'Can we get more info on the validation rules for the email field?',
-          parentId: null
-        }
-      ]);
+      setComments((task.comments || []).map(mapApiComment));
       setAttachments(hydrateAttachments(task.attachments || []));
+      setCommentError('');
+      setAttachmentError('');
       setPendingDescriptionAttachments([]);
       setReplyToCommentId(null);
       setEditCommentId(null);
       setIsDescriptionEditing(false);
       setIsTitleEditing(false);
+
+      const taskId = task.task_id || task.taskId || task.id;
+      if (taskId) {
+        loadComments(taskId);
+        loadAttachments(taskId);
+      }
 
 
       const completedDateValue = getCompletedDateValue(task);
@@ -469,21 +726,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
           />
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                if (tempComment.trim()) {
-                  const next = [
-                    {
-                      id: Date.now(),
-                      author: currentUserName,
-                      authorId: currentUserId,
-                      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                      text: tempComment,
-                      parentId: comment.id
-                    },
-                    ...comments
-                  ];
-                  syncComments(next);
-                }
+              onClick={async () => {
+                const saved = tempComment.trim()
+                  ? await createComment(tempComment, comment.id)
+                  : false;
+                if (!saved) return;
                 setIsCommentEditing(false);
                 setTempComment('');
                 setReplyToCommentId(null);
@@ -519,11 +766,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
           />
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                if (tempComment.trim()) {
-                  const next = comments.map(c => c.id === comment.id ? { ...c, text: tempComment } : c);
-                  syncComments(next);
-                }
+              onClick={async () => {
+                const saved = tempComment.trim()
+                  ? await updateComment(comment.id, tempComment)
+                  : false;
+                if (!saved) return;
                 setIsCommentEditing(false);
                 setTempComment('');
                 setEditCommentId(null);
@@ -636,19 +883,20 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     };
   };
 
-  const handleAssigneeChange = (selectedUser) => {
+  const handleAssigneeChange = async (selectedUser) => {
     const newAssignee = selectedUser.name === 'Unassigned' ? '' : selectedUser.name;
+    const newAssigneeId = selectedUser.user_id || selectedUser.id || '';
     const previousAssignee = localTask.assignee || '';
 
-    if (previousAssignee === newAssignee) {
+    if (previousAssignee === newAssignee && (localTask.assigneeId || '') === newAssigneeId) {
       setIsAssigneeOpen(false);
       return;
     }
 
-    const updatedTask = { ...localTask, assignee: newAssignee };
+    const updatedTask = { ...localTask, assignee: newAssignee, assigneeId: newAssigneeId };
 
     try {
-      if (onUpdateTask) onUpdateTask(updatedTask);
+      if (onUpdateTask) await onUpdateTask(updatedTask);
     } catch (err) {
       return;
     }
@@ -660,8 +908,6 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
     setAssignHistory(nextHistory);
     setLocalTask(taskWithHistory);
     setIsAssigneeOpen(false);
-
-    if (onUpdateTask) onUpdateTask(taskWithHistory);
   };
 
   return (
@@ -837,6 +1083,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 <h3 style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Attachments ({attachments.length})
                 </h3>
+                {isLoadingAttachments && (
+                  <span style={{ marginLeft: '8px', fontSize: '11px', color: '#6B778C' }}>Loading...</span>
+                )}
                 <input
                   type="file"
                   ref={uploadInputRef}
@@ -893,7 +1142,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                           </button>
                         </>
                       )}
-                      {file.previewUrl ? (
+                      {file.previewUrl || file.url ? (
                         <button
                           onClick={(e) => downloadAttachment(file, e)}
                           title="Download"
@@ -910,6 +1159,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 ))}
                 <input type="file" ref={replaceInputRef} onChange={handleReplaceFile} style={{ display: 'none' }} />
               </div>
+              {attachmentError && (
+                <div style={{ marginTop: '10px', fontSize: '12px', color: '#DE350B', fontWeight: 600 }}>
+                  {attachmentError}
+                </div>
+              )}
               {canEditTaskContent && (
                 <div
                   className="mt-4 p-5 rounded-2xl border border-dashed border-[#DFE1E6] bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors"
@@ -1049,6 +1303,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
               {/* Comments View */}
               {activeTab === 'comments' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {commentError && (
+                    <div style={{ fontSize: '12px', color: '#DE350B', fontWeight: 600 }}>
+                      {commentError}
+                    </div>
+                  )}
                   {/* Comment Editor */}
                   {!replyToCommentId && !editCommentId && (
                     <div className="flex flex-col gap-3" style={{ paddingTop: '8px' }}>
@@ -1084,21 +1343,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                           />
                           <div className="flex gap-2">
                             <button
-                              onClick={() => {
-                                if (tempComment.trim()) {
-                                  const next = [
-                                    {
-                                      id: Date.now(),
-                                      author: currentUserName,
-                                      authorId: currentUserId,
-                                      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                                      text: tempComment,
-                                      parentId: null
-                                    },
-                                    ...comments
-                                  ];
-                                  syncComments(next);
-                                }
+                              onClick={async () => {
+                                const saved = tempComment.trim()
+                                  ? await createComment(tempComment, null)
+                                  : false;
+                                if (!saved) return;
                                 setIsCommentEditing(false);
                                 setTempComment('');
                                 setReplyToCommentId(null);
@@ -1128,7 +1377,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
 
                   {/* Existing Comments */}
                   <div className="flex flex-col gap-4">
-                    {comments.filter(comment => comment.parentId === null).map(comment => renderComment(comment))}
+                    {isLoadingComments ? (
+                      <div style={{ color: '#6B778C', fontSize: '13px' }}>Loading comments...</div>
+                    ) : (
+                      comments.filter(comment => comment.parentId === null).map(comment => renderComment(comment))
+                    )}
                   </div>
                 </div>
               )}
@@ -1679,7 +1932,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
 
                   <div className="flex justify-between items-center">
                     <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Updated</span>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D', paddingRight: '2px' }}>{localTask?.updated_at || '2 mins ago'}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D', paddingRight: '2px' }}>{formatTimelineDateTime(localTask?.updated_at)}</span>
                   </div>
 
 
@@ -1732,10 +1985,9 @@ export default function TaskDetailModal({ task, onClose, tasks = [], onUpdateTas
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  const next = comments.filter(c => c.id !== deleteConfirmCommentId);
-                  syncComments(next);
-                  setDeleteConfirmCommentId(null);
+                onClick={async () => {
+                  const deleted = await removeComment(deleteConfirmCommentId);
+                  if (deleted) setDeleteConfirmCommentId(null);
                 }}
                 style={{ padding: '8px 14px', borderRadius: '8px', backgroundColor: '#DE350B', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
                 className="hover:opacity-90 transition-all"

@@ -4,9 +4,8 @@ import '../../styles/CreateTaskModal.css';
 
 const parseDate = (value) => {
   if (!value) return null;
-  // Handle datetime-local format (YYYY-MM-DDTHH:mm)
-  if (typeof value === 'string' && value.includes('T')) {
-    const date = new Date(value + ':00Z'); // Add seconds and Z for UTC
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
   }
   const date = new Date(value);
@@ -81,7 +80,7 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
 
   if (!isOpen || !sprint) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const parsedStart = parseDate(startDate);
     const updatedSprintData = {
@@ -96,9 +95,9 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
     };
 
     if (onUpdate) {
-      onUpdate(updatedSprintData);
+      await onUpdate(updatedSprintData);
     } else if (onSave) {
-      onSave(updatedSprintData);
+      await onSave(updatedSprintData);
     }
   };
 

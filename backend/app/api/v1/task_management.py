@@ -43,6 +43,7 @@ def create_task(
     task_status: TaskStatus = Form(default="new"),
     story_points: float = Form(default=0),
     completed_at: datetime | None = Form(default=None),
+    assignee_ids: list[str] = Form(default_factory=list),
     attachments: list[UploadFile] = File(default_factory=list),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -62,6 +63,7 @@ def create_task(
         payload,
         current_user,
         attachments=attachments,
+        assignee_ids=assignee_ids,
     )
 
 

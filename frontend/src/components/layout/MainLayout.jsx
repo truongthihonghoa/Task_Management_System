@@ -208,6 +208,8 @@ export default function MainLayout() {
   const [tasksForModal, setTasksForModal] = useState([]);
   const [createTaskHandler, setCreateTaskHandler] = useState(null);
   const [createTaskInitialSprint, setCreateTaskInitialSprint] = useState('');
+  const [assigneesForModal, setAssigneesForModal] = useState([]);
+  const [currentSpaceNameForModal, setCurrentSpaceNameForModal] = useState('Task Management');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -575,6 +577,8 @@ export default function MainLayout() {
     setCreateTaskHandler,
     setSprintsForModal,
     setCreateTaskInitialSprint,
+    setAssigneesForModal,
+    setCurrentSpaceNameForModal,
     currentRole,
     currentUser,
     currentSpaceRole,
@@ -1072,7 +1076,9 @@ export default function MainLayout() {
         onClose={() => { setShowCreateModal(false); setCreateTaskInitialSprint(''); }}
         tasks={tasksForModal}
         sprints={sprintsForModal}
+        assignees={assigneesForModal}
         initialSprint={createTaskInitialSprint}
+        currentSpaceName={currentSpaceNameForModal}
         onCreateTask={createTaskHandler}
         currentRole={currentRole}
         currentSpaceRole={currentSpaceRole}

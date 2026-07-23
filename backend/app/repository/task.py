@@ -166,7 +166,11 @@ def list_task_records(
     active_sprint_only: bool = False,
 ) -> tuple[list[Task], int]:
     deleted_filter = Task.deleted_at.isnot(None) if deleted else Task.deleted_at.is_(None)
-    query = db.query(Task).options(joinedload(Task.sprint), joinedload(Task.attachments)).filter(
+    query = db.query(Task).options(
+        joinedload(Task.sprint),
+        joinedload(Task.attachments),
+        joinedload(Task.assignees).joinedload(TaskAssignee.assignee),
+    ).filter(
         Task.space_id == space_id,
         deleted_filter,
     )
@@ -187,7 +191,11 @@ def list_task_records(
 def list_board_task_records(db: Session, space_id: str, *, active_sprint_only: bool = True) -> list[Task]:
     query = (
         db.query(Task)
-        .options(joinedload(Task.sprint), joinedload(Task.attachments))
+        .options(
+            joinedload(Task.sprint),
+            joinedload(Task.attachments),
+            joinedload(Task.assignees).joinedload(TaskAssignee.assignee),
+        )
         .filter(Task.space_id == space_id, Task.deleted_at.is_(None))
     )
     if active_sprint_only:
