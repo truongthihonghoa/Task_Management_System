@@ -14,9 +14,25 @@ const parseApiDateTime = (value) => {
 
   const trimmedValue = value.trim();
   const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmedValue);
-  const isDateTime = /^\d{4}-\d{2}-\d{2}T/.test(trimmedValue);
+  const vietnamLocalMatch = trimmedValue.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$/,
+  );
 
-  return new Date(isDateTime && !hasTimezone ? `${trimmedValue}Z` : trimmedValue);
+  if (!hasTimezone && vietnamLocalMatch) {
+    const [, year, month, day, hour = '00', minute = '00', second = '00', fraction = '0'] = vietnamLocalMatch;
+    const millisecond = Number(fraction.padEnd(3, '0').slice(0, 3));
+    return new Date(Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour) - 7,
+      Number(minute),
+      Number(second),
+      millisecond,
+    ));
+  }
+
+  return new Date(trimmedValue);
 };
 
 const formatDateTime = (value) => {

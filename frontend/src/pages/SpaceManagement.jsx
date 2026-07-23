@@ -240,9 +240,9 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   
   const getUserRoleInSpace = (space, userId) => {
     if (!userId) return null;
-    if (space.ownerId === userId) return 'OWNER';
-    if (isSuperAdmin) return 'SUPER_ADMIN';
-    return 'MEMBER';
+    if (isSuperAdmin) return null;
+    if (space.ownerId === userId) return 'Owner';
+    return 'Member';
   };
 
   const handleViewTasks = (space, isAssigned, isOwner) => {
@@ -263,7 +263,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
     setSpaceDetailSelection({
       space,
       isOwner,
-      roleLabel: isOwner ? 'OWNER' : isSuperAdmin ? 'SUPER ADMIN' : 'MEMBER',
+      roleLabel: isSuperAdmin ? null : isOwner ? 'Owner' : 'Member',
     });
   };
 
@@ -593,7 +593,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
         {filteredAndSortedSpaces.map(space => {
           const isAssigned = canAccessSpace(space, currentUserId);
           const userSpaceRole = getUserRoleInSpace(space, currentUserId);
-          const isOwner = userSpaceRole === 'OWNER';
+          const isOwner = !isSuperAdmin && userSpaceRole === 'Owner';
           const isArchived = space.status === 'Archived';
           const isDeleted = space.status === 'Deleted';
           const canCompleteSpace = isAssigned && isOwner && space.status === 'Active';
@@ -622,7 +622,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                   <h3 className="min-w-0 flex-1 truncate text-[15px] font-bold leading-6 text-[#4C2B74]">{space.title}</h3>
                   {userSpaceRole && (
                     <span className={`shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-bold leading-none tracking-wide ${
-                      userSpaceRole === 'OWNER'
+                      userSpaceRole === 'Owner'
                         ? 'border-amber-200 bg-amber-50 text-amber-800'
                         : 'border-[#D9D3F6] bg-[#F2F0FF] text-[#5e4db2]'
                     }`}>
