@@ -23,6 +23,7 @@ from app.schemas.main_layout import (
 )
 
 SEARCH_TYPES = {"spaces", "tasks", "users"}
+RECENT_ENTITY_TYPES = {"space", "task", "user"}
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = {"en", "vi"}
 
@@ -327,3 +328,25 @@ def global_search(
         ]
 
     return GlobalSearchResponse(query=query_text, spaces=spaces, tasks=tasks, users=users)
+
+
+def record_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> None:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    recent_view_repository.record_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
+
+def delete_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> int:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    return recent_view_repository.delete_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )

@@ -14,6 +14,7 @@ import {
   getUnreadNotificationCount,
   markNotificationsRead,
 } from '../../api/notificationsApi';
+import { deleteSearchRecent, globalSearch, recordSearchRecent } from '../../api/searchApi';
 
 import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
 import {
@@ -23,6 +24,9 @@ import {
 
 const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
 const NOTIFICATION_POLL_INTERVAL_MS = 25000;
+const SEARCH_DEBOUNCE_MS = 120;
+const RECENT_SEARCH_DEBOUNCE_MS = 0;
+const EMPTY_SEARCH_RESULTS = { spaces: [], tasks: [], users: [] };
 
 const copyLayoutQueryParams = (search) => {
   const currentParams = new URLSearchParams(search);
@@ -43,60 +47,6 @@ const getLayoutSearch = (search) => {
   return query ? `?${query}` : '';
 };
 
-const SEARCH_TASKS = [
-  { id: 'TM-1', spaceId: 'SP-001', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-2', spaceId: 'SP-001', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-3', spaceId: 'SP-002', title: 'Checkout flow mobile fix', status: 'In Testing', priority: 'High', assignee: 'Trong Nghia' },
-  { id: 'TM-4', spaceId: 'SP-001', title: 'Security Protocols Audit', status: 'Done', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-5', spaceId: 'SP-001', title: 'SSO Authentication implementation', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-8', spaceId: 'SP-003', title: 'Database Migration Script', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
-  { id: 'TM-9', spaceId: 'SP-001', title: 'Dashboard Charts optimization', status: 'In Testing', priority: 'Medium', assignee: 'Trong Nghia' },
-  { id: 'TM-11', spaceId: 'SP-001', title: 'Push Notification Service', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
-];
-
-const SEARCH_SPACES = [
-  {
-    id: 'SP-001',
-    taskId: 'SP-001',
-    title: 'Task Management System',
-    description: 'Final project for task management system integration.',
-    owner: 'Trang Nguyen',
-    ownerInitials: 'TN',
-    memberCount: 4,
-    status: 'Active',
-    memberAccess: true
-  },
-  {
-    id: 'SP-002',
-    taskId: 'SP-002',
-    title: 'E-Commerce Platform',
-    description: 'Headless commerce rebuild with Next.js and high-performance API.',
-    owner: 'Hoang Hoa',
-    ownerInitials: 'HH',
-    memberCount: 3,
-    status: 'Active',
-    memberAccess: true
-  },
-  {
-    id: 'SP-003',
-    taskId: 'SP-003',
-    title: 'CRM System',
-    description: 'Legacy customer relationship management maintenance and data cleanup.',
-    owner: 'Alex Morgan',
-    ownerInitials: 'AM',
-    memberCount: 2,
-    status: 'Archived',
-    memberAccess: false
-  },
-];
-
-const SEARCH_USERS = [
-  { id: 'USR-1', name: 'Alex Morgan', email: 'alex.morgan@taskcore.com', role: 'Super Admin', status: 'Active', initials: 'AM', space: 'System' },
-  { id: 'USR-2', name: 'Trang Nguyen', email: 'trangnguyen@example.com', role: 'Owner', status: 'Active', initials: 'TN', space: 'Task Management System' },
-  { id: 'USR-3', name: 'Tien Pham', email: 'tienthicamphamqn20@gmail.com', role: 'User', status: 'Active', initials: 'TP', space: 'Task Management System' },
-  { id: 'USR-4', name: 'Hoang Hoa', email: 'hoanghoa@example.com', role: 'Owner', status: 'Active', initials: 'HH', space: 'E-Commerce Platform' },
-  { id: 'USR-5', name: 'Trong Nghia', email: 'trongnghia@example.com', role: 'User', status: 'Active', initials: 'TN', space: 'CRM System' },
-];
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
 
@@ -200,6 +150,55 @@ function normalizeAvatarUrl(avatarUrl) {
   return avatarUrl;
 }
 
+function mapSearchSpace(space) {
+  const ownerName = space.owner?.full_name || '';
+  return {
+    id: space.space_id,
+    taskId: space.space_id,
+    title: space.name,
+    description: space.description || '',
+    owner: ownerName,
+    ownerInitials: space.owner?.initials || getInitials(ownerName),
+    memberCount: space.member_count || 0,
+    status: space.status || '',
+  };
+}
+
+function mapSearchTask(task) {
+  const assigneeNames = (task.assignees || [])
+    .map((assignee) => assignee.full_name)
+    .filter(Boolean);
+
+  return {
+    id: task.task_id,
+    spaceId: task.space_id,
+    title: task.title,
+    status: task.status || '',
+    priority: task.priority || '',
+    assignee: assigneeNames.join(', ') || 'Unassigned',
+  };
+}
+
+function mapSearchUser(user) {
+  return {
+    id: user.user_id,
+    name: user.full_name,
+    email: user.email,
+    role: user.display_role || user.system_role || 'User',
+    status: user.status || '',
+    initials: user.initials || getInitials(user.full_name),
+    space: user.space_name || (user.system_role === 'SUPER_ADMIN' ? 'System' : ''),
+  };
+}
+
+function mapGlobalSearchResponse(response, isSuperAdmin) {
+  return {
+    spaces: (response.spaces || []).map(mapSearchSpace),
+    tasks: (response.tasks || []).map(mapSearchTask),
+    users: isSuperAdmin ? (response.users || []).map(mapSearchUser) : [],
+  };
+}
+
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -217,6 +216,8 @@ export default function MainLayout() {
   const [showAvatarDropdown, setShowAvatarDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState({ spaces: [], tasks: [], users: [] });
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
 
   const avatarRef = useRef(null);
   const avatarDropdownRef = useRef(null);
@@ -232,9 +233,12 @@ export default function MainLayout() {
   const settingsRef = useRef(null);
   const settingsDropdownRef = useRef(null);
   const searchRef = useRef(null);
+  const recentSearchCacheRef = useRef(new Map());
+  const activeSearchRequestIdRef = useRef(0);
 
   const authRole = authUser?.role || 'USER';
   const isSuperAdmin = authRole === 'SUPER_ADMIN';
+  const recentSearchCacheKey = `${authUser?.user_id || 'anonymous'}:${isSuperAdmin ? 'admin' : 'user'}`;
   const currentRole = isSuperAdmin ? 'ADMIN' : 'USER';
   const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
   const currentUserName = authUser?.full_name || authUser?.email || 'User';
@@ -458,38 +462,64 @@ export default function MainLayout() {
   }, [isSuperAdmin, location.pathname, location.search, navigate]);
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const visibleSpaces = useMemo(() => {
-    const searchableSpaces = isSuperAdmin ? SEARCH_SPACES : SEARCH_SPACES.filter(space => space.memberAccess);
-    if (!normalizedSearchQuery) return searchableSpaces.slice(0, 3);
-    return searchableSpaces.filter(space =>
-      space.id.toLowerCase().includes(normalizedSearchQuery) ||
-      space.title.toLowerCase().includes(normalizedSearchQuery) ||
-      space.description.toLowerCase().includes(normalizedSearchQuery) ||
-      space.owner.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 5);
-  }, [isSuperAdmin, normalizedSearchQuery]);
+  useEffect(() => {
+    if (!authUser?.user_id || !showSearchDropdown) return;
 
-  const visibleTasks = useMemo(() => {
-    if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
-    return SEARCH_TASKS.filter(task =>
-      task.id.toLowerCase().includes(normalizedSearchQuery) ||
-      task.title.toLowerCase().includes(normalizedSearchQuery) ||
-      task.status.toLowerCase().includes(normalizedSearchQuery) ||
-      task.assignee.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 6);
-  }, [normalizedSearchQuery]);
+    const queryText = searchQuery.trim();
+    const isRecentRequest = !queryText;
+    const cachedRecentResults = isRecentRequest ? recentSearchCacheRef.current.get(recentSearchCacheKey) : null;
+    if (cachedRecentResults) {
+      setSearchResults(cachedRecentResults);
+      setIsSearchLoading(false);
+    }
 
-  const visibleUsers = useMemo(() => {
-    if (!isSuperAdmin) return [];
-    if (!normalizedSearchQuery) return SEARCH_USERS.slice(0, 4);
-    return SEARCH_USERS.filter(user =>
-      user.name.toLowerCase().includes(normalizedSearchQuery) ||
-      user.email.toLowerCase().includes(normalizedSearchQuery) ||
-      user.role.toLowerCase().includes(normalizedSearchQuery) ||
-      user.space.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 5);
-  }, [isSuperAdmin, normalizedSearchQuery]);
+    const requestId = activeSearchRequestIdRef.current + 1;
+    activeSearchRequestIdRef.current = requestId;
+    const controller = new AbortController();
+    const timerId = window.setTimeout(async () => {
+      if (!cachedRecentResults) {
+        setIsSearchLoading(true);
+      }
+      try {
+        const response = await globalSearch({
+          q: queryText || undefined,
+          types: isSuperAdmin ? undefined : 'spaces,tasks',
+          limitPerType: 5,
+          includeRecent: true,
+          signal: controller.signal,
+        });
+        if (activeSearchRequestIdRef.current !== requestId) return;
+        const mappedResults = mapGlobalSearchResponse(response, isSuperAdmin);
+        if (isRecentRequest) {
+          recentSearchCacheRef.current.set(recentSearchCacheKey, mappedResults);
+        }
+        setSearchResults(mappedResults);
+      } catch (error) {
+        if (error?.code === 'ERR_CANCELED') return;
+        if (activeSearchRequestIdRef.current === requestId && error?.response?.status !== 401) {
+          console.error('Unable to load global search results', error);
+        }
+        if (activeSearchRequestIdRef.current === requestId) {
+          setSearchResults(EMPTY_SEARCH_RESULTS);
+        }
+      } finally {
+        if (activeSearchRequestIdRef.current === requestId) {
+          setIsSearchLoading(false);
+        }
+      }
+    }, isRecentRequest ? RECENT_SEARCH_DEBOUNCE_MS : SEARCH_DEBOUNCE_MS);
 
+    return () => {
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, [authUser?.user_id, isSuperAdmin, recentSearchCacheKey, searchQuery, showSearchDropdown]);
+
+  const visibleSpaces = useMemo(() => searchResults.spaces, [searchResults.spaces]);
+  const visibleTasks = useMemo(() => searchResults.tasks, [searchResults.tasks]);
+  const visibleUsers = useMemo(() => (isSuperAdmin ? searchResults.users : []), [isSuperAdmin, searchResults.users]);
+
+  const isRecentSearchMode = !normalizedSearchQuery;
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
   const buildSearchParams = (updates = {}, { preservePageParams = false } = {}) => {
@@ -526,21 +556,56 @@ export default function MainLayout() {
     openDashboardPath(path, updates);
   };
 
-  const handleSearchSpaceClick = (taskId) => {
-    openDashboardPath(`/dashboard/tasks/${taskId}`);
+  const rememberSearchItem = async (entityType, entityId) => {
+    if (!entityType || !entityId) return;
+    recentSearchCacheRef.current.delete(recentSearchCacheKey);
+    try {
+      await recordSearchRecent({ entityType, entityId });
+    } catch (error) {
+      if (error?.response?.status !== 401) {
+        console.error('Unable to record recent search item', error);
+      }
+    }
+  };
+
+  const removeRecentSearchItem = async (event, entityType, entityId) => {
+    event.stopPropagation();
+    recentSearchCacheRef.current.delete(recentSearchCacheKey);
+    setSearchResults(prev => {
+      const collectionKey = `${entityType}s`;
+      return {
+        ...prev,
+        [collectionKey]: (prev[collectionKey] || []).filter(item => item.id !== entityId),
+      };
+    });
+    try {
+      await deleteSearchRecent({ entityType, entityId });
+    } catch (error) {
+      if (error?.response?.status !== 401) {
+        console.error('Unable to delete recent search item', error);
+      }
+    }
+  };
+
+  const handleSearchSpaceClick = async (space) => {
+    if (!space?.id) return;
+    rememberSearchItem('space', space.id);
+    openDashboardPath(`/dashboard/spaces/${space.id}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
 
-  const handleSearchTaskClick = (task) => {
+  const handleSearchTaskClick = async (task) => {
     if (!task?.spaceId) return;
+    rememberSearchItem('task', task.id);
     navigate(`/dashboard/tasks/${task.spaceId}${buildSearchParams({ taskId: task.id })}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
 
-  const handleSearchUserClick = (user) => {
+  const handleSearchUserClick = async (user) => {
     if (!isSuperAdmin || !user?.id) return;
+    rememberSearchItem('user', user.id);
     openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
@@ -768,12 +833,9 @@ export default function MainLayout() {
                   setShowSearchDropdown(true);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && visibleSpaces[0]) {
-                    handleSearchSpaceClick(visibleSpaces[0].taskId);
-                  } else if (event.key === 'Enter' && visibleUsers[0]) {
-                    handleSearchUserClick(visibleUsers[0]);
-                  } else if (event.key === 'Enter' && visibleTasks[0]) {
-                    handleSearchTaskClick(visibleTasks[0]);
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    setShowSearchDropdown(true);
                   }
                 }}
               />
@@ -789,29 +851,30 @@ export default function MainLayout() {
                         {isSuperAdmin ? 'Quickly open spaces, users, or tasks.' : 'Quickly open spaces or tasks.'}
                       </p>
                     </div>
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="text-[11px] font-bold text-gray-400 hover:text-[#4C2B74]"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
 
                   <div className="max-h-[360px] overflow-y-auto custom-scrollbar py-2">
+                    {isSearchLoading && (
+                      <div className="px-4 py-3 text-xs font-semibold text-gray-400">
+                        Loading...
+                      </div>
+                    )}
+
                     {visibleSpaces.length > 0 && (
                       <div>
                         <div className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider">
                           Spaces
                         </div>
                         {visibleSpaces.map((space) => (
-                          <button
+                          <div
                             key={space.id}
-                            type="button"
-                            onClick={() => handleSearchSpaceClick(space.taskId)}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleSearchSpaceClick(space)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchSpaceClick(space);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#F0EDFF] border border-purple-100 flex items-center justify-center shrink-0">
                               <i className="w-4 h-4 text-[#4C2B74]" data-lucide="folder-kanban"></i>
@@ -829,7 +892,17 @@ export default function MainLayout() {
                                 <span className="truncate">Owner: {space.owner}</span>
                               </div>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'space', space.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -840,11 +913,15 @@ export default function MainLayout() {
                           Tasks
                         </div>
                         {visibleTasks.map((task) => (
-                          <button
+                          <div
                             key={task.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => handleSearchTaskClick(task)}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchTaskClick(task);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#EEF2FF] border border-blue-100 flex items-center justify-center shrink-0">
                               <i className="w-4 h-4 text-[#4C2B74]" data-lucide="check-square"></i>
@@ -862,7 +939,17 @@ export default function MainLayout() {
                                 <span>{task.assignee}</span>
                               </div>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'task', task.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -873,11 +960,15 @@ export default function MainLayout() {
                           Users
                         </div>
                         {visibleUsers.map((user) => (
-                          <button
+                          <div
                             key={user.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => handleSearchUserClick(user)}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchUserClick(user);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-full bg-[#EADFF9] text-[#4C2B74] flex items-center justify-center text-xs font-black shrink-0">
                               {user.initials}
@@ -891,12 +982,22 @@ export default function MainLayout() {
                                 {user.email} - {user.space}
                               </p>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'user', user.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
 
-                    {!hasSearchResults && (
+                    {!isSearchLoading && !hasSearchResults && (
                       <div className="px-6 py-10 text-center">
                         <div className="w-12 h-12 mx-auto rounded-full bg-gray-50 flex items-center justify-center mb-3">
                           <i className="w-5 h-5 text-gray-300" data-lucide="search-x"></i>
