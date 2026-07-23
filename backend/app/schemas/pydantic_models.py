@@ -643,6 +643,7 @@ class UserManagementListResponse(BaseModel):
 
 class UserManagementUpdateRequest(BaseModel):
     status: UserStatus | None = None
+    role: Literal["SUPER_ADMIN", "USER"] | None = None
     is_verified: bool | None = None
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
