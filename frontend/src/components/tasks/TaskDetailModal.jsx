@@ -105,9 +105,13 @@ const formatApiDate = (value, fallback = '') => {
 };
 
 const getApiErrorMessage = (error, fallback) => {
-  const detail = error?.response?.data?.detail;
+  const responseData = error?.response?.data;
+  const detail = responseData?.detail;
   if (Array.isArray(detail)) return detail.map(item => item.msg || item.message).filter(Boolean).join(', ') || fallback;
   if (typeof detail === 'string') return detail;
+  if (typeof responseData === 'string') return responseData;
+  if (typeof responseData?.message === 'string') return responseData.message;
+  if (typeof responseData?.error === 'string') return responseData.error;
   return error?.message || fallback;
 };
 
@@ -138,6 +142,8 @@ const mapApiAttachment = (attachment = {}) => {
     url: fileUrl,
     uploadedBy: attachment.uploaded_by || attachment.uploadedBy || attachment.uploaderId || '',
     uploaderId: attachment.uploaded_by || attachment.uploaderId || '',
+    usage: attachment.usage || 'attachment',
+    cloudinaryPublicId: attachment.cloudinary_public_id || attachment.public_id || attachment.cloudinaryPublicId || '',
     raw: attachment,
   };
 };
@@ -529,21 +535,23 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
     }
   };
 
-  const handleFileUploadObject = async (file) => {
-    if (!file) return;
+  const handleFileUploadObject = async (file, usageOverride = null) => {
+    if (!file) return null;
+    const usage = usageOverride || (isDescriptionEditing ? 'description' : isCommentEditing ? 'comment' : 'attachment');
     setAttachmentError('');
     try {
-      const usage = isDescriptionEditing ? 'description' : isCommentEditing ? 'comment' : 'attachment';
       const attachment = await uploadAttachmentFile(file, usage);
-      if (!attachment) return;
+      if (!attachment) return null;
 
-      if (isDescriptionEditing) {
+      if (usage === 'description') {
         setPendingDescriptionAttachments(prev => [...prev, attachment]);
-      } else {
+      } else if (usage === 'attachment') {
         syncAttachments([attachment, ...attachments]);
       }
+      return attachment;
     } catch (error) {
       setAttachmentError(getApiErrorMessage(error, 'Unable to upload file.'));
+      throw error;
     }
   };
 
@@ -723,6 +731,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
             placeholder="Add a reply..."
             tasks={tasks}
             onUploadFile={handleFileUploadObject}
+            uploadUsage="comment"
           />
           <div className="flex gap-2">
             <button
@@ -763,6 +772,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
             placeholder="Edit comment..."
             tasks={tasks}
             onUploadFile={handleFileUploadObject}
+            uploadUsage="comment"
           />
           <div className="flex gap-2">
             <button
@@ -1045,6 +1055,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                     placeholder="Describe this task..."
                     tasks={tasks}
                     onUploadFile={handleFileUploadObject}
+                    uploadUsage="description"
                   />
                   <div className="flex gap-2">
                     <button
@@ -1091,6 +1102,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                   ref={uploadInputRef}
                   onChange={handleFileUpload}
                   style={{ display: 'none' }}
+                  accept=".pdf,.zip,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   multiple
                 />
               </div>
@@ -1178,7 +1190,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '14px', fontWeight: 700, color: '#172B4D' }}>Click to upload or drag and drop</div>
-                    <div style={{ fontSize: '12px', color: '#6B778C', marginTop: '4px' }}>PDF, ZIP, PNG, or JPG up to 20MB</div>
+                    <div style={{ fontSize: '12px', color: '#6B778C', marginTop: '4px' }}>PDF, ZIP, images, or Office files up to 20MB</div>
                   </div>
                 </div>
               )}
@@ -1340,6 +1352,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                             placeholder="Add a comment..."
                             tasks={tasks}
                             onUploadFile={handleFileUploadObject}
+                            uploadUsage="comment"
                           />
                           <div className="flex gap-2">
                             <button

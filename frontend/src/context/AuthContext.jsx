@@ -30,10 +30,15 @@ export function AuthProvider({ children }) {
 
     // Lấy profile đầy đủ
     const profile = await getProfile();
+    const mergedProfile = {
+      ...(response.user || {}),
+      ...profile,
+      user_id: profile.user_id || response.user?.user_id,
+    };
 
     // Đồng bộ Context + Storage
-    setCurrentUser(profile);
-    setUser(profile);
+    setCurrentUser(mergedProfile);
+    setUser(mergedProfile);
 
     return response;
   } finally {

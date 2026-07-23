@@ -9,8 +9,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import HTTPException, UploadFile, status
 
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024

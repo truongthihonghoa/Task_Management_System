@@ -130,7 +130,11 @@ def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     _apply_task_date_flags(response, task)
     response.assignees = sorted(response.assignees, key=lambda assignee: assignee.assignee_at)
     response.attachments = sorted(
-        [attachment for attachment in response.attachments if attachment.deleted_at is None],
+        [
+            attachment
+            for attachment in response.attachments
+            if attachment.deleted_at is None and attachment.usage == "attachment"
+        ],
         key=lambda attachment: attachment.uploaded_at,
         reverse=True,
     )
@@ -199,7 +203,9 @@ def _build_task_detail_response(task: Task) -> TaskDetailResponse:
         key=lambda comment: comment.created_at,
     )
     response.attachments = [
-        attachment for attachment in response.attachments if attachment.deleted_at is None
+        attachment
+        for attachment in response.attachments
+        if attachment.deleted_at is None and attachment.usage == "attachment"
     ]
     response.attachments = sorted(response.attachments, key=lambda attachment: attachment.uploaded_at, reverse=True)
     response.assignment_history = sorted(

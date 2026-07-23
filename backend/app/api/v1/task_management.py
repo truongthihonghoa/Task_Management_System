@@ -43,7 +43,7 @@ def create_task(
     task_status: TaskStatus = Form(default="new"),
     story_points: float = Form(default=0),
     completed_at: datetime | None = Form(default=None),
-    assignee_ids: list[str] = Form(default_factory=list),
+    assignee_ids: list[str] | None = Form(default=None),
     attachments: list[UploadFile] = File(default_factory=list),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -57,13 +57,17 @@ def create_task(
         story_points=story_points,
         completed_at=completed_at,
     )
+    normalized_assignee_ids = assignee_ids if isinstance(assignee_ids, list) else None
+    service_kwargs = {"attachments": attachments}
+    if normalized_assignee_ids:
+        service_kwargs["assignee_ids"] = normalized_assignee_ids
+
     return task_management_service.create_task(
         db,
         space_id,
         payload,
         current_user,
-        attachments=attachments,
-        assignee_ids=assignee_ids,
+        **service_kwargs,
     )
 
 
