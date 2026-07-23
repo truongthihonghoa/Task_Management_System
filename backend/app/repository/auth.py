@@ -6,9 +6,10 @@ and perform exactly one DB concern.
 """
 
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from typing import Any
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -60,7 +61,7 @@ def upsert_email_verification_token(
 ) -> VerificationToken:
     """Create or update the EMAIL_VERIFICATION token for *email*."""
     token = get_verification_token(db, email, EMAIL_VERIFICATION)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if token is None:
         token = VerificationToken(
@@ -96,7 +97,7 @@ def upsert_verification_token(
 ) -> VerificationToken:
     """Create or update any verification token (generic)."""
     token = get_verification_token(db, email, token_type)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if token is None:
         token = VerificationToken(
@@ -192,10 +193,49 @@ def create_user_token(
     return user_token
 
 
-def delete_user_token(db: Session, access_token: str) -> None:
-    db.execute(delete(UserToken).where(UserToken.access_token == access_token))
+def revoke_refresh_token_for_access_token(
+    db: Session,
+    access_token: str,
+    *,
+    revoked_at: datetime | None = None,
+) -> UserToken | None:
+    user_token = get_user_token(db, access_token)
+    if user_token is None:
+        return None
+
+    user_token.refresh_token = ""
+    user_token.refresh_expires_at = revoked_at or vietnam_now()
+    user_token.is_revoked = True
+    return user_token
 
 
+def get_user_token_by_refresh_token(db: Session, refresh_token: str) -> UserToken | None:
+    return db.execute(
+        select(UserToken).where(
+            UserToken.refresh_token == refresh_token,
+        )
+    ).scalar_one_or_none()
+
+
+def update_user_token(
+    db: Session,
+    user_token: UserToken,
+    *,
+    new_access_token: str,
+    access_expires_at: datetime,
+) -> UserToken:
+    user_token.access_token = new_access_token
+    user_token.access_expires_at = access_expires_at
+
+    return user_token
+
+
+def revoke_all_user_tokens(db: Session, user_id: str) -> None:
+    db.query(UserToken).filter(
+        UserToken.user_id == user_id,
+    ).delete(synchronize_session=False)
+
+    db.commit()
 # ---------------------------------------------------------------------------
 # AuditLog operations
 # ---------------------------------------------------------------------------

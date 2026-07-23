@@ -5,6 +5,7 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 
@@ -29,8 +30,28 @@ if not SQLALCHEMY_DATABASE_URL:
         database=db_name,
     )
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+engine_options = {
+    "pool_pre_ping": True,
+    "connect_args": {
+        "options": "-c timezone=Asia/Ho_Chi_Minh"
+    },
+}
 
+database_url_text = str(SQLALCHEMY_DATABASE_URL)
+
+if "supabase.com" in database_url_text:
+    # Supabase nên dùng NullPool
+    engine_options["poolclass"] = NullPool
+else:
+    engine_options["pool_size"] = int(os.getenv("DB_POOL_SIZE", "3"))
+    engine_options["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "2"))
+    engine_options["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+    engine_options["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    **engine_options,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

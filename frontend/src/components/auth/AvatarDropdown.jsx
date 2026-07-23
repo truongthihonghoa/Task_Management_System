@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick, onLogoutClick }) => {
+const AvatarDropdown = ({ currentRole, currentUser, onClose, onProfileClick, onSettingsClick, onLogoutClick }) => {
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const isSuperAdmin = currentRole === "ADMIN";
 
@@ -15,15 +15,19 @@ const AvatarDropdown = ({ currentRole, onClose, onProfileClick, onSettingsClick,
     <div className="w-64 bg-white rounded-xl shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1)] border border-gray-200 overflow-hidden animate-in fade-in zoom-in duration-200">
       {/* User Info Section */}
       <div className="p-4 flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-indigo-100 text-[#2D1B4E] flex items-center justify-center font-bold text-lg border border-indigo-200">
-          {isSuperAdmin ? "AM" : "TN"}
+        <div className="w-12 h-12 rounded-full bg-indigo-100 text-[#2D1B4E] flex items-center justify-center font-bold text-lg border border-indigo-200 overflow-hidden">
+          {currentUser?.avatarUrl ? (
+            <img src={currentUser.avatarUrl} alt={currentUser?.name || 'User'} className="w-full h-full object-cover" />
+          ) : (
+            currentUser?.initials || "U"
+          )}
         </div>
         <div className="flex-1 overflow-hidden">
           <p className="text-sm font-bold truncate text-gray-900">
-            {isSuperAdmin ? "Alex Morgan" : "Trang Nguyen"}
+            {currentUser?.name || "User"}
           </p>
           <p className="text-xs text-gray-500 truncate">
-            {isSuperAdmin ? "alex.morgan@taskcore.com" : "trang.nguyen@taskcore.com"}
+            {currentUser?.email || currentUser?.displayRole || (isSuperAdmin ? "Super Admin" : "User")}
           </p>
         </div>
       </div>

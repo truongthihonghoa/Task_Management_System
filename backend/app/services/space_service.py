@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from typing import List
 
 from fastapi import HTTPException, status
@@ -32,7 +33,7 @@ def _is_trash_expired(space: Space, now: datetime | None = None) -> bool:
     expires_at = _trash_expires_at(space)
     if not expires_at:
         return False
-    return expires_at <= (now or datetime.utcnow())
+    return expires_at <= (now or vietnam_now())
 
 
 def _normalize_space_name(name: str) -> str:
@@ -54,10 +55,28 @@ def _ensure_active_owner(owner: User) -> None:
 
 
 def _ensure_active_space(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is archived",
+        )
     if space.status_space != "Active" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Space must be active",
+        )
+
+
+def _ensure_space_mutable(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is archived",
+        )
+    if space.status_space == "Deleted" or space.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is deleted",
         )
 
 
@@ -172,7 +191,7 @@ def list_owner_trash(db: Session, owner_id: str) -> List[SpaceResponse]:
             detail="Owner user not found",
         )
 
-    trash_cutoff = datetime.utcnow() - timedelta(days=TRASH_RETENTION_DAYS)
+    trash_cutoff = vietnam_now() - timedelta(days=TRASH_RETENTION_DAYS)
     spaces = space_repository.list_owner_trash_records(
         db,
         owner_id=owner_id,
@@ -187,11 +206,7 @@ def get_space(db: Session, space_id: str) -> SpaceResponse:
 
 def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
-    if space.status_space == "Deleted" or space.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update deleted space",
-        )
+    _ensure_space_mutable(space)
 
     if hasattr(payload, "model_dump"):
         update_data = payload.model_dump(exclude_unset=True)
@@ -210,13 +225,18 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceRespo
     for field, value in update_data.items():
         setattr(space, field, value)
 
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
     return _space_response(space)
 
 
 def archive_space(db: Session, space_id: str) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
+    if space.status_space == "Archived":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space is already archived",
+        )
     if space.status_space == "Deleted" or space.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -224,7 +244,7 @@ def archive_space(db: Session, space_id: str) -> SpaceResponse:
         )
 
     space.status_space = "Archived"
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
     return _space_response(space)
 
@@ -257,14 +277,15 @@ def restore_space(db: Session, space_id: str) -> SpaceResponse:
 
     space.status_space = "Active"
     space.deleted_at = None
-    space.updated_at = datetime.utcnow()
+    space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
     return _space_response(space)
 
 
 def delete_space(db: Session, space_id: str) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
-    now = datetime.utcnow()
+    _ensure_space_mutable(space)
+    now = vietnam_now()
     space.status_space = "Deleted"
     space.deleted_at = now
     space.updated_at = now
@@ -313,7 +334,7 @@ def add_space_member(
             detail="User is already an active member",
         )
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     if existing_member:
         existing_member.role = "OWNER" if space.owner_id == payload.user_id else payload.role
         existing_member.status = "Active"
@@ -359,7 +380,7 @@ def remove_space_member(
         )
 
     member.status = "Removed"
-    member.removed_at = datetime.utcnow()
+    member.removed_at = vietnam_now()
     space_repository.save_space_member(db, member)
     return _space_member_response(member)
 

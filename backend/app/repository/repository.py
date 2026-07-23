@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from typing import Any
 
 from sqlalchemy import select
@@ -148,7 +149,7 @@ def upsert_email_verification_token(
     created_at: datetime | None = None,
 ) -> VerificationToken:
     verification_token = get_verification_token(db, email, EMAIL_VERIFICATION)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if verification_token is None:
         verification_token = VerificationToken(
@@ -183,7 +184,7 @@ def upsert_verification_token(
     created_at: datetime | None = None,
 ) -> VerificationToken:
     verification_token = get_verification_token(db, email, token_type)
-    now = created_at or datetime.utcnow()
+    now = created_at or vietnam_now()
 
     if verification_token is None:
         verification_token = VerificationToken(

@@ -24,6 +24,9 @@ class SpaceResponse(BaseModel):
     status_space: str
     created_at: datetime
     updated_at: datetime
+    archived_at: Optional[datetime] = None
+    reopen_until: Optional[datetime] = None
+    can_reopen: bool = False
     deleted_at: Optional[datetime]
 
 
@@ -56,6 +59,61 @@ class SpaceMemberCreate(BaseModel):
 
 class SpaceMemberUpdate(BaseModel):
     role: Literal["MEMBER", "OWNER"]
+
+
+class SpaceAddPeopleRequest(BaseModel):
+    user_id: Optional[str] = Field(default=None, max_length=15)
+    email: Optional[str] = Field(default=None, max_length=255)
+    name: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        email = normalize_email(value)
+        if not EMAIL_PATTERN.fullmatch(email):
+            raise ValueError("Invalid email format.")
+        return email
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        name = value.strip()
+        return name or None
+
+    @model_validator(mode="after")
+    def validate_identifier(self) -> "SpaceAddPeopleRequest":
+        if not self.user_id and not self.email and not self.name:
+            raise ValueError("Provide user_id, email, or name.")
+        return self
+
+
+class SpaceMemberRequestResponse(BaseModel):
+    space_member_request_id: str
+    space_id: str
+    requester_id: str
+    requested_user_id: Optional[str]
+    requested_email: str
+    requested_name: Optional[str]
+    owner_id: str
+    status: str
+    requested_at: datetime
+    reviewed_at: Optional[datetime]
+    requester: Optional[UserSummaryResponse] = None
+    requested_user: Optional[UserSummaryResponse] = None
+    owner: Optional[UserSummaryResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SpaceAddPeopleResponse(BaseModel):
+    status: Literal["PENDING_OWNER", "PENDING_INVITEE", "APPROVED", "REJECTED"]
+    message: str
+    member: Optional[SpaceMemberResponse] = None
+    request: Optional[SpaceMemberRequestResponse] = None
 
 
 class AssignTaskAssigneesRequest(BaseModel):
@@ -112,7 +170,7 @@ class SprintCreate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     duration_weeks: Optional[int] = Field(default=2, ge=1, le=52)
-    status: Literal["Planned", "Active"] = "Active"
+    status: Literal["Planned", "Active"] = "Planned"
     auto_start: bool = False
     auto_complete: bool = False
 
@@ -247,11 +305,23 @@ class TaskAttachmentResponse(BaseModel):
     url: Optional[str] = None
     name: Optional[str] = None
     size: Optional[str] = None
+    usage: Optional[MediaUsage] = None
+    cloudinary_public_id: Optional[str] = None
 
     @model_validator(mode="after")
     def hydrate_frontend_fields(self) -> "TaskAttachmentResponse":
         is_image = (self.mime_type or "").startswith("image/")
         file_url = self.storage_url or (f"/media/{self.file_path}" if self.file_path else None)
+        path_parts = self.file_path.split("/") if self.file_path else []
+        if self.usage is None:
+            if "comments" in path_parts:
+                self.usage = "comment"
+            elif "descriptions" in path_parts:
+                self.usage = "description"
+            else:
+                self.usage = "attachment"
+        if self.cloudinary_public_id is None and self.storage_url and self.storage_url.startswith(("http://", "https://")):
+            self.cloudinary_public_id = self.file_path
         self.type = self.type or ("image" if is_image else "file")
         self.url = self.url or file_url
         self.previewUrl = self.previewUrl or (file_url if is_image else None)
@@ -283,6 +353,7 @@ class MediaUploadResponse(BaseModel):
     mime_type: Optional[str]
     file_size: int
     attachment_id: Optional[str] = None
+    public_id: Optional[str] = None
 
 
 class TaskCommentResponse(BaseModel):
@@ -307,6 +378,32 @@ class TaskCommentListResponse(BaseModel):
     page_size: int
 
 
+class TaskAssigneeResponse(BaseModel):
+    assignee_entry_id: str
+    task_id: str
+    assignee_id: str
+    assignee_at: datetime
+    assignee: UserSummaryResponse | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AssignmentHistoryResponse(BaseModel):
+    assignment_history_id: str
+    task_id: str
+    previous_assignee_id: str | None
+    new_assignee_id: str | None
+    changed_by: str
+    reason: str | None
+    change_status: str | None
+    changed_at: datetime
+    previous_assignee: UserSummaryResponse | None = None
+    new_assignee: UserSummaryResponse | None = None
+    changed_by_user: UserSummaryResponse | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class TaskListItemResponse(BaseModel):
     task_id: str
     space_id: str
@@ -315,10 +412,13 @@ class TaskListItemResponse(BaseModel):
     priority: str
     task_status: str
     completed_at: Optional[datetime]
+    is_overdue: bool = False
+    is_due_today: bool = False
     story_points: Optional[float]
     created_at: datetime
     updated_at: datetime
     sprint: Optional[SprintSummaryResponse] = None
+    assignees: list[TaskAssigneeResponse] = Field(default_factory=list)
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
@@ -343,6 +443,7 @@ class TaskBoardResponse(BaseModel):
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
+PASSWORD_RESET_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
 
 
 def normalize_email(value: str) -> str:
@@ -433,32 +534,6 @@ class LoginUserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TaskAssigneeResponse(BaseModel):
-    assignee_entry_id: str
-    task_id: str
-    assignee_id: str
-    assignee_at: datetime
-    assignee: UserSummaryResponse | None = None
-
-    model_config = {"from_attributes": True}
-
-
-class AssignmentHistoryResponse(BaseModel):
-    assignment_history_id: str
-    task_id: str
-    previous_assignee_id: str | None
-    new_assignee_id: str | None
-    changed_by: str
-    reason: str | None
-    change_status: str | None
-    changed_at: datetime
-    previous_assignee: UserSummaryResponse | None = None
-    new_assignee: UserSummaryResponse | None = None
-    changed_by_user: UserSummaryResponse | None = None
-
-    model_config = {"from_attributes": True}
-
-
 class TaskAssigneesResponse(BaseModel):
     assignees: list[TaskAssigneeResponse]
 
@@ -490,20 +565,21 @@ class LoginResponse(BaseModel):
     user: LoginUserResponse
 
 
-class VerifyResetCodeRequest(EmailRequest):
-    code: str = Field(..., min_length=6, max_length=6)
 
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, value: str) -> str:
-        if not value.isdigit() or len(value) != 6:
-            raise ValueError("Code must be exactly 6 digits.")
-        return value
 
 
 class ResetPasswordRequest(EmailRequest):
+    token: str = Field(..., min_length=32, max_length=2048)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("token")
+    @classmethod
+    def validate_reset_token(cls, value: str) -> str:
+        token = value.strip()
+        if not PASSWORD_RESET_TOKEN_PATTERN.fullmatch(token):
+            raise ValueError("Invalid password reset token.")
+        return token
 
     @field_validator("password")
     @classmethod
@@ -533,11 +609,21 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+class RegisterUserResponse(BaseModel):
+    full_name: str
+    email: str
+    role: str
+
+    model_config = {"from_attributes": True}
 
 class RegisterResponse(MessageResponse):
-    user: UserResponse
+    email: str
+    full_name: str
+    role: str
     access_token: str
     refresh_token: str
+    token_type: str = "Bearer"
+    user: LoginUserResponse
 
 
 UserStatus = Literal["Pending", "Active", "Inactive", "Locked"]
@@ -570,14 +656,22 @@ class UserManagementListResponse(BaseModel):
 
 class UserManagementUpdateRequest(BaseModel):
     status: UserStatus | None = None
+    role: Literal["SUPER_ADMIN", "USER"] | None = None
     is_verified: bool | None = None
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
 
     model_config = {"extra": "forbid"}
 
+class UserStatusUpdateRequest(BaseModel):
+    status: Literal["Active", "Inactive"]
+
+
+class UserLockUpdateRequest(BaseModel):
+    locked: bool
 
 class UserProfileResponse(BaseModel):
+    user_id: str
     avatar_url: str | None
     full_name: str
     email: str
@@ -622,3 +716,9 @@ class ChangePasswordRequest(BaseModel):
         if self.current_password == self.new_password:
             raise ValueError("New password must not be the same as current password.")
         return self
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+    

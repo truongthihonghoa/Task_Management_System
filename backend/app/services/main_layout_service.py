@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,24 +10,23 @@ from app.models.task import Task
 from app.models.user import User
 from app.repository import main_layout as main_layout_repository
 from app.repository import recent_view as recent_view_repository
-from app.repository.notification import get_unread_count
+from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileResponse
 from app.schemas.main_layout import (
-    CurrentUserLayoutResponse,
     GlobalSearchAssigneeItem,
     GlobalSearchResponse,
     GlobalSearchSpaceItem,
     GlobalSearchTaskItem,
     GlobalSearchUserItem,
     GlobalSearchOwnerItem,
-    MainLayoutNotificationResponse,
     MainLayoutPreferencesResponse,
-    MainLayoutResponse,
-    SidebarSummaryResponse,
     SpaceContextResponse,
     SpacePermissionResponse,
 )
 
 SEARCH_TYPES = {"spaces", "tasks", "users"}
+RECENT_ENTITY_TYPES = {"space", "task", "user"}
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = {"en", "vi"}
 
 
 def initials_for_name(full_name: str) -> str:
@@ -36,12 +36,6 @@ def initials_for_name(full_name: str) -> str:
     if len(parts) == 1:
         return parts[0][:2].upper()
     return f"{parts[0][0]}{parts[-1][0]}".upper()
-
-
-def display_role_for_user(user: User) -> str:
-    if user.role == "SUPER_ADMIN":
-        return "Super Admin"
-    return "User"
 
 
 def _search_user_display(user: User) -> tuple[str, str | None]:
@@ -118,31 +112,35 @@ def _permissions_for_space_role(space_role: str) -> SpacePermissionResponse:
     )
 
 
-def get_main_layout(db: Session, user: User) -> MainLayoutResponse:
-    is_super_admin = user.role == "SUPER_ADMIN"
-    return MainLayoutResponse(
-        current_user=CurrentUserLayoutResponse(
-            user_id=user.user_id,
-            full_name=user.full_name,
-            email=user.email,
-            initials=initials_for_name(user.full_name),
-            avatar_url=user.avatar_url,
-            system_role=user.role,
-            display_role=display_role_for_user(user),
-        ),
-        sidebar=SidebarSummaryResponse(
-            task_count=main_layout_repository.count_visible_tasks(db, user),
-            can_view_dashboard=is_super_admin,
-            can_view_users=is_super_admin,
-            can_create_task=not is_super_admin,
-        ),
-        preferences=MainLayoutPreferencesResponse(language="en"),
-        notification=MainLayoutNotificationResponse(unread_count=get_unread_count(db, user.user_id)),
-    )
+def get_preferences(db: Session, user: User) -> MainLayoutPreferencesResponse:
+    preference = main_layout_repository.get_user_preference(db, user.user_id)
+    return MainLayoutPreferencesResponse(language=preference.language if preference else DEFAULT_LANGUAGE)
 
 
-def get_sidebar_summary(db: Session, user: User) -> SidebarSummaryResponse:
-    return get_main_layout(db, user).sidebar
+def update_language(db: Session, *, user: User, language: str) -> MainLayoutPreferencesResponse:
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "Unsupported language.", "supported_languages": sorted(SUPPORTED_LANGUAGES)},
+        )
+
+    preference = main_layout_repository.get_user_preference(db, user.user_id)
+    if preference is None:
+        preference = main_layout_repository.create_user_preference(db, user_id=user.user_id, language=language)
+    else:
+        main_layout_repository.update_user_preference(preference, language=language)
+
+    return MainLayoutPreferencesResponse(language=preference.language)
+
+
+def get_profile(user: User) -> UserProfileResponse:
+    return UserProfileResponse.model_validate(user)
+
+
+def update_profile(db: Session, *, user: User, payload: UpdateProfileRequest) -> UserProfileResponse:
+    user.full_name = payload.full_name
+    user.updated_at = vietnam_now()
+    return UserProfileResponse.model_validate(user)
 
 
 def get_space_context(db: Session, *, space_id: str, user: User) -> SpaceContextResponse:
@@ -331,3 +329,25 @@ def global_search(
         ]
 
     return GlobalSearchResponse(query=query_text, spaces=spaces, tasks=tasks, users=users)
+
+
+def record_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> None:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    recent_view_repository.record_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
+
+def delete_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> int:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    return recent_view_repository.delete_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )

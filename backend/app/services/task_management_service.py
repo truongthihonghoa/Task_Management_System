@@ -1,16 +1,20 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from typing import Iterable
+import logging
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.repository import recent_view as recent_view_repository
 from app.repository import task as task_repository
+from app.services import media_service, sprint_service
 from app.models.space import Space
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.pydantic_models import (
+    AssignTaskAssigneesRequest,
     TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
@@ -18,6 +22,11 @@ from app.schemas.pydantic_models import (
     TaskListResponse,
     TaskUpdate,
 )
+from app.services.notification_service import NotificationService
+
+
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
 
 
 def _get_space_or_404(db: Session, space_id: str) -> Space:
@@ -33,6 +42,8 @@ def _ensure_space_not_deleted(space: Space) -> None:
 
 
 def _ensure_space_active(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if space.status_space != "Active" or space.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
 
@@ -88,10 +99,42 @@ def _get_task_or_404(db: Session, task_id: str) -> Task:
     return task
 
 
+def _is_task_overdue(task: Task, *, now: datetime | None = None) -> bool:
+    if task.completed_at is None:
+        return False
+    if task.task_status in {"done", "cancelled"}:
+        return False
+
+    current_time = now or vietnam_now()
+    return task.completed_at.date() < current_time.date()
+
+
+def _is_task_due_today(task: Task, *, now: datetime | None = None) -> bool:
+    if task.completed_at is None:
+        return False
+    if task.task_status in {"done", "cancelled"}:
+        return False
+
+    current_time = now or vietnam_now()
+    return task.completed_at.date() == current_time.date()
+
+
+def _apply_task_date_flags(response: TaskListItemResponse, task: Task) -> TaskListItemResponse:
+    response.is_overdue = _is_task_overdue(task)
+    response.is_due_today = _is_task_due_today(task)
+    return response
+
+
 def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     response = TaskListItemResponse.model_validate(task)
+    _apply_task_date_flags(response, task)
+    response.assignees = sorted(response.assignees, key=lambda assignee: assignee.assignee_at)
     response.attachments = sorted(
-        [attachment for attachment in response.attachments if attachment.deleted_at is None],
+        [
+            attachment
+            for attachment in response.attachments
+            if attachment.deleted_at is None and attachment.usage == "attachment"
+        ],
         key=lambda attachment: attachment.uploaded_at,
         reverse=True,
     )
@@ -100,6 +143,42 @@ def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
 
 def _serialize_task_list_items(tasks: Iterable[Task]) -> list[TaskListItemResponse]:
     return [_build_task_list_item_response(task) for task in tasks]
+
+
+def _task_assignee_ids(task: Task) -> list[str]:
+    return [assignee.assignee_id for assignee in (getattr(task, "assignees", None) or []) if assignee.assignee_id]
+
+
+def _notify_task_assignees(
+    db: Session,
+    task: Task,
+    *,
+    current_user: User,
+    notification_type: str,
+    title: str,
+    message: str,
+    metadata: dict | None = None,
+) -> None:
+    try:
+        notification_service.create_notifications_for_users(
+            db,
+            user_ids=_task_assignee_ids(task),
+            actor_id=current_user.user_id,
+            task_id=task.task_id,
+            space_id=task.space_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            audience="USER",
+            metadata={
+                "task_title": task.title,
+                "sprint_name": getattr(getattr(task, "sprint", None), "name", None),
+                "space_name": task.space.name_space if task.space else None,
+                **(metadata or {}),
+            },
+        )
+    except Exception:
+        logger.exception("Unable to create task notification.")
 
 
 def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_size: int) -> TaskListResponse:
@@ -113,6 +192,7 @@ def _build_task_list_response(tasks: list[Task], total: int, *, page: int, page_
 
 def _build_task_detail_response(task: Task) -> TaskDetailResponse:
     response = TaskDetailResponse.model_validate(task)
+    _apply_task_date_flags(response, task)
     response.task_status_label = task.task_status.replace("_", " ").upper()
     response.sprint_name = task.sprint.name if task.sprint else None
     response.creator_name = task.creator.full_name if task.creator else None
@@ -123,7 +203,9 @@ def _build_task_detail_response(task: Task) -> TaskDetailResponse:
         key=lambda comment: comment.created_at,
     )
     response.attachments = [
-        attachment for attachment in response.attachments if attachment.deleted_at is None
+        attachment
+        for attachment in response.attachments
+        if attachment.deleted_at is None and attachment.usage == "attachment"
     ]
     response.attachments = sorted(response.attachments, key=lambda attachment: attachment.uploaded_at, reverse=True)
     response.assignment_history = sorted(
@@ -134,13 +216,21 @@ def _build_task_detail_response(task: Task) -> TaskDetailResponse:
     return response
 
 
-def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: User) -> TaskDetailResponse:
+def create_task(
+    db: Session,
+    space_id: str,
+    payload: TaskCreate,
+    current_user: User,
+    *,
+    attachments: Iterable[UploadFile] | None = None,
+    assignee_ids: Iterable[str] | None = None,
+) -> TaskDetailResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_active(space)
     _ensure_can_modify_space_tasks(db, space, current_user)
     _get_sprint_for_space_or_404(db, space_id, payload.sprint_id)
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     task = Task(
         space_id=space_id,
         sprint_id=payload.sprint_id,
@@ -155,6 +245,36 @@ def create_task(db: Session, space_id: str, payload: TaskCreate, current_user: U
         updated_at=now,
     )
     task_repository.create_task_record(db, task)
+    for attachment in attachments or []:
+        if not attachment.filename:
+            continue
+        media_service.upload_task_media(
+            db,
+            task.task_id,
+            usage="attachment",
+            file=attachment,
+            current_user=current_user,
+        )
+    normalized_assignee_ids = list(
+        dict.fromkeys(
+            assignee_id.strip()
+            for assignee_id in assignee_ids or []
+            if assignee_id and assignee_id.strip()
+        )
+    )
+    if normalized_assignee_ids:
+        from app.services.task_assignment_service import TaskAssignmentService
+
+        TaskAssignmentService().assign_task_assignees(
+            db,
+            task.task_id,
+            AssignTaskAssigneesRequest(
+                assignee_ids=normalized_assignee_ids,
+                reason="Assigned while creating task",
+            ),
+            current_user,
+        )
+    sprint_service.apply_sprint_automation(db, space_id)
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
@@ -169,10 +289,12 @@ def list_tasks(
     task_status: str | None,
     priority: str | None,
     sort: str,
+    active_sprint_only: bool = True,
 ) -> TaskListResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
+    sprint_service.apply_sprint_automation(db, space_id)
 
     tasks, total = task_repository.list_task_records(
         db,
@@ -184,6 +306,7 @@ def list_tasks(
         task_status=task_status,
         priority=priority,
         sort=sort,
+        active_sprint_only=active_sprint_only,
     )
     return _build_task_list_response(tasks, total, page=page, page_size=page_size)
 
@@ -222,9 +345,10 @@ def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardR
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
+    sprint_service.apply_sprint_automation(db, space_id)
 
     grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
-    for task in task_repository.list_board_task_records(db, space_id):
+    for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
         grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
     return TaskBoardResponse(**grouped)
 
@@ -257,11 +381,60 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
     if "sprint_id" in update_data:
         _get_sprint_for_space_or_404(db, task.space_id, update_data["sprint_id"])
 
+    previous_status = task.task_status
+    previous_priority = task.priority
+    previous_completed_at = task.completed_at
+
     for field, value in update_data.items():
         setattr(task, field, value)
-    task.updated_at = datetime.utcnow()
+    task.updated_at = vietnam_now()
 
     task_repository.save_task(db, task)
+    sprint_service.apply_sprint_automation(db, task.space_id)
+    if update_data:
+        if "task_status" in update_data and previous_status != task.task_status:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="status_changed",
+                title="Task status updated",
+                message=f"{current_user.full_name} changed {task.title} status to {task.task_status}.",
+                metadata={"previous_status": previous_status, "new_status": task.task_status},
+            )
+        elif "priority" in update_data and previous_priority != task.priority:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="priority_changed",
+                title="Task priority updated",
+                message=f"{current_user.full_name} changed {task.title} priority to {task.priority}.",
+                metadata={"previous_priority": previous_priority, "new_priority": task.priority},
+            )
+        elif "completed_at" in update_data and previous_completed_at != task.completed_at:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="due_date_changed",
+                title="Task due date updated",
+                message=f"{current_user.full_name} changed the due date for {task.title}.",
+                metadata={
+                    "previous_due_date": previous_completed_at.isoformat() if previous_completed_at else None,
+                    "new_due_date": task.completed_at.isoformat() if task.completed_at else None,
+                },
+            )
+        else:
+            _notify_task_assignees(
+                db,
+                task,
+                current_user=current_user,
+                notification_type="task_updated",
+                title="Task updated",
+                message=f"{current_user.full_name} updated {task.title}.",
+                metadata={"updated_fields": sorted(update_data)},
+            )
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
@@ -274,23 +447,17 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     _ensure_space_active(space)
     _ensure_space_owner(space, current_user)
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     task.deleted_at = now
     task.updated_at = now
     task_repository.save_task(db, task, refresh=False)
-    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
-
-
-def restore_task(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
-    task = _get_task_or_404(db, task_id)
-    if task.deleted_at is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not deleted")
-
-    space = task.space or _get_space_or_404(db, task.space_id)
-    _ensure_space_active(space)
-    _ensure_space_owner(space, current_user)
-
-    task.deleted_at = None
-    task.updated_at = datetime.utcnow()
-    task_repository.save_task(db, task, refresh=False)
+    _notify_task_assignees(
+        db,
+        task,
+        current_user=current_user,
+        notification_type="task_deleted",
+        title="Task deleted",
+        message=f"{current_user.full_name} deleted {task.title}.",
+        metadata={"deleted_at": now.isoformat()},
+    )
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))

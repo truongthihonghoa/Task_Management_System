@@ -42,7 +42,7 @@ class Sprint(Base):
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     duration_weeks = Column(Integer, nullable=True, default=2, server_default="2")
-    status = Column(String(20), nullable=False, default="Active", server_default="Active")
+    status = Column(String(20), nullable=False, default="Planned", server_default="Planned")
     auto_start = Column(Boolean, nullable=True, default=False, server_default="false")
     auto_complete = Column(Boolean, nullable=True, default=False, server_default="false")
     completed_at = Column(DateTime, nullable=True)

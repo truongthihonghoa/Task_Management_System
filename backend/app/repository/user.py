@@ -3,7 +3,8 @@ user_repository.py — Pure database operations for user management.
 """
 
 from datetime import datetime
-from typing import Any
+from app.core.timezone import vietnam_now
+from typing import Any, Optional
 
 from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import Session
@@ -79,7 +80,7 @@ def list_users(
 def update_user_fields(db: Session, user: User, update_data: dict[str, Any]) -> User:
     for key, value in update_data.items():
         setattr(user, key, value)
-    user.updated_at = datetime.utcnow()
+    user.updated_at = vietnam_now()
     return user
 
 

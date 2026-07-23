@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useOutletContext, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import SprintInfoPopover from '../components/tasks/SprintInfoPopover';
 import CompleteSprintModal from '../components/tasks/CompleteSprintModal';
@@ -9,6 +9,7 @@ import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
 import { DEMO_SPACES } from './SpaceManagement';
+import axiosClient, { API_BASE_URL } from '../api/axiosClient';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
@@ -24,6 +25,45 @@ const projectPeopleDirectory = [
   { id: 'trong-nghia', name: 'Trong Nghia', email: 'trongnghia@example.com', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
   { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
+
+const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+const getAccessToken = () => {
+  if (typeof window === 'undefined') return null;
+  return (
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('token')
+  );
+};
+
+const addPeopleRequest = async (spaceId, person) => {
+  const token = getAccessToken();
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      email: person.email,
+      name: person.name,
+    }),
+  });
+
+  if (!response.ok) {
+    let message = 'Unable to add this person.';
+    try {
+      const body = await response.json();
+      message = body.message || body.detail || message;
+    } catch {
+      // Keep fallback for non-JSON errors.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+};
 
 const assigneeProfiles = {
   'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
@@ -85,7 +125,197 @@ const formatTaskDate = (dateValue) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 
+const isCompletedTaskStatus = (status) => {
+  const normalizedStatus = String(status || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  return ['done', 'cancelled'].includes(normalizedStatus);
+};
+
+const isTaskOverdue = (dateValue, status, apiOverdue = undefined) => {
+  if (!dateValue || isCompletedTaskStatus(status)) return false;
+  if (typeof apiOverdue === 'boolean') return apiOverdue;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const dueDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return dueDate < todayDate;
+};
+
+const isTaskDueToday = (dateValue, status, apiDueToday = undefined) => {
+  if (!dateValue || isCompletedTaskStatus(status)) return false;
+  if (typeof apiDueToday === 'boolean') return apiDueToday;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+
+  const today = new Date();
+  const dueDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return dueDate.getTime() === todayDate.getTime();
+};
+
+const DUE_TODAY_TEXT_CLASS = 'text-[#92400E]';
+const DUE_TODAY_BADGE_CLASS = 'bg-[#FEF3C7] text-[#92400E]';
+const DUE_TODAY_BORDER_CLASS = 'border-[#FCD34D]';
+const OVERDUE_TEXT_CLASS = 'text-[#BA1A1A]';
+const OVERDUE_BADGE_CLASS = 'bg-[#FFF0F0] text-[#BA1A1A]';
+const OVERDUE_BORDER_CLASS = 'border-[#FCA5A5]';
+
 const SPRINT_NAME_PREFIX = 'SCRUM Sprint';
+
+const TASK_STATUS_TO_API = {
+  New: 'new',
+  'In Progress': 'in_progress',
+  'In Testing': 'in_testing',
+  'Pending Review': 'pending_review',
+  'Need Revision': 'need_revision',
+  Done: 'done',
+  Cancelled: 'cancelled',
+};
+
+const TASK_STATUS_FROM_API = Object.fromEntries(
+  Object.entries(TASK_STATUS_TO_API).map(([label, value]) => [value, label])
+);
+
+const TASK_PRIORITY_TO_API = {
+  High: 'HIGH',
+  Medium: 'MEDIUM',
+  Low: 'LOW',
+};
+
+const TASK_PRIORITY_FROM_API = {
+  HIGH: 'High',
+  MEDIUM: 'Medium',
+  LOW: 'Low',
+};
+
+const ASSIGNEE_COLORS = ['#2f3650', '#F97316', '#14B8A6', '#7C3AED', '#2563EB', '#059669', '#DB2777'];
+
+const getErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (Array.isArray(detail)) {
+    return detail.map(item => item?.msg || String(item)).join(', ') || fallback;
+  }
+  return detail || error?.message || fallback;
+};
+
+const formatSprintDateRange = (startDate, endDate) => {
+  if (!startDate && !endDate) return '';
+  const format = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+  return [format(startDate), format(endDate)].filter(Boolean).join(' - ');
+};
+
+const mapApiSprint = (sprint) => ({
+  id: sprint.sprint_id,
+  name: sprint.name || 'SCRUM Sprint',
+  dateRange: formatSprintDateRange(sprint.start_date, sprint.end_date),
+  startDate: sprint.start_date || '',
+  endDate: sprint.end_date || '',
+  duration: sprint.duration_weeks || 2,
+  goal: sprint.goal || '',
+  autoStart: Boolean(sprint.auto_start),
+  autoComplete: Boolean(sprint.auto_complete),
+  status: sprint.status || 'Planned',
+  tasks: [],
+  raw: sprint,
+});
+
+const mapApiUserSummary = (user, index = 0) => {
+  const name = user?.full_name || user?.name || user?.email || 'Unknown User';
+  return {
+    id: user?.user_id || user?.id || '',
+    user_id: user?.user_id || user?.id || '',
+    name,
+    email: user?.email || '',
+    initials: getInitials(name),
+    color: ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
+    textColor: '#FFFFFF',
+  };
+};
+
+const mapApiSpaceMember = (member, index = 0) => ({
+  ...mapApiUserSummary(member.user || { user_id: member.user_id }, index),
+  role: member.role,
+  memberStatus: member.status,
+  spaceMemberId: member.space_member_id,
+});
+
+const mapApiTaskAssignee = (entry, index = 0) => ({
+  entryId: entry.assignee_entry_id,
+  assignee_entry_id: entry.assignee_entry_id,
+  taskId: entry.task_id,
+  assigneeId: entry.assignee_id,
+  assignee_id: entry.assignee_id,
+  assignedAt: entry.assignee_at,
+  assignee_at: entry.assignee_at,
+  user: mapApiUserSummary(entry.assignee || { user_id: entry.assignee_id }, index),
+  raw: entry,
+});
+
+const resolveMediaUrl = (url) => {
+  if (!url) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(url)) return url;
+  if (!url.startsWith('/media/')) return url;
+
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${url}`;
+    } catch {
+      return url;
+    }
+  }
+
+  return url;
+};
+
+const mapApiAttachment = (attachment) => ({
+  ...attachment,
+  url: resolveMediaUrl(attachment.url || attachment.storage_url || ''),
+  previewUrl: resolveMediaUrl(attachment.previewUrl || attachment.url || attachment.storage_url || ''),
+});
+
+const mapApiTask = (task) => {
+  const assignees = (task.assignees || []).map(mapApiTaskAssignee);
+  const primaryAssignee = task.primary_assignee
+    ? mapApiTaskAssignee(task.primary_assignee)
+    : assignees[0] || null;
+
+  return {
+    id: task.task_id,
+    taskId: task.task_id,
+    spaceId: task.space_id,
+    sprintId: task.sprint_id,
+    sprint: task.sprint?.name || task.sprint_name || '',
+    title: task.title || 'Untitled task',
+    assignee: primaryAssignee?.user?.name || '',
+    assigneeId: primaryAssignee?.assigneeId || '',
+    assignees,
+    pts: Number(task.story_points) || 0,
+    status: TASK_STATUS_FROM_API[task.task_status] || task.task_status || 'New',
+    priority: TASK_PRIORITY_FROM_API[task.priority] || task.priority || 'Medium',
+    completed_at: task.completed_at || '',
+    date: formatTaskDate(task.completed_at || task.created_at),
+    createdAt: formatTaskDate(task.created_at),
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+    description: task.description || '',
+    is_overdue: Boolean(task.is_overdue),
+    is_due_today: Boolean(task.is_due_today),
+    attachments: (task.attachments || []).map(mapApiAttachment),
+    comments: task.comments || [],
+    assignmentHistory: task.assignment_history || [],
+    creatorId: task.creator_id,
+    creator: task.creator_name || task.creator?.full_name || '',
+    raw: task,
+  };
+};
 
 const getSprintNumber = (sprintName) => {
   const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
@@ -104,6 +334,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const navigate = useNavigate();
   const location = useLocation();
   const { spaceId: routeSpaceId } = useParams();
+  const [taskSearchParams, setTaskSearchParams] = useSearchParams();
+  const routeTaskId = taskSearchParams.get('taskId');
+
   const outletContext = useOutletContext() || {};
   const {
     setShowCreateModal,
@@ -111,16 +344,19 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setCreateTaskHandler,
     setSprintsForModal,
     setCreateTaskInitialSprint,
+    setAssigneesForModal,
+    setCurrentSpaceNameForModal,
     currentRole = 'ADMIN',
     currentUser,
     currentSpaceRole = 'USER'
   } = routeContext || outletContext;
+
   const spaceId = spaceIdOverride || routeSpaceId;
- 
   const isAdmin = currentRole === 'ADMIN';
   const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
+  const [apiSpace, setApiSpace] = useState(null);
   const projectOwnerId = selectedSpace?.ownerId;
-  const pageTitle = selectedSpace?.title || 'Task Management';
+  const pageTitle = apiSpace?.title || selectedSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
@@ -130,7 +366,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Sprint popover and complete modal states
   const [isSprintInfoOpen, setIsSprintInfoOpen] = useState(false);
   const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
+  const [completeSprintTarget, setCompleteSprintTarget] = useState(null);
   const sprintInfoAnchorRef = useRef(null);
+  const boardScrollRef = useRef(null);
+  const boardAutoScrollFrameRef = useRef(null);
+  const dragPointerXRef = useRef(null);
+  const isBoardDraggingRef = useRef(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [viewMonth, setViewMonth] = useState(5); // June
@@ -181,29 +422,186 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Delete Sprint confirm states
   const [deleteSprintConfirmId, setDeleteSprintConfirmId] = useState(null);
 
-  const [tasks, setTasks] = useState([
-    { id: "TM-1", title: "Infrastructure setup", assignee: "Pham Tien", pts: 4, status: "New", priority: "High", date: "Jun 24, 2026", description: "" },
-    { id: "TM-2", title: "API Documentation update", assignee: "Hoang Hoa", pts: 3, status: "In Progress", priority: "Medium", date: "Jun 28, 2026", description: "" },
-    { id: "TM-3", title: "Checkout flow mobile fix", assignee: "Trong Nghia", pts: 5, status: "In Testing", priority: "High", date: "Jul 02, 2026", description: "" },
-    { id: "TM-4", title: "Security Protocols Audit", assignee: "Pham Tien", pts: 8, status: "Done", priority: "High", date: "Jun 20, 2026", description: "" },
-    { id: "TM-5", title: "SSO Authentication implementation", assignee: "Hoang Hoa", pts: 2, status: "In Progress", priority: "Medium", date: "Jun 25, 2026", description: "" },
-    { id: "TM-6", title: "API Integration & Testing", assignee: "Trong Nghia", pts: 3, status: "Pending Review", priority: "High", date: "Jul 05, 2026", description: "" },
-    { id: "TM-7", title: "User Feedback UI Refactor", assignee: "Pham Tien", pts: 2, status: "Need Revision", priority: "Low", date: "Jul 10, 2026", description: "" },
-    { id: "TM-8", title: "Database Migration Script", assignee: "Hoang Hoa", pts: 5, status: "New", priority: "High", date: "Jul 12, 2026", description: "" },
-    { id: "TM-9", title: "Dashboard Charts optimization", assignee: "Trong Nghia", pts: 3, status: "In Testing", priority: "Medium", date: "Jul 15, 2026", description: "" },
-    { id: "TM-10", title: "Mobile App Performance Tuning", assignee: "Trong Nghia", pts: 4, status: "In Testing", priority: "Medium", date: "Jul 18, 2026", description: "" },
-    { id: "TM-11", title: "Push Notification Service", assignee: "Hoang Hoa", pts: 3, status: "New", priority: "High", date: "Jul 20, 2026", description: "" },
-  ]);
+  const [tasks, setTasks] = useState([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [tasksError, setTasksError] = useState('');
+  const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
   const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
+  const [addPeopleFeedback, setAddPeopleFeedback] = useState('');
+  const [addingPeopleEmail, setAddingPeopleEmail] = useState('');
   const [isAddPeopleOpen, setIsAddPeopleOpen] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState('');
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
+  const isSpaceOwner = currentSpaceRole === 'OWNER';
+  const isSpaceMember = currentSpaceRole === 'USER';
+  const canModifyTasks = !isAdmin;
+  const canManageTasks = isSpaceOwner;
+  const canManagePeople = isSpaceOwner || isSpaceMember;
+  const canSelectTasks = canModifyTasks || canManageTasks;
+  const canDirectAddPeople = isSpaceOwner;
+  const projectAssigneeOptions = React.useMemo(() => [
+    { ...availableAssignees[0], id: '', user_id: '' },
+    ...projectPeople.map(person => ({
+      id: person.id || person.user_id,
+      user_id: person.user_id || person.id,
+      name: person.name,
+      initials: person.initials || getInitials(person.name),
+      color: person.color || '#5E4DB2',
+      textColor: person.textColor || '#FFFFFF',
+    })),
+  ], [projectPeople]);
+
+  useEffect(() => {
+    if (setCurrentSpaceNameForModal) {
+      setCurrentSpaceNameForModal(pageTitle);
+    }
+  }, [pageTitle, setCurrentSpaceNameForModal]);
+
+  const loadTaskData = useCallback(async () => {
+    if (!spaceId) {
+      setTasks([]);
+      setApiSpace(null);
+      return;
+    }
+
+    setIsLoadingTasks(true);
+    setTasksError('');
+
+    try {
+      const [spaceResponse, sprintResponse, taskResponse, memberResponse] = await Promise.all([
+        axiosClient.get(`/spaces/${spaceId}`),
+        axiosClient.get(`/spaces/${spaceId}/sprints`),
+        axiosClient.get(`/spaces/${spaceId}/tasks`, {
+          params: {
+            page: 1,
+            page_size: 100,
+            active_sprint_only: false,
+          },
+        }),
+        axiosClient.get(`/spaces/${spaceId}/members`),
+      ]);
+
+      const nextSpace = spaceResponse.data;
+      const nextSprints = (sprintResponse.data || []).map(mapApiSprint);
+      const orderedSprints = nextSprints.filter(sprint => sprint.status !== 'Deleted');
+      const firstSprint = orderedSprints[0] || null;
+      const remainingSprints = firstSprint
+        ? orderedSprints.slice(1)
+        : [];
+      const nextTasks = (taskResponse.data?.items || []).map(mapApiTask);
+      const nextMembers = (memberResponse.data || [])
+        .filter(member => member.status === 'Active')
+        .map(mapApiSpaceMember);
+
+      setApiSpace({
+        id: nextSpace.space_id,
+        title: nextSpace.name_space || 'Task Management',
+        ownerId: nextSpace.owner_id,
+        status: nextSpace.status_space,
+      });
+      setProjectPeople(nextMembers);
+      setTasks(nextTasks);
+      setSelectedTasks([]);
+
+      if (firstSprint) {
+        setSprint1Data({
+          ...firstSprint,
+          dateRange: firstSprint.dateRange || 'No dates set',
+        });
+      } else {
+        setSprint1Data(prev => ({
+          ...prev,
+          id: '',
+          name: 'No sprint available',
+          dateRange: 'Create a sprint before adding tasks',
+        }));
+      }
+      setExtraSprints(remainingSprints.map(sprint => ({
+        ...sprint,
+        tasks: nextTasks.filter(task => task.sprintId === sprint.id),
+      })));
+      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [sprint.id, true])));
+    } catch (error) {
+      setTasks([]);
+      setApiSpace(null);
+      setTasksError(getErrorMessage(error, 'Unable to load tasks for this space.'));
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [spaceId, setExtraSprints]);
+
+  useEffect(() => {
+    loadTaskData();
+  }, [loadTaskData]);
+
+  const updateTaskRequest = useCallback(async (taskId, updates) => {
+    const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
+    const updatedTask = mapApiTask(response.data);
+    setTasks(prev => prev.map(task => task.id === taskId ? updatedTask : task));
+    setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
+    return updatedTask;
+  }, []);
+
+  const applyTaskAssignees = useCallback((taskId, assigneeEntries = []) => {
+    const assignees = assigneeEntries.map(mapApiTaskAssignee);
+    const primaryAssignee = assignees[0] || null;
+    const updates = {
+      assignees,
+      assignee: primaryAssignee?.user?.name || '',
+      assigneeId: primaryAssignee?.assigneeId || '',
+    };
+
+    setTasks(prev => prev.map(task => (
+      task.id === taskId ? { ...task, ...updates } : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId ? { ...prev, ...updates } : prev
+    ));
+    return updates;
+  }, []);
+
+  const syncTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const currentAssignees = currentTask?.assignees || [];
+    const currentPrimary = currentAssignees[0] || null;
+
+    if (!assigneeUserId) {
+      await Promise.all(currentAssignees.map(entry =>
+        axiosClient.delete(`/tasks/${taskId}/assignees/${entry.assigneeId}`, {
+          data: { reason: 'Updated from task board' },
+        })
+      ));
+      return applyTaskAssignees(taskId, []);
+    }
+
+    if (currentPrimary?.assigneeId === assigneeUserId) {
+      return {
+        assignees: currentAssignees,
+        assignee: currentPrimary.user?.name || '',
+        assigneeId: currentPrimary.assigneeId,
+      };
+    }
+
+    const response = currentPrimary
+      ? await axiosClient.put(`/tasks/${taskId}/assignees`, {
+        previous_assignee_id: currentPrimary.assigneeId,
+        new_assignee_id: assigneeUserId,
+        reason: 'Updated from task board',
+      })
+      : await axiosClient.post(`/tasks/${taskId}/assignees`, {
+        assignee_ids: [assigneeUserId],
+        reason: 'Assigned from task board',
+      });
+
+    return applyTaskAssignees(taskId, response.data?.assignees || []);
+  }, [applyTaskAssignees, selectedTaskDetail, tasks]);
 
   const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
     const normalizedSearch = peopleSearch.trim().toLowerCase();
@@ -214,14 +612,42 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const trimmedPeopleSearch = peopleSearch.trim();
   const canAddEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedPeopleSearch);
 
-  const handleAddProjectPerson = (person) => {
-    setProjectPeople(prev => {
-      if (prev.some(member => member.id === person.id)) return prev;
-      return [...prev, person];
-    });
+  const handleAddProjectPerson = async (person) => {
+    if (!person?.email || addingPeopleEmail) return;
+
+    const normalizedEmail = person.email.toLowerCase();
+    setAddPeopleFeedback('');
+    setAddingPeopleEmail(normalizedEmail);
+
+    try {
+      if (spaceId && String(spaceId).startsWith('SPC')) {
+        const result = await addPeopleRequest(spaceId, person);
+        if (result.status === 'APPROVED') {
+          setProjectPeople(prev => {
+            if (prev.some(member => member.email?.toLowerCase() === normalizedEmail || member.id === person.id)) return prev;
+            return [...prev, person];
+          });
+        } else {
+          setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+        }
+        setAddPeopleFeedback(result.message || 'Request created.');
+      } else {
+        setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+        setAddPeopleFeedback(
+          canDirectAddPeople
+            ? `Invitation email sent to ${person.email}. Waiting for them to accept.`
+            : `Approval request sent to the owner for ${person.email}.`
+        );
+      }
+      setPeopleSearch('');
+    } catch (error) {
+      setAddPeopleFeedback(error.message || 'Unable to add this person.');
+    } finally {
+      setAddingPeopleEmail('');
+    }
   };
 
-  const handleAddEmailPerson = () => {
+  const handleAddEmailPerson = async () => {
     if (!canAddEmail) return;
 
     const email = trimmedPeopleSearch.toLowerCase();
@@ -239,15 +665,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       textColor: '#FFFFFF'
     };
 
-    setProjectPeople(prev => {
-      if (prev.some(member => member.email?.toLowerCase() === email)) return prev;
-      return [...prev, person];
-    });
-    setPeopleSearch('');
+    await handleAddProjectPerson(person);
   };
 
   useEffect(() => {
     setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setPendingPeopleEmails([]);
+    setAddPeopleFeedback('');
     setSelectedAssigneeFilter('All');
   }, [selectedSpace?.id]);
 
@@ -285,30 +709,76 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   }, [sprint1Data, extraSprints, setSprintsForModal]);
 
-  const handleCreateTask = useCallback((taskData) => {
-    const isSprint1 = !taskData.sprint || taskData.sprint === sprint1Data.name;
-    const newTask = {
-      title: taskData.summary,
-      assignee: taskData.assignee === 'Unassigned' ? '' : taskData.assignee,
-      pts: Number(taskData.storyPoints) || 0,
-      status: taskData.status,
-      priority: taskData.priority,
-      date: formatTaskDate(taskData.createdAt),
-      description: taskData.description || ""
-    };
-
-    if (isSprint1) {
-      setTasks(prev => [...prev, { ...newTask, id: getNextTaskId(prev) }]);
-    } else {
-      setExtraSprints(prevExtras => prevExtras.map(s => {
-        if (s.name === taskData.sprint) {
-          const extraId = `TM-${Math.floor(Math.random() * 1000) + 100}`;
-          return { ...s, tasks: [...(s.tasks || []), { ...newTask, id: extraId }] };
-        }
-        return s;
-      }));
+  useEffect(() => {
+    if (setAssigneesForModal) {
+      setAssigneesForModal(projectAssigneeOptions);
     }
-  }, [sprint1Data.name]);
+  }, [projectAssigneeOptions, setAssigneesForModal]);
+
+  const handleCreateTask = useCallback(async (taskData) => {
+    if (!canModifyTasks || !spaceId) return;
+    if (!spaceId) {
+      throw new Error('Open a space before creating a task.');
+    }
+    setTasksError('');
+
+    const sprintOptions = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+    const selectedSprint = sprintOptions.find(sprint => sprint.name === taskData.sprint) || sprintOptions[0];
+    if (!selectedSprint?.id) {
+      throw new Error('This space does not have a sprint yet. Create a sprint before adding tasks.');
+    }
+
+    const selectedAssignee = projectAssigneeOptions.find(user =>
+      user.user_id === taskData.assigneeId ||
+      user.id === taskData.assigneeId ||
+      (!taskData.assigneeId && user.name === taskData.assignee)
+    );
+    const selectedAssigneeId = selectedAssignee?.user_id || selectedAssignee?.id || '';
+
+    const formData = new FormData();
+    formData.append('title', taskData.summary.trim());
+    formData.append('sprint_id', selectedSprint.id);
+    formData.append('priority', TASK_PRIORITY_TO_API[taskData.priority] || 'MEDIUM');
+    formData.append('task_status', TASK_STATUS_TO_API[taskData.status] || 'new');
+    formData.append('story_points', String(Number(taskData.storyPoints) || 0));
+    if (taskData.description) formData.append('description', taskData.description);
+    if (taskData.completed_at) formData.append('completed_at', new Date(taskData.completed_at).toISOString());
+    if (selectedAssigneeId) formData.append('assignee_ids', selectedAssigneeId);
+    (taskData.attachments || []).forEach((attachment) => {
+      if (attachment.file instanceof File) {
+        formData.append('attachments', attachment.file);
+      }
+    });
+
+    const response = await axiosClient.post(`/spaces/${spaceId}/tasks`, formData);
+    let createdTask = mapApiTask(response.data);
+    if (selectedAssigneeId && createdTask.assignees.length === 0) {
+      try {
+        const assigneeResponse = await axiosClient.post(`/tasks/${createdTask.id}/assignees`, {
+          assignee_ids: [selectedAssigneeId],
+          reason: 'Assigned while creating task',
+        });
+        const assignees = assigneeResponse.data?.assignees || [];
+        const assigneeUpdates = {
+          assignees: assignees.map(mapApiTaskAssignee),
+        };
+        const primaryAssignee = assigneeUpdates.assignees[0] || null;
+        createdTask = {
+          ...createdTask,
+          ...assigneeUpdates,
+          assignee: primaryAssignee?.user?.name || '',
+          assigneeId: primaryAssignee?.assigneeId || '',
+        };
+      } catch (error) {
+        setTasksError(
+          `Task was created, but assignee could not be saved: ${getErrorMessage(error, 'Unable to assign this task.')}`
+        );
+      }
+    }
+    setTasks(prev => [createdTask, ...prev]);
+
+    return createdTask;
+  }, [canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
 
   useEffect(() => {
     if (!setCreateTaskHandler) return undefined;
@@ -316,7 +786,21 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setCreateTaskHandler(() => handleCreateTask);
     return () => setCreateTaskHandler(null);
   }, [handleCreateTask, setCreateTaskHandler]);
- 
+
+  const handleOpenTaskDetail = useCallback(async (task) => {
+    if (!task?.id) return;
+    setSelectedTaskDetail(task);
+    setTasksError('');
+    try {
+      const response = await axiosClient.get(`/tasks/${task.id}`);
+      const detailedTask = mapApiTask(response.data);
+      setSelectedTaskDetail(detailedTask);
+      setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to load task details.'));
+    }
+  }, []);
+
   // Keep selected task detail in sync with the latest task state
   useEffect(() => {
     if (selectedTaskDetail) {
@@ -326,66 +810,172 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       }
     }
   }, [tasks, selectedTaskDetail]);
- 
+
+  useEffect(() => {
+    if (!routeTaskId) return;
+    const taskFromRoute = tasks.find(task => task.id === routeTaskId);
+    if (taskFromRoute && selectedTaskDetail?.id !== taskFromRoute.id) {
+      handleOpenTaskDetail(taskFromRoute);
+    }
+  }, [handleOpenTaskDetail, routeTaskId, selectedTaskDetail?.id, tasks]);
+
+  const handleCloseTaskDetail = () => {
+    setSelectedTaskDetail(null);
+    if (!routeTaskId) return;
+
+    const nextParams = new URLSearchParams(taskSearchParams);
+    nextParams.delete('taskId');
+    setTaskSearchParams(nextParams, { replace: true });
+  };
+
   const toggleAll = () => {
-    if (selectedTasks.length === tasks.length) {
+    if (!canSelectTasks) return;
+    if (selectedTasks.length === filteredTasks.length) {
       setSelectedTasks([]);
     } else {
-      setSelectedTasks(tasks.map(t => t.id));
+      setSelectedTasks(filteredTasks.map(t => t.id));
     }
   };
 
-  const handleDeleteSelectedTasks = () => {
+  const handleDeleteSelectedTasks = async () => {
     if (selectedTasks.length === 0) return;
-    if (!isAdmin) {
+    if (!canManageTasks) {
       alert('You do not have permission to delete selected tasks.');
       return;
     }
-    setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
-    setExtraSprints(prev => prev.map(s => ({
-      ...s,
-      tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
-    })));
-    if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
-      setSelectedTaskDetail(null);
+    setTasksError('');
+    try {
+      await Promise.all(selectedTasks.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
+      setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+      setExtraSprints(prev => prev.map(s => ({
+        ...s,
+        tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
+      })));
+      if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
+        setSelectedTaskDetail(null);
+      }
+      setSelectedTasks([]);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete selected tasks.'));
+      loadTaskData();
     }
-    setSelectedTasks([]);
   };
 
-  const toolbarStatuses = isAdmin
+  const toolbarStatuses = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
 
-  const changeStatusForSelected = (newStatus) => {
+  const changeStatusForSelected = async (newStatus) => {
     if (!newStatus) return;
-    setTasks(prev => prev.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t));
-    setExtraSprints(prev => prev.map(s => ({
-      ...s,
-      tasks: s.tasks.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t)
-    })));
-    setShowToolbarStatusMenu(false);
+    if (!canModifyTasks) return;
+    setTasksError('');
+    try {
+      await Promise.all(selectedTasks.map(taskId => updateTaskRequest(taskId, {
+        task_status: TASK_STATUS_TO_API[newStatus] || 'new',
+      })));
+      setShowToolbarStatusMenu(false);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update selected tasks.'));
+      loadTaskData();
+    }
   };
 
   const toggleTask = (id) => {
+    if (!canSelectTasks) return;
     setSelectedTasks(prev =>
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
     );
   };
 
-  const onDragEnd = (result) => {
+  useEffect(() => {
+    const updatePointerFromMouse = (event) => {
+      dragPointerXRef.current = event.clientX;
+    };
+
+    const updatePointerFromTouch = (event) => {
+      if (event.touches?.[0]) {
+        dragPointerXRef.current = event.touches[0].clientX;
+      }
+    };
+
+    window.addEventListener('mousemove', updatePointerFromMouse, { passive: true });
+    window.addEventListener('touchmove', updatePointerFromTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', updatePointerFromMouse);
+      window.removeEventListener('touchmove', updatePointerFromTouch);
+    };
+  }, []);
+
+  const stopBoardAutoScroll = useCallback(() => {
+    isBoardDraggingRef.current = false;
+    if (boardAutoScrollFrameRef.current) {
+      cancelAnimationFrame(boardAutoScrollFrameRef.current);
+      boardAutoScrollFrameRef.current = null;
+    }
+  }, []);
+
+  const startBoardAutoScroll = useCallback(() => {
+    if (!canModifyTasks) return;
+
+    isBoardDraggingRef.current = true;
+    const edgeSize = 140;
+    const maxScrollSpeed = 28;
+
+    const scrollBoard = () => {
+      const board = boardScrollRef.current;
+      const pointerX = dragPointerXRef.current;
+
+      if (!isBoardDraggingRef.current || !board) {
+        boardAutoScrollFrameRef.current = null;
+        return;
+      }
+
+      if (typeof pointerX === 'number') {
+        const rect = board.getBoundingClientRect();
+        const distanceFromLeft = pointerX - rect.left;
+        const distanceFromRight = rect.right - pointerX;
+        let scrollDelta = 0;
+
+        if (distanceFromLeft >= 0 && distanceFromLeft < edgeSize) {
+          scrollDelta = -Math.ceil(((edgeSize - distanceFromLeft) / edgeSize) * maxScrollSpeed);
+        } else if (distanceFromRight >= 0 && distanceFromRight < edgeSize) {
+          scrollDelta = Math.ceil(((edgeSize - distanceFromRight) / edgeSize) * maxScrollSpeed);
+        }
+
+        if (scrollDelta !== 0) {
+          board.scrollLeft += scrollDelta;
+        }
+      }
+
+      boardAutoScrollFrameRef.current = requestAnimationFrame(scrollBoard);
+    };
+
+    stopBoardAutoScroll();
+    isBoardDraggingRef.current = true;
+    boardAutoScrollFrameRef.current = requestAnimationFrame(scrollBoard);
+  }, [canModifyTasks, stopBoardAutoScroll]);
+
+  useEffect(() => stopBoardAutoScroll, [stopBoardAutoScroll]);
+
+  const onDragEnd = async (result) => {
+    stopBoardAutoScroll();
+    if (!canModifyTasks) return;
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-    const updatedTasks = Array.from(tasks);
-    const taskIndex = updatedTasks.findIndex(t => t.id === draggableId);
-
-    if (taskIndex !== -1) {
-      updatedTasks[taskIndex] = {
-        ...updatedTasks[taskIndex],
-        status: destination.droppableId
-      };
-      setTasks(updatedTasks);
+    const previousTasks = tasks;
+    setTasks(prev => prev.map(task => (
+      task.id === draggableId ? { ...task, status: destination.droppableId } : task
+    )));
+    try {
+      await updateTaskRequest(draggableId, {
+        task_status: TASK_STATUS_TO_API[destination.droppableId] || 'new',
+      });
+    } catch (error) {
+      setTasks(previousTasks);
+      setTasksError(getErrorMessage(error, 'Unable to update task status.'));
     }
   };
 
@@ -393,38 +983,75 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setView(newView);
   };
 
-  const handleDeleteTask = (taskId) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    setTaskToDelete(null);
+  const handleDeleteTask = async (taskId) => {
+    setTasksError('');
+    try {
+      await axiosClient.delete(`/tasks/${taskId}`);
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      setTaskToDelete(null);
+      if (selectedTaskDetail?.id === taskId) {
+        setSelectedTaskDetail(null);
+      }
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete this task.'));
+    }
   };
 
-  const handleCreateSprint = () => {
+  const handleCreateSprint = async () => {
+    if (!canModifyTasks || !spaceId) return;
+
     const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
-    // Start date = 2 weeks after previous sprint starts (rough estimate)
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + (nextNum - 1) * 14);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 13);
-    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const newSprint = {
-      id: `sprint-${nextNum}`,
-      name: `${SPRINT_NAME_PREFIX} ${nextNum}`,
-      dateRange: `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-      tasks: [],
-      isCompleted: false,
-    };
-    setExtraSprints(prev => [...prev, newSprint]);
-    setExpandedSprints(prev => ({ ...prev, [newSprint.id]: true }));
-  };
 
+    setTasksError('');
+    try {
+      const response = await axiosClient.post(`/spaces/${spaceId}/sprints`, {
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        duration_weeks: 2,
+        status: 'Planned',
+        auto_start: false,
+        auto_complete: false,
+      });
+      const createdSprint = mapApiSprint(response.data);
+      setExpandedSprints(prev => ({ ...prev, [createdSprint.id]: true }));
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to create sprint.'));
+    }
+  };
   const toggleSprintExpanded = (sprintId) => {
     setExpandedSprints(prev => ({ ...prev, [sprintId]: !prev[sprintId] }));
   };
 
-  const handleDeleteExtraSprint = (sprintId) => {
-    setExtraSprints(prev => prev.filter(s => s.id !== sprintId));
-    setOpenSprintMenuId(null);
-    setDeleteSprintConfirmId(null);
+  const handleDeleteSprint = async (sprintId) => {
+    if (!canModifyTasks || !sprintId) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.delete(`/sprints/${sprintId}`);
+      setOpenSprintMenuId(null);
+      setDeleteSprintConfirmId(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete sprint.'));
+    }
+  };
+
+  const handleActivateSprint = async (sprintId) => {
+    if (!canModifyTasks || !sprintId) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.post(`/sprints/${sprintId}/activate`);
+      setOpenSprintMenuId(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to activate sprint.'));
+    }
   };
 
   const handleOpenEditSprint = (sprintData) => {
@@ -433,14 +1060,26 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setOpenSprintMenuId(null);
   };
 
-  const handleUpdateSprint = (updatedSprint) => {
-    if (updatedSprint.id === 'sprint-1') {
-      setSprint1Data(updatedSprint);
-    } else {
-      setExtraSprints(prev => prev.map(s => s.id === updatedSprint.id ? { ...s, ...updatedSprint } : s));
+  const handleUpdateSprint = async (updatedSprint) => {
+    if (!canModifyTasks || !updatedSprint?.id) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.patch(`/sprints/${updatedSprint.id}`, {
+        name: updatedSprint.name,
+        goal: updatedSprint.goal || null,
+        start_date: updatedSprint.startDate ? new Date(updatedSprint.startDate).toISOString() : null,
+        end_date: updatedSprint.endDate ? new Date(updatedSprint.endDate).toISOString() : null,
+        duration_weeks: Number(updatedSprint.duration) || 2,
+        auto_start: Boolean(updatedSprint.autoStart),
+        auto_complete: Boolean(updatedSprint.autoComplete),
+      });
+      setIsEditSprintOpen(false);
+      setSprintToEdit(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update sprint.'));
     }
-    setIsEditSprintOpen(false);
-    setSprintToEdit(null);
   };
 
   // Close sprint menus when clicking outside
@@ -456,6 +1095,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   }, [openSprintMenuId]);
 
   const filteredTasks = tasks.filter(task => {
+    const normalizedSearch = taskSearchQuery.trim().toLowerCase();
+    if (normalizedSearch) {
+      const matchesSearch = String(task.id || '').toLowerCase().includes(normalizedSearch) ||
+        String(task.title || '').toLowerCase().includes(normalizedSearch);
+      if (!matchesSearch) return false;
+    }
+
     if (selectedAssigneeFilter && selectedAssigneeFilter !== 'All') {
       if (selectedAssigneeFilter === 'Unassigned') {
         if (task.assignee) return false;
@@ -492,15 +1138,242 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         return (a.title || '').localeCompare(b.title || '');
       case 'name-za':
         return (b.title || '').localeCompare(a.title || '');
+      case 'custom':
       default:
         return 0;
     }
   });
-
-  const handleUpdateTask = (updatedTask) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-    setSelectedTaskDetail(updatedTask);
+  const primarySprintTasks = sprint1Data.id
+    ? filteredTasks.filter(task => task.sprintId === sprint1Data.id)
+    : filteredTasks;
+  const displayedSprints = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+  const getTasksForSprint = (sprintId) => (
+    sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
+  );
+  const isSprintCompleted = (sprint) => {
+    if (sprint?.status !== 'Completed') return false;
+    const sprintTasks = getTasksForSprint(sprint.id);
+    return sprintTasks.length === 0 || sprintTasks.every(task => task.status === 'Done');
   };
+  const arePreviousSprintsCompleted = (sprint) => {
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex <= 0) return sprintIndex === 0;
+    return displayedSprints.slice(0, sprintIndex).every(isSprintCompleted);
+  };
+  const hasActiveSprintBefore = (sprint) => {
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex <= 0) return false;
+    return displayedSprints.slice(0, sprintIndex).some(item => item.status === 'Active');
+  };
+  const shouldShowStartSprint = (sprint) => {
+    if (!sprint?.id) return false;
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    return sprintIndex > 0 && sprint.status !== 'Completed';
+  };
+  const canStartSprint = (sprint) => {
+    if (!shouldShowStartSprint(sprint)) return false;
+    return arePreviousSprintsCompleted(sprint) && !hasActiveSprintBefore(sprint);
+  };
+  const completeSprintTasks = completeSprintTarget
+    ? getTasksForSprint(completeSprintTarget.id)
+    : primarySprintTasks;
+
+  const openCompleteSprint = (sprint) => {
+    if (!sprint?.id) return;
+    setCompleteSprintTarget(sprint);
+    setIsCompleteSprintOpen(true);
+  };
+
+  const getSprintAction = (sprint) => {
+    if (!sprint?.id || !canModifyTasks) return null;
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex === 0 || (sprint.status === 'Active' && canStartSprint(sprint))) {
+      return {
+        label: 'Complete sprint',
+        onClick: () => openCompleteSprint(sprint),
+      };
+    }
+    if (shouldShowStartSprint(sprint)) {
+      const startEnabled = canStartSprint(sprint);
+      return {
+        label: 'Start sprint',
+        disabled: !startEnabled,
+        title: startEnabled ? undefined : 'Complete the previous sprint before starting this sprint.',
+        onClick: () => {
+          if (startEnabled) handleActivateSprint(sprint.id);
+        },
+      };
+    }
+    return null;
+  };
+
+  const handleCompleteSprint = async () => {
+    if (!canModifyTasks || !completeSprintTarget?.id) return;
+
+    setTasksError('');
+    try {
+      const targetIndex = displayedSprints.findIndex(sprint => sprint.id === completeSprintTarget.id);
+      const activeLaterSprint = displayedSprints
+        .slice(Math.max(targetIndex + 1, 0))
+        .find(sprint => sprint.status === 'Active');
+      if (activeLaterSprint) {
+        await axiosClient.patch(`/sprints/${activeLaterSprint.id}`, { status: 'Planned' });
+      }
+      if (completeSprintTarget.status !== 'Active') {
+        await axiosClient.post(`/sprints/${completeSprintTarget.id}/activate`);
+      }
+      await axiosClient.post(`/sprints/${completeSprintTarget.id}/complete`);
+      setIsCompleteSprintOpen(false);
+      setCompleteSprintTarget(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to complete sprint.'));
+    }
+  };
+
+  const visibleStatuses = isSpaceOwner
+    ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
+    : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
+
+  const handleUpdateAssignee = async (taskId, user) => {
+    if (!canModifyTasks) return;
+    setTasksError('');
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const nextAssigneeId = user?.user_id || user?.id || '';
+    const nextAssigneeName = nextAssigneeId ? user?.name || '' : '';
+    const optimisticAssignee = nextAssigneeId
+      ? [{
+        entryId: `optimistic-${taskId}-${nextAssigneeId}`,
+        assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
+        taskId,
+        assigneeId: nextAssigneeId,
+        assignee_id: nextAssigneeId,
+        assignedAt: new Date().toISOString(),
+        assignee_at: new Date().toISOString(),
+        user: mapApiUserSummary(user),
+      }]
+      : [];
+
+    setTasks(prev => prev.map(task => (
+      task.id === taskId
+        ? {
+          ...task,
+          assignees: optimisticAssignee,
+          assignee: nextAssigneeName,
+          assigneeId: nextAssigneeId,
+        }
+        : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId
+        ? {
+          ...prev,
+          assignees: optimisticAssignee,
+          assignee: nextAssigneeName,
+          assigneeId: nextAssigneeId,
+        }
+        : prev
+    ));
+    try {
+      await syncTaskAssigneeRequest(taskId, nextAssigneeId);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update task assignee.'));
+      if (previousTask) {
+        setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
+        setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
+      }
+      loadTaskData();
+    }
+  };
+
+  const handleUpdateTask = async (updatedTask) => {
+    if (!canModifyTasks) return;
+    const currentTask = tasks.find(task => task.id === updatedTask.id) || selectedTaskDetail;
+    if (!currentTask) return;
+
+    const assigneeChanged = (updatedTask.assigneeId || '') !== (currentTask.assigneeId || '') || updatedTask.assignee !== currentTask.assignee;
+    if (assigneeChanged) {
+      const selectedAssignee = projectAssigneeOptions.find(user =>
+        (updatedTask.assigneeId && (user.user_id === updatedTask.assigneeId || user.id === updatedTask.assigneeId)) ||
+        user.name === updatedTask.assignee
+      );
+      await handleUpdateAssignee(updatedTask.id, selectedAssignee || { user_id: '' });
+    }
+
+    const updates = {};
+    if (updatedTask.title !== currentTask.title) updates.title = updatedTask.title;
+    if (updatedTask.description !== currentTask.description) updates.description = updatedTask.description || null;
+    if (updatedTask.priority !== currentTask.priority) updates.priority = TASK_PRIORITY_TO_API[updatedTask.priority] || 'MEDIUM';
+    if (updatedTask.status !== currentTask.status) updates.task_status = TASK_STATUS_TO_API[updatedTask.status] || 'new';
+    if (Number(updatedTask.pts) !== Number(currentTask.pts)) updates.story_points = Number(updatedTask.pts) || 0;
+    const nextCompletedAt = updatedTask.completed_at || null;
+    const currentCompletedAt = currentTask.completed_at || null;
+    if (nextCompletedAt !== currentCompletedAt) {
+      updates.completed_at = nextCompletedAt ? new Date(nextCompletedAt).toISOString() : null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      if (assigneeChanged) return;
+      setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
+      setSelectedTaskDetail(updatedTask);
+      return;
+    }
+
+    try {
+      await updateTaskRequest(updatedTask.id, updates);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update this task.'));
+      setSelectedTaskDetail(currentTask);
+    }
+  };
+
+  const handleMoveTaskWithinStatus = (taskId, direction) => {
+    if (!canModifyTasks) return;
+
+    const movingTask = tasks.find(task => task.id === taskId);
+    if (!movingTask) return;
+
+    const displayedColumnTaskIds = filteredTasks
+      .filter(task => task.status === movingTask.status)
+      .map(task => task.id);
+    const currentIndex = displayedColumnTaskIds.indexOf(taskId);
+    if (currentIndex === -1) return;
+
+    const visibleIdsWithoutMovingTask = displayedColumnTaskIds.filter(id => id !== taskId);
+    let referenceTaskId = null;
+    let insertPosition = 'before';
+
+    if (direction === 'top' && currentIndex > 0) {
+      referenceTaskId = visibleIdsWithoutMovingTask[0];
+    } else if (direction === 'up' && currentIndex > 0) {
+      referenceTaskId = displayedColumnTaskIds[currentIndex - 1];
+    } else if (direction === 'down' && currentIndex < displayedColumnTaskIds.length - 1) {
+      referenceTaskId = displayedColumnTaskIds[currentIndex + 1];
+      insertPosition = 'after';
+    } else if (direction === 'bottom' && currentIndex < displayedColumnTaskIds.length - 1) {
+      referenceTaskId = visibleIdsWithoutMovingTask[visibleIdsWithoutMovingTask.length - 1];
+      insertPosition = 'after';
+    }
+
+    if (!referenceTaskId) return;
+
+    setSortOption('custom');
+    setTasks(prev => {
+      const movingIndex = prev.findIndex(task => task.id === taskId);
+      if (movingIndex === -1) return prev;
+
+      const taskToMove = prev[movingIndex];
+      const withoutMovingTask = prev.filter(task => task.id !== taskId);
+      const referenceIndex = withoutMovingTask.findIndex(task => task.id === referenceTaskId);
+      if (referenceIndex === -1) return prev;
+
+      const nextTasks = [...withoutMovingTask];
+      const insertIndex = insertPosition === 'before' ? referenceIndex : referenceIndex + 1;
+      nextTasks.splice(insertIndex, 0, taskToMove);
+      return nextTasks;
+    });
+  };
+
   const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
   const spaceMemberCount = new Set(tasks.map(task => task.assignee).filter(Boolean)).size;
   const viewTabClass = (targetView) =>
@@ -512,7 +1385,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
       >
         <div className="flex -space-x-1">
-          {(selectedAssigneeFilter === 'All' ? availableAssignees.slice(1, 4) : availableAssignees.filter(user => user.name === selectedAssigneeFilter)).map(user => (
+          {(selectedAssigneeFilter === 'All' ? projectAssigneeOptions.slice(1, 4) : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter)).map(user => (
             <div
               key={user.name}
               className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-[9px] font-bold"
@@ -536,7 +1409,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           >
             All members
           </button>
-          {availableAssignees.slice(1).map(user => (
+          {projectAssigneeOptions.slice(1).map(user => (
             <button
               key={user.name}
               type="button"
@@ -569,17 +1442,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-[#4C2B74]">{pageTitle}</h1>
-            <div className="relative">
-              <button
-                ref={addPeopleButtonRef}
-                type="button"
-                onClick={() => setIsAddPeopleOpen(prev => !prev)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
-              >
-                <span className="material-symbols-outlined text-[18px]">person_add</span>
-                Add people
-              </button>
-              {isAddPeopleOpen && (
+            {canManagePeople && (
+              <div className="relative">
+                <button
+                  ref={addPeopleButtonRef}
+                  type="button"
+                  onClick={() => setIsAddPeopleOpen(prev => !prev)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[18px]">person_add</span>
+                  Add people
+                </button>
+                {isAddPeopleOpen && (
                 <div
                   ref={addPeoplePanelRef}
                   className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
@@ -595,10 +1469,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
                       />
                     </div>
+                    {addPeopleFeedback && (
+                      <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
+                        {addPeopleFeedback}
+                      </div>
+                    )}
                   </div>
                   <div className="max-h-64 overflow-y-auto py-1">
                     {filteredPeopleDirectory.map(person => {
                       const isAdded = projectPeople.some(member => member.id === person.id);
+                      const normalizedEmail = person.email.toLowerCase();
+                      const isPending = pendingPeopleEmails.includes(normalizedEmail);
+                      const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
                       const isOwner = projectOwnerId === person.id;
                       return (
                         <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
@@ -621,15 +1503,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           ) : (
                             <button
                               type="button"
-                              disabled={isAdded}
+                              disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
                               onClick={() => handleAddProjectPerson(person)}
-                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${
-                                isAdded
+                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
                                   ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
-                                  : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                              }`}
+                                  : isPending
+                                    ? 'bg-[#EEF2FF] text-[#003d9b] cursor-default'
+                                    : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
+                                }`}
                             >
-                              {isAdded ? 'Added' : 'Add'}
+                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : 'Invite'}
                             </button>
                           )}
                         </div>
@@ -640,7 +1523,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
                           <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
                           <div className="text-[10px] text-outline">
-                            {canAddEmail ? 'Add this email to the project' : 'Enter a valid email address'}
+                            {canAddEmail ? 'Send an invitation to this email' : 'Enter a valid email address'}
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
@@ -653,15 +1536,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           </button>
                           <button
                             type="button"
-                            disabled={!canAddEmail}
+                            disabled={!canAddEmail || Boolean(addingPeopleEmail)}
                             onClick={handleAddEmailPerson}
-                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${
-                              canAddEmail
+                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
                                 ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
+                              }`}
                           >
-                            Add
+                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : 'Invite'}
                           </button>
                         </div>
                       </div>
@@ -671,8 +1553,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -706,308 +1589,336 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         <Dashboard embedded forcedRole={summaryRole} spaceMemberCount={spaceMemberCount} />
       )}
 
+      {tasksError && view !== 'summary' && (
+        <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-[12px] font-semibold text-red-700">
+          {tasksError}
+        </div>
+      )}
+
+      {isLoadingTasks && view !== 'summary' && (
+        <div className="mb-4 rounded-lg border border-[#E5E0EF] bg-white px-4 py-3 text-[12px] font-semibold text-[#4C2B74] shadow-sm">
+          Loading tasks...
+        </div>
+      )}
+
       {/* Filters Section */}
       {view !== 'summary' && (
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search Input */}
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-3 text-outline text-[20px]">search</span>
-            <input
-              className="pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded text-[11px] w-[220px] focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2] outline-none text-[#32275E]"
-              placeholder="Filter by ID or title..."
-              type="text"
-            />
-          </div>
-          {/* Status Filter */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedStatusFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="text-xs font-bold text-[#5e4db2]">{selectedStatusFilter === 'All' ? 'Status' : selectedStatusFilter}</span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] left-0 pt-1 w-48 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedStatusFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                >
-                  All statuses
-                </button>
-                {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
-                  <button 
-                    key={status} 
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search Input */}
+            <div className="relative flex items-center">
+              <span className="material-symbols-outlined absolute left-3 text-outline text-[20px]">search</span>
+              <input
+                className="pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded text-[11px] w-[220px] focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2] outline-none text-[#32275E]"
+                placeholder="Filter by ID or title..."
+                type="text"
+                value={taskSearchQuery}
+                onChange={(event) => setTaskSearchQuery(event.target.value)}
+              />
+            </div>
+            {/* Status Filter */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedStatusFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="text-xs font-bold text-[#5e4db2]">{selectedStatusFilter === 'All' ? 'Status' : selectedStatusFilter}</span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] left-0 pt-1 w-48 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <button
                     type="button"
-                    onClick={() => setSelectedStatusFilter(status)}
+                    onClick={() => setSelectedStatusFilter('All')}
                     className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
                   >
-                    {status}
+                    All statuses
                   </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* Priority Filter */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedPriorityFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="text-xs font-bold text-[#5e4db2]">{selectedPriorityFilter === 'All' ? 'Priority' : selectedPriorityFilter}</span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] left-0 pt-1 w-40 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPriorityFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                >
-                  All priorities
-                </button>
-                {['High', 'Medium', 'Low'].map(priority => (
-                  <button
-                    key={priority}
-                    type="button"
-                    onClick={() => setSelectedPriorityFilter(priority)}
-                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
-                  >
-                    {priority}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {/* Assignee Filter */}
-          <div className="relative group">
-            <button
-              type="button"
-              className="flex items-center ml-1 hover:opacity-70 transition-opacity"
-            >
-              <div className="flex -space-x-1">
-                {availableAssignees.slice(1).map(user => (
-                  <div
-                    key={user.name}
-                    className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
-                    style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
-                  >
-                    {user.initials}
-                  </div>
-                ))}
-              </div>
-            </button>
-            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
-              <div className="py-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedAssigneeFilter('All')}
-                  className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
-                >
-                  All assignees
-                </button>
-                {availableAssignees.map(user => (
-                  <button
-                    key={user.name}
-                    type="button"
-                    onClick={() => setSelectedAssigneeFilter(user.name)}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
-                  >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                      style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                    >
-                      {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                    </div>
-                    <span>{user.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Sort Dropdown */}
-          <div className="relative group">
-            <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">sort</span>
-              <span className="text-xs font-bold text-[#5e4db2]">
-                {sortOption === 'created-newest' ? 'Newest First'
-                  : sortOption === 'created-oldest' ? 'Oldest First'
-                  : sortOption === 'name-az' ? 'Name A→Z'
-                  : 'Name Z→A'}
-              </span>
-              <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
-            </button>
-            <div className="absolute top-[100%] right-0 pt-1 w-52 hidden group-hover:block z-50">
-              <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
-                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-outline-variant">Created Time</div>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('created-newest')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-newest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Newest First</span>
-                  {sortOption === 'created-newest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('created-oldest')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-oldest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Oldest First</span>
-                  {sortOption === 'created-oldest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-t border-outline-variant mt-1">Task Name</div>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('name-az')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-az' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>A → Z</span>
-                  {sortOption === 'name-az' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortOption('name-za')}
-                  className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-za' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
-                >
-                  <span>Z → A</span>
-                  {sortOption === 'name-za' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Sprint Actions */}
-          {view === 'board' && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsCompleteSprintOpen(true)}
-                disabled={filteredTasks.length === 0}
-                className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-              >
-                Complete sprint
-              </button>
-              <button
-                ref={sprintInfoAnchorRef}
-                onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
-                className="flex items-center justify-center w-[36px] h-[36px] border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
-              >
-                <span className="material-symbols-outlined text-[20px] text-on-surface">insights</span>
-              </button>
-            </div>
-          )}
-
-          {/* Date Filter */}
-          <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
-              <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
-              <span className="text-[11px] font-bold text-[#5e4db2]">
-                {selectedDate
-                  ? selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                  : 'Date'}
-              </span>
-            </button>
-
-            {/* Calendar Dropdown */}
-            <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
-                  <div className="flex gap-1">
+                  {visibleStatuses.map(status => (
                     <button
+                      key={status}
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewMonth(m => {
-                          if (m === 0) {
-                            setViewYear(y => y - 1);
-                            return 11;
-                          }
-                          return m - 1;
-                        });
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded"
+                      onClick={() => setSelectedStatusFilter(status)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
                     >
-                      <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                      {status}
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setViewMonth(m => {
-                          if (m === 11) {
-                            setViewYear(y => y + 1);
-                            return 0;
-                          }
-                          return m + 1;
-                        });
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                    <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
                   ))}
                 </div>
+              </div>
+            </div>
+            {/* Priority Filter */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${selectedPriorityFilter !== 'All' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="text-xs font-bold text-[#5e4db2]">{selectedPriorityFilter === 'All' ? 'Priority' : selectedPriorityFilter}</span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] left-0 pt-1 w-40 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPriorityFilter('All')}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                  >
+                    All priorities
+                  </button>
+                  {['High', 'Medium', 'Low'].map(priority => (
+                    <button
+                      key={priority}
+                      type="button"
+                      onClick={() => setSelectedPriorityFilter(priority)}
+                      className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer text-on-surface"
+                    >
+                      {priority}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Assignee Filter */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="flex items-center ml-1 hover:opacity-70 transition-opacity"
+              >
+                <div className="flex -space-x-1">
+                  {projectAssigneeOptions.slice(1).map(user => (
+                    <div
+                      key={user.name}
+                      className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
+                      style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
+                    >
+                      {user.initials}
+                    </div>
+                  ))}
+                </div>
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAssigneeFilter('All')}
+                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                  >
+                    All assignees
+                  </button>
+                  {projectAssigneeOptions.map(user => (
+                    <button
+                      key={user.name}
+                      type="button"
+                      onClick={() => setSelectedAssigneeFilter(user.name)}
+                      className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                      >
+                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
+                      </div>
+                      <span>{user.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Sort Dropdown */}
+            <div className="relative group">
+              <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">sort</span>
+                <span className="text-xs font-bold text-[#5e4db2]">
+                  {sortOption === 'created-newest' ? 'Newest First'
+                    : sortOption === 'created-oldest' ? 'Oldest First'
+                      : sortOption === 'name-az' ? 'Name A→Z'
+                        : sortOption === 'name-za' ? 'Name Z→A'
+                          : 'Custom Order'}
+                </span>
+                <span className="material-symbols-outlined text-[#5e4db2] text-[14px]">expand_more</span>
+              </button>
+              <div className="absolute top-[100%] right-0 pt-1 w-52 hidden group-hover:block z-50">
+                <div className="bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden py-1">
+                  <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-outline-variant">Created Time</div>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('created-newest')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-newest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Newest First</span>
+                    {sortOption === 'created-newest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('created-oldest')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'created-oldest' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Oldest First</span>
+                    {sortOption === 'created-oldest' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-outline border-b border-t border-outline-variant mt-1">Task Name</div>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('name-az')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-az' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>A → Z</span>
+                    {sortOption === 'name-az' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('name-za')}
+                    className={`w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors cursor-pointer flex items-center justify-between ${sortOption === 'name-za' ? 'bg-[#EBF0FF] text-[#003d9b] font-bold' : 'text-on-surface'}`}
+                  >
+                    <span>Z → A</span>
+                    {sortOption === 'name-za' && <span className="material-symbols-outlined text-[16px] text-[#5e4db2]">check</span>}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* Sprint Actions */}
+            {view === 'board' && (
+              <div className="flex items-center gap-2">
+                {canModifyTasks && (() => {
+                  const sprintAction = getSprintAction(sprint1Data);
+                  if (!sprintAction) return null;
+                  return (
+                    <button
+                      onClick={sprintAction.onClick}
+                      disabled={sprintAction.disabled}
+                      title={sprintAction.title}
+                      className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                    >
+                      {sprintAction.label}
+                    </button>
+                  );
+                })()}
+                <button
+                  ref={sprintInfoAnchorRef}
+                  onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
+                  className="flex items-center justify-center w-[36px] h-[36px] border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[20px] text-on-surface">insights</span>
+                </button>
+              </div>
+            )}
 
-                <div className="grid grid-cols-7 gap-1">
-                  {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
-                    if (day === null) {
-                      return <div key={`empty-${i}`} className="h-7 w-7" />;
-                    }
-                    const isSelected = selectedDate &&
-                      selectedDate.getDate() === day &&
-                      selectedDate.getMonth() === viewMonth &&
-                      selectedDate.getFullYear() === viewYear;
-                    const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
-                    return (
+            {/* Date Filter */}
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
+                <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
+                <span className="text-[11px] font-bold text-[#5e4db2]">
+                  {selectedDate
+                    ? selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Date'}
+                </span>
+              </button>
+
+              {/* Calendar Dropdown */}
+              <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
+                    <div className="flex gap-1">
                       <button
-                        key={day}
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isSelected) {
-                            setSelectedDate(null);
-                          } else {
-                            setSelectedDate(new Date(viewYear, viewMonth, day));
-                          }
+                          setViewMonth(m => {
+                            if (m === 0) {
+                              setViewYear(y => y - 1);
+                              return 11;
+                            }
+                            return m - 1;
+                          });
                         }}
-                        className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
-                          ? 'bg-[#5e4db2] text-white font-bold'
-                          : isToday
-                            ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
-                            : 'hover:bg-surface-container text-on-surface'
-                          }`}
+                        className="p-1 hover:bg-gray-100 rounded"
                       >
-                        {day}
+                        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
                       </button>
-                    );
-                  })}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewMonth(m => {
+                            if (m === 11) {
+                              setViewYear(y => y + 1);
+                              return 0;
+                            }
+                            return m + 1;
+                          });
+                        }}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                      <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
+                      if (day === null) {
+                        return <div key={`empty-${i}`} className="h-7 w-7" />;
+                      }
+                      const isSelected = selectedDate &&
+                        selectedDate.getDate() === day &&
+                        selectedDate.getMonth() === viewMonth &&
+                        selectedDate.getFullYear() === viewYear;
+                      const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isSelected) {
+                              setSelectedDate(null);
+                            } else {
+                              setSelectedDate(new Date(viewYear, viewMonth, day));
+                            }
+                          }}
+                          className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
+                            ? 'bg-[#5e4db2] text-white font-bold'
+                            : isToday
+                              ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
+                              : 'hover:bg-surface-container text-on-surface'
+                            }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* BOARD VIEW */}
       {view === 'board' && (
         <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
-              {(isAdmin ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'] : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done']).map(status => (
+          <DragDropContext onDragStart={startBoardAutoScroll} onDragEnd={onDragEnd}>
+            <div ref={boardScrollRef} className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
+              {visibleStatuses.map(status => (
                 <KanbanColumn
                   key={status}
                   title={status}
                   tasks={filteredTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
-                  onCreateTask={setShowCreateModal ? () => setShowCreateModal(true) : undefined}
-                  onOpenDetail={setSelectedTaskDetail}
+                  onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
+                  onOpenDetail={handleOpenTaskDetail}
+                  onMoveTask={handleMoveTaskWithinStatus}
+                  onPatchTask={updateTaskRequest}
+                  onUpdateAssignee={handleUpdateAssignee}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
+                  canModifyTasks={canModifyTasks}
+                  canUseCancelledStatus={isSpaceOwner}
+                  assigneeOptions={projectAssigneeOptions}
                 />
               ))}
             </div>
@@ -1021,12 +1932,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
             <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
               <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
-                  checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
-                  onChange={toggleAll}
-                />
+                {canSelectTasks && (
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
+                    checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
+                    onChange={toggleAll}
+                  />
+                )}
                 <span
                   className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                   style={{ transform: isSprintExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -1043,28 +1956,36 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <span className="text-[11px] text-outline">{sprint1Data.dateRange}</span>
                   <span className="material-symbols-outlined text-[14px] text-outline">info</span>
                 </div>
-                <span className="text-[11px] text-outline">({filteredTasks.length} work items)</span>
+                <span className="text-[11px] text-outline">({primarySprintTasks.length} work items)</span>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-1">
                   <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
-                    {filteredTasks.filter(t => t.status === 'New' || (isAdmin && t.status === 'Cancelled')).length}
+                    {primarySprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
                   </span>
                   <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
-                    {filteredTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                    {primarySprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
                   </span>
                   <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
-                    {filteredTasks.filter(t => t.status === 'Done').length}
+                    {primarySprintTasks.filter(t => t.status === 'Done').length}
                   </span>
                 </div>
-                <button
-                  onClick={() => setIsCompleteSprintOpen(true)}
-                  disabled={filteredTasks.length === 0}
-                  className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                >
-                  Complete sprint
-                </button>
+                {canModifyTasks && (() => {
+                  const sprintAction = getSprintAction(sprint1Data);
+                  if (!sprintAction) return null;
+                  return (
+                    <button
+                      onClick={sprintAction.onClick}
+                      disabled={sprintAction.disabled}
+                      title={sprintAction.title}
+                      className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                    >
+                      {sprintAction.label}
+                    </button>
+                  );
+                })()}
                 {/* Sprint 1 ... dropdown menu */}
+                {canModifyTasks && (
                 <div className="relative" data-sprint-menu>
                   <button
                     onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
@@ -1074,6 +1995,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   </button>
                   {openSprintMenuId === 'sprint-1' && (
                     <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                      {canStartSprint(sprint1Data) && (
+                        <button
+                          onClick={() => handleActivateSprint(sprint1Data.id)}
+                          className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                        >
+                          Start sprint
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenEditSprint(sprint1Data)}
                         className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
@@ -1081,7 +2010,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         Edit sprint
                       </button>
                       <button
-                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId('sprint-1'); }}
+                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
                         className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
                       >
                         Delete sprint
@@ -1089,9 +2018,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     </div>
                   )}
                 </div>
+                )}
               </div>
             </div>
-              {/* selection toolbar moved to bottom-fixed container */}
+            {/* selection toolbar moved to bottom-fixed container */}
             {isSprintExpanded && (
               <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full text-left border-collapse">
@@ -1103,21 +2033,24 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <th className="px-6 py-3 font-bold text-center">Priority</th>
                       <th className="px-6 py-3 font-bold">Status</th>
                       <th className="px-6 py-3 font-bold">Completed</th>
-                      {isAdmin && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                      {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
-                    {filteredTasks.map(task => (
+                    {primarySprintTasks.map(task => (
                       <TaskRow
                         key={task.id}
                         {...task}
-                        isAdmin={isAdmin}
+                        isAdmin={canManageTasks}
+                        canSelect={canSelectTasks}
+                        canModifyTasks={canModifyTasks}
                         isSelected={selectedTasks.includes(task.id)}
                         isAnySelected={selectedTasks.length > 0}
                         onToggle={() => toggleTask(task.id)}
-                        onOpenDetail={() => setSelectedTaskDetail(task)}
+                        onOpenDetail={() => handleOpenTaskDetail(task)}
                         onDelete={() => setTaskToDelete(task)}
-                        onUpdateAssignee={(newAssignee) => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t))}
+                        assigneeOptions={projectAssigneeOptions}
+                        onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
                       />
                     ))}
                   </tbody>
@@ -1125,7 +2058,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             )}
             {/* + Create button below Sprint 1 table */}
-            {isSprintExpanded && (
+            {isSprintExpanded && canModifyTasks && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
                   onClick={() => {
@@ -1142,12 +2075,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           </div>
 
           {/* EXTRA SPRINTS (created dynamically) */}
-          {extraSprints.map((sprint) => (
+          {extraSprints.map((sprint) => {
+            const extraSprintTasks = filteredTasks.filter(task => task.sprintId === sprint.id);
+            return (
             <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
               {/* Sprint Header */}
               <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
                 <div className="flex items-center gap-3">
-                  <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />
+                  {canSelectTasks && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
                   <span
                     className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                     style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -1160,22 +2095,36 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <span className="text-[11px] text-outline">{sprint.dateRange}</span>
                     <span className="material-symbols-outlined text-[14px] text-outline">info</span>
                   </div>
-                  <span className="text-[11px] text-outline">({sprint.tasks.length} work items)</span>
+                  <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex gap-1">
-                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">0</span>
-                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">0</span>
-                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">0</span>
+                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
+                      {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
+                      {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
+                      {extraSprintTasks.filter(t => t.status === 'Done').length}
+                    </span>
                   </div>
-                  <button
-                    onClick={() => setIsCompleteSprintOpen(true)}
-                    disabled={sprint.tasks.length === 0}
-                    className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprint.tasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                  >
-                    Complete sprint
-                  </button>
+                  {canModifyTasks && (() => {
+                    const sprintAction = getSprintAction(sprint);
+                    if (!sprintAction) return null;
+                    return (
+                      <button
+                        onClick={sprintAction.onClick}
+                        disabled={sprintAction.disabled}
+                        title={sprintAction.title}
+                        className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                      >
+                        {sprintAction.label}
+                      </button>
+                    );
+                  })()}
                   {/* Extra sprint ... dropdown menu */}
+                  {canModifyTasks && (
                   <div className="relative" data-sprint-menu>
                     <button
                       onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
@@ -1185,6 +2134,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     </button>
                     {openSprintMenuId === sprint.id && (
                       <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                        {shouldShowStartSprint(sprint) && (
+                          <button
+                            disabled={!canStartSprint(sprint)}
+                            title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
+                            onClick={() => {
+                              if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
+                            }}
+                            className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
+                          >
+                            Start sprint
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenEditSprint(sprint)}
                           className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
@@ -1200,11 +2161,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
 
               {/* Sprint Body */}
-              {expandedSprints[sprint.id] && sprint.tasks.length > 0 && (
+              {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
                 <div className="max-h-[500px] overflow-y-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
@@ -1215,32 +2177,26 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <th className="px-6 py-3 font-bold text-center">Priority</th>
                         <th className="px-6 py-3 font-bold">Status</th>
                         <th className="px-6 py-3 font-bold">Completed</th>
-                        {isAdmin && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                        {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant">
-                      {sprint.tasks.map(task => (
+                      {extraSprintTasks.map(task => (
                         <TaskRow
                           key={task.id}
                           {...task}
-                          isAdmin={isAdmin}
+                          isAdmin={canManageTasks}
+                          canSelect={canSelectTasks}
+                          canModifyTasks={canModifyTasks}
                           isSelected={selectedTasks.includes(task.id)}
                           isAnySelected={selectedTasks.length > 0}
                           onToggle={() => toggleTask(task.id)}
-                          onOpenDetail={() => setSelectedTaskDetail(task)}
+                          onOpenDetail={() => handleOpenTaskDetail(task)}
                           onDelete={() => {
-                            setExtraSprints(prev => prev.map(s => ({
-                              ...s,
-                              tasks: s.tasks.filter(t => t.id !== task.id)
-                            })));
-                            setTaskToDelete(null);
+                            setTaskToDelete(task);
                           }}
-                          onUpdateAssignee={(newAssignee) => {
-                            setExtraSprints(prev => prev.map(s => ({
-                              ...s,
-                              tasks: s.tasks.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t)
-                            })));
-                          }}
+                          assigneeOptions={projectAssigneeOptions}
+                          onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
                         />
                       ))}
                     </tbody>
@@ -1249,7 +2205,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               )}
 
               {/* Sprint Body - Empty State */}
-              {expandedSprints[sprint.id] && sprint.tasks.length === 0 && (
+              {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
                 <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
                   <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
                   <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
@@ -1257,7 +2213,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               )}
 
               {/* + Create button below sprint body */}
-              {expandedSprints[sprint.id] && (
+              {expandedSprints[sprint.id] && canModifyTasks && (
                 <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                   <button
                     onClick={() => {
@@ -1272,10 +2228,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           {/* CREATE SPRINT BUTTON */}
-          <div className="mt-4 flex justify-end" id="backlog-section">
+          {canModifyTasks && <div className="mt-4 flex justify-end" id="backlog-section">
             <button
               onClick={handleCreateSprint}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded-lg text-[12px] font-bold hover:bg-[#e6e1ff] hover:shadow-md transition-all shadow-sm"
@@ -1283,64 +2240,66 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               <span className="material-symbols-outlined text-[18px]">add</span>
               Create Sprint
             </button>
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Popovers & Modals */}
       {/* Bottom-fixed selection toolbar */}
-      {selectedTasks.length > 0 && (
+      {selectedTasks.length > 0 && canSelectTasks && (
         <div className="fixed left-6 right-6 bottom-4 z-50 flex justify-center pointer-events-none">
-          <div className="w-full max-w-[620px] pointer-events-auto rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 text-slate-700 shadow-sm ring-1 ring-gray-400/80 relative">
+          <div className="w-full max-w-[620px] pointer-events-auto rounded-xl border border-[#6B7280] bg-white px-3 py-2 text-[#2D1B4E] shadow-[0_10px_30px_rgba(94,77,178,0.16)] relative">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-[13px] font-medium text-slate-700">{selectedTasks.length} selected</span>
+                <span className="rounded-lg bg-[#F0EDFF] px-2.5 py-1 text-[13px] font-bold text-[#5E4DB2]">{selectedTasks.length} selected</span>
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="px-2 py-1 text-[12px] font-medium rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
+                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
                   {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
                 </button>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
-                    className="px-2 py-1 text-[12px] rounded-md bg-white/6 hover:bg-white/12 text-slate-700 border border-gray-300 transition"
-                  >
-                    Change status
-                  </button>
-                  {showToolbarStatusMenu && (
-                    <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
-                      {toolbarStatuses.map(s => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => changeStatusForSelected(s)}
-                          className="w-full px-4 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {canModifyTasks && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
+                      className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-[#5E4DB2] hover:bg-[#4C3A9E] text-white border border-[#5E4DB2] transition shadow-sm"
+                    >
+                      Change status
+                    </button>
+                    {showToolbarStatusMenu && (
+                      <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                        {toolbarStatuses.map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => changeStatusForSelected(s)}
+                            className="w-full px-4 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedTasks}
-                  disabled={!isAdmin}
-                  title={!isAdmin ? 'Only Super Admin can delete tasks' : ''}
-                  className={`px-3 py-1 text-[12px] font-semibold rounded-md ${isAdmin ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'} shadow-sm transition`}
-                >
-                  Delete
-                </button>
+                {canManageTasks && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelectedTasks}
+                    className="px-3 py-1 text-[12px] font-semibold rounded-md bg-red-600 hover:bg-red-700 text-white shadow-sm transition"
+                  >
+                    Delete
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedTasks([]); }}
                   aria-label="Close selection toolbar"
-                  className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-slate-500 hover:bg-gray-100 transition"
+                  className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent text-[#7A6AA8] hover:bg-[#F0EDFF] hover:text-[#4C2B74] transition"
                 >
                   <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
@@ -1359,10 +2318,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       <CompleteSprintModal
         isOpen={isCompleteSprintOpen}
-        onClose={() => setIsCompleteSprintOpen(false)}
-        sprintName={sprint1Data.name}
-        completedTasksCount={tasks.filter(t => t.status === 'Done').length}
-        openTasksCount={tasks.filter(t => t.status !== 'Done').length}
+        onClose={() => { setIsCompleteSprintOpen(false); setCompleteSprintTarget(null); }}
+        sprintName={completeSprintTarget?.name || sprint1Data.name}
+        completedTasksCount={completeSprintTasks.filter(t => t.status === 'Done').length}
+        openTasksCount={completeSprintTasks.filter(t => t.status !== 'Done').length}
+        onComplete={handleCompleteSprint}
       />
 
       <EditSprintModal
@@ -1392,9 +2352,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <p className="mt-1 text-sm text-gray-600 leading-relaxed">
                     Are you sure you want to delete{' '}
                     <strong className="text-[#121c2a]">
-                      {deleteSprintConfirmId === 'sprint-1'
-                        ? sprint1Data.name
-                        : extraSprints.find(s => s.id === deleteSprintConfirmId)?.name || 'this sprint'}
+                      {[sprint1Data, ...extraSprints].find(s => s.id === deleteSprintConfirmId)?.name || 'this sprint'}
                     </strong>?
                   </p>
                 </div>
@@ -1407,13 +2365,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    if (deleteSprintConfirmId !== 'sprint-1') {
-                      handleDeleteExtraSprint(deleteSprintConfirmId);
-                    } else {
-                      setDeleteSprintConfirmId(null);
-                    }
-                  }}
+                  onClick={() => handleDeleteSprint(deleteSprintConfirmId)}
                   className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Delete
@@ -1427,14 +2379,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       <TaskDetailModal
         task={selectedTaskDetail}
-        onClose={() => setSelectedTaskDetail(null)}
+        onClose={handleCloseTaskDetail}
         tasks={tasks}
+        assigneeOptions={projectAssigneeOptions}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
-        onUpdateTask={(updatedTask) => {
-          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-          setSelectedTaskDetail(updatedTask);
-        }}
+        onUpdateTask={handleUpdateTask}
       />
 
       <DeleteTaskModal
@@ -1447,7 +2398,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, color = 'outline', currentRole }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -1468,26 +2419,42 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, colo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} currentRole={currentRole} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
         )}
       </Droppable>
-      <button
-        onClick={onCreateTask}
-        className="hidden group-hover:flex items-center gap-2 px-3 py-2 mt-2 text-outline hover:text-on-surface transition-all w-full rounded hover:bg-surface-container/50"
-      >
-        <span className="material-symbols-outlined text-[20px]">add</span>
-        <span className="text-[13px] tracking-wide">Create</span>
-      </button>
+      {canModifyTasks && (
+        <button
+          onClick={onCreateTask}
+          className="hidden group-hover:flex items-center gap-2 px-3 py-2 mt-2 text-outline hover:text-on-surface transition-all w-full rounded hover:bg-surface-container/50"
+        >
+          <span className="material-symbols-outlined text-[20px]">add</span>
+          <span className="text-[13px] tracking-wide">Create</span>
+        </button>
+      )}
     </div>
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
+  const [hasPreviewImageError, setHasPreviewImageError] = React.useState(false);
+  const isOverdue = isTaskOverdue(task.completed_at || date, status);
+  const isDueToday = !isOverdue && isTaskDueToday(task.completed_at || date, status);
+  const displayDate = task.completed_at ? formatTaskDate(task.completed_at) : date;
+  const taskCardDateClass = isOverdue
+    ? OVERDUE_BADGE_CLASS
+    : isDueToday
+      ? DUE_TODAY_BADGE_CLASS
+      : 'bg-surface-container text-on-surface-variant';
+  const taskCardStateClass = isOverdue
+    ? 'border-white'
+    : isDueToday
+      ? DUE_TODAY_BORDER_CLASS
+      : '';
   const [isEditing, setIsEditing] = React.useState(false);
   const [tempPts, setTempPts] = React.useState(pts);
   const [showMenu, setShowMenu] = React.useState(false);
@@ -1500,9 +2467,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
 
-  const statuses = currentRole === 'ADMIN'
+  const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
+  const assigneeProfile = assigneeOptions.find(user => user.name === task.assignee || user.user_id === task.assigneeId) || getAssigneeProfile(task.assignee);
+
+  useEffect(() => {
+    setHasPreviewImageError(false);
+  }, [previewImage]);
 
   // Đóng menu khi click ra ngoài
   useEffect(() => {
@@ -1550,54 +2522,20 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   };
 
   const handleMove = (direction) => {
-    setTasks(prev => {
-      const columnTasks = prev.filter(t => t.status === task.status);
-      const globalIdx = prev.findIndex(t => t.id === task.id);
-      if (globalIdx === -1) return prev;
-      
-      const colIdx = columnTasks.findIndex(t => t.id === task.id);
-      let newPrev = [...prev];
-      
-      if (direction === 'up' && colIdx > 0) {
-        const taskAbove = columnTasks[colIdx - 1];
-        newPrev.splice(globalIdx, 1);
-        const newAboveGlobalIdx = newPrev.findIndex(t => t.id === taskAbove.id);
-        newPrev.splice(newAboveGlobalIdx, 0, task);
-      } 
-      else if (direction === 'down' && colIdx < columnTasks.length - 1) {
-        const taskBelow = columnTasks[colIdx + 1];
-        newPrev.splice(globalIdx, 1);
-        const newBelowGlobalIdx = newPrev.findIndex(t => t.id === taskBelow.id);
-        newPrev.splice(newBelowGlobalIdx + 1, 0, task);
-      }
-      else if (direction === 'top' && colIdx > 0) {
-        const firstTask = columnTasks[0];
-        newPrev.splice(globalIdx, 1);
-        const newFirstGlobalIdx = newPrev.findIndex(t => t.id === firstTask.id);
-        newPrev.splice(newFirstGlobalIdx, 0, task);
-      }
-      else if (direction === 'bottom' && colIdx < columnTasks.length - 1) {
-        const lastTask = columnTasks[columnTasks.length - 1];
-        newPrev.splice(globalIdx, 1);
-        const newLastGlobalIdx = newPrev.findIndex(t => t.id === lastTask.id);
-        newPrev.splice(newLastGlobalIdx + 1, 0, task);
-      }
-      
-      return newPrev;
-    });
+    onMoveTask?.(task.id, direction);
     setShowMenu(false);
     setShowMoveSubMenu(false);
   };
 
   return (
-    <Draggable draggableId={id} index={index}>
+    <Draggable draggableId={id} index={index} isDragDisabled={!canModifyTasks}>
       {(provided, snapshot) => (
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{ ...provided.draggableProps.style }}
-          className={`relative bg-surface-container-lowest p-2.5 border border-outline-variant rounded shadow-sm hover:bg-surface-container-low transition-all group ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
+          className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${taskCardStateClass} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
           onClick={(e) => {
             if (e.defaultPrevented) return;
             onOpenDetail && onOpenDetail(task);
@@ -1606,9 +2544,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
           <div className="flex justify-between items-start mb-2 gap-2">
             <div className={`text-[11px] leading-snug flex items-center gap-1.5 flex-wrap ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
               {title}
-              <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+              {canModifyTasks && (
+                <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+              )}
             </div>
-            <div>
+            {canModifyTasks && <div>
               <button
                 ref={btnRef}
                 onClick={handleMenuToggle}
@@ -1616,7 +2556,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
               >
                 <span className="material-symbols-outlined text-[18px] text-outline">more_horiz</span>
               </button>
-            </div>
+            </div>}
           </div>
 
           {/* Portal Menu - nổi lên trên mọi thứ với position:fixed */}
@@ -1690,9 +2630,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                       <button
                         key={s}
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setTasks(prev => prev.map(t => t.id === id ? { ...t, status: s } : t));
+                          try {
+                            await onPatchTask?.(id, { task_status: TASK_STATUS_TO_API[s] || 'new' });
+                          } catch {
+                            setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+                          }
                           setShowMenu(false);
                           setShowStatusSubMenu(false);
                         }}
@@ -1710,14 +2655,24 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
 
 
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-surface-container text-on-surface-variant">
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${taskCardDateClass}`}>
               <span className="material-symbols-outlined text-[14px]">calendar_month</span>
-              <span className="text-[11px] font-semibold">{date}</span>
+              <span className="text-[11px] font-semibold">{displayDate}</span>
             </div>
           </div>
-          {previewImage ? (
-            <div className="mb-3 overflow-hidden rounded-xl">
-              <img src={previewImage} alt={`Preview for ${title}`} className="w-full h-28 object-cover rounded-xl" />
+          {previewImage && !hasPreviewImageError ? (
+            <div className="mb-3 h-28 overflow-hidden rounded-lg bg-surface-container">
+              <img
+                src={previewImage}
+                alt=""
+                className="block h-full w-full object-cover"
+                onError={() => setHasPreviewImageError(true)}
+              />
+            </div>
+          ) : previewImage ? (
+            <div className="mb-3 flex h-16 items-center gap-2 rounded-lg border border-dashed border-outline-variant bg-surface-container px-3 text-[11px] font-semibold text-outline">
+              <span className="material-symbols-outlined text-[18px]">image</span>
+              <span className="truncate">Image preview unavailable</span>
             </div>
           ) : null}
           <div className="flex justify-between items-center mt-auto">
@@ -1725,8 +2680,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
               <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{id}</span>
               {!isEditing ? (
                 <span
-                  className="px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline cursor-pointer hover:bg-primary/10 hover:text-primary"
-                  onClick={() => setIsEditing(true)}
+                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : ''}`}
+                  onClick={() => { if (canModifyTasks) setIsEditing(true); }}
                 >
                   {pts} pts
                 </span>
@@ -1740,10 +2695,20 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                     autoFocus
                   />
                   <div className="flex justify-between border-t border-outline-variant pt-1 mt-1">
-                    <button className="hover:bg-green-100 rounded p-0.5" onClick={() => setIsEditing(false)}>
+                    <button
+                      className="hover:bg-green-100 rounded p-0.5"
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        try {
+                          await onPatchTask?.(id, { story_points: Number(tempPts) || 0 });
+                        } finally {
+                          setIsEditing(false);
+                        }
+                      }}
+                    >
                       <span className="material-symbols-outlined text-[14px] text-green-600">done</span>
                     </button>
-                    <button className="hover:bg-red-100 rounded p-0.5" onClick={() => setIsEditing(false)}>
+                    <button className="hover:bg-red-100 rounded p-0.5" onClick={(event) => { event.stopPropagation(); setIsEditing(false); setTempPts(pts); }}>
                       <span className="material-symbols-outlined text-[14px] text-red-600">close</span>
                     </button>
                   </div>
@@ -1763,12 +2728,13 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!canModifyTasks) return;
                   setShowAssigneeMenu(prev => !prev);
                 }}
-                className="w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold"
-                style={{ backgroundColor: getAssigneeProfile(task.assignee).color, color: getAssigneeProfile(task.assignee).textColor || '#111' }}
+                className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                style={{ backgroundColor: assigneeProfile.color, color: assigneeProfile.textColor || '#111' }}
               >
-                {getAssigneeProfile(task.assignee).initials || <span className="material-symbols-outlined">person</span>}
+                {assigneeProfile.initials || <span className="material-symbols-outlined">person</span>}
               </button>
               {showAssigneeMenu && (
                 <div
@@ -1776,13 +2742,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
                   className="absolute right-0 top-full mt-2 w-40 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {availableAssignees.map(user => (
+                  {assigneeOptions.map(user => (
                     <button
                       key={user.name}
                       type="button"
-                      onClick={() => {
-                        setTasks(prev => prev.map(t => t.id === id ? { ...t, assignee: user.name === 'Unassigned' ? '' : user.name } : t));
+                      onClick={async (event) => {
+                        event.stopPropagation();
                         setShowAssigneeMenu(false);
+                        await onUpdateAssignee?.(id, user);
                       }}
                       className="w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left hover:bg-[#EBF0FF] transition-colors"
                     >
@@ -1805,7 +2772,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, currentRole
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true }) {
+function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+  const isOverdue = isTaskOverdue(completed_at || date, status);
+  const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
+  const displayDate = completed_at ? formatTaskDate(completed_at) : date;
+  const dateTextClass = isOverdue ? OVERDUE_TEXT_CLASS : isDueToday ? DUE_TODAY_TEXT_CLASS : 'text-outline';
   const statusClass = status === 'Need Revision'
     ? 'bg-[#FFF0F0] text-[#BA1A1A]'
     : status === 'Done'
@@ -1815,8 +2786,30 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
         : 'bg-[#E0E8FF] text-[#003d9b]';
 
   const [showAssigneeMenu, setShowAssigneeMenu] = useState(false);
+  const [assigneeMenuPos, setAssigneeMenuPos] = useState({ top: 0, left: 0 });
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
+
+  const toggleAssigneeMenu = (event) => {
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    if (showAssigneeMenu) {
+      setShowAssigneeMenu(false);
+      return;
+    }
+
+    const rect = assigneeBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = 176;
+      const viewportPadding = 8;
+      const left = Math.min(
+        Math.max(rect.left, viewportPadding),
+        window.innerWidth - menuWidth - viewportPadding
+      );
+      setAssigneeMenuPos({ top: rect.bottom + 6, left });
+    }
+    setShowAssigneeMenu(true);
+  };
 
   useEffect(() => {
     if (!showAssigneeMenu) return;
@@ -1837,16 +2830,18 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
     >
       <td className="px-2 py-2">
         <div className="flex items-center justify-center gap-3">
-          <input
-            type="checkbox"
-            className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
-            checked={isSelected}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-          />
+          {canSelect && (
+            <input
+              type="checkbox"
+              className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
+              checked={isSelected}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+            />
+          )}
           <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{id}</span>
           <span className="px-1 py-0.5 bg-surface-container rounded text-[9px] font-bold text-outline">{pts}</span>
         </div>
@@ -1855,17 +2850,14 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
       <td className="px-4 py-2">
         <div className="relative inline-flex items-center">
           {(() => {
-            const profile = getAssigneeProfile(assignee);
+            const profile = assigneeOptions.find(user => user.name === assignee) || getAssigneeProfile(assignee);
             return (
               <div className="relative">
                 <button
                   ref={assigneeBtnRef}
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowAssigneeMenu(prev => !prev);
-                  }}
-                  className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] hover:bg-[#F4F5F7] transition-colors"
+                  onClick={toggleAssigneeMenu}
+                  className={`flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] transition-colors ${canModifyTasks ? 'hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                 >
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
@@ -1875,19 +2867,21 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
                   </div>
                   <span>{assignee || 'Unassigned'}</span>
                 </button>
-                {showAssigneeMenu && (
+                {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
                     ref={assigneeMenuRef}
-                    className="absolute left-0 top-full mt-2 w-44 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                    style={{ position: 'fixed', top: assigneeMenuPos.top, left: assigneeMenuPos.left, zIndex: 10000 }}
+                    className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {availableAssignees.map(user => (
+                    {assigneeOptions.map(user => (
                       <button
                         key={user.name}
-                        type="button"
-                        onClick={() => {
-                          onUpdateAssignee && onUpdateAssignee(user.name === 'Unassigned' ? '' : user.name);
+                      type="button"
+                        onClick={async (event) => {
+                          event.stopPropagation();
                           setShowAssigneeMenu(false);
+                          await onUpdateAssignee?.(user);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] hover:bg-[#EBF0FF] transition-colors"
                       >
@@ -1900,7 +2894,8 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
                         <span>{user.name}</span>
                       </button>
                     ))}
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             );
@@ -1919,7 +2914,7 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
       <td className="px-4 py-2">
         <span className={`px-3 py-1 rounded-full ${statusClass} text-[9px] font-bold uppercase`}>{status}</span>
       </td>
-      <td className="px-4 py-2 text-[11px] text-outline">{date}</td>
+      <td className={`px-4 py-2 text-[11px] font-semibold ${dateTextClass}`}>{displayDate}</td>
       {isAdmin && (
         <td className="px-4 py-2 text-center">
           <span
@@ -1936,3 +2931,4 @@ function TaskRow({ id, title, assignee, pts, status, date, priority, isSelected,
     </tr>
   );
 }
+

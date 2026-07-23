@@ -1,208 +1,213 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
-import Dashboard from '../../pages/Dashboard';
-import SpaceManagement from '../../pages/SpaceManagement';
-import TaskManagement from '../../pages/TaskManagement';
-import UserManagement from '../../pages/UserManagement';
-import ProfilePage from '../../pages/ProfilePage';
-import HelpCenter from '../../pages/HelpCenter';
-import NotificationSettingsPage from '../../pages/NotificationSettingsPage';
-const INITIAL_NOTIFICATIONS = [
-  {
-    NOTI_id: 1,
-    type: 'task_assigned',
-    task_name: 'Design Dashboard',
-    triggered_by_name: 'Hoa',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'H',
-    is_read: false,
-    created_at: '2 min ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'To Do',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 2,
-    type: 'status_changed',
-    task_name: 'Design System',
-    new_status: 'In Review',
-    triggered_by_name: 'Pham Thi Cam Tien',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'PT',
-    is_read: false,
-    created_at: '33 sec ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 3,
-    type: 'comment_added',
-    task_name: 'Audit Logs Screen',
-    triggered_by_name: 'Trung',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'T',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'In Progress',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 4,
-    type: 'due_today',
-    task_name: 'Database Migration',
-    is_read: false,
-    created_at: '3 hours ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'MEMBER',
-    task_status: 'Pending',
-    space_id: 'spaces'
-  },
-  {
-    NOTI_id: 5,
-    type: 'space_member_added',
-    space_name: 'Task Management System',
-    triggered_by_name: 'Trang Nguyen',
-    triggered_by_avatar: true,
-    triggered_by_initials: 'TN',
-    is_read: false,
-    created_at: '1 hour ago',
-    group: 'Today',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 6,
-    type: 'owner_space_update',
-    space_name: 'Task Management System',
-    is_read: true,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'USER',
-    audience: 'OWNER',
-    space_id: 'SP-001'
-  },
-  {
-    NOTI_id: 10,
-    type: 'user_registered',
-    target_user: 'Nguyen Van A',
-    is_read: false,
-    created_at: '5 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 11,
-    type: 'account_locked',
-    target_user: 'User123',
-    is_read: false,
-    created_at: '10 min ago',
-    group: 'Today',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 12,
-    type: 'user_verified',
-    target_user: 'Alex Morgan',
-    is_read: true,
-    created_at: '2 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 13,
-    type: 'permission_changed',
-    target_user: 'Hoang Hoa',
-    is_read: false,
-    created_at: 'Yesterday',
-    group: 'Yesterday',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  },
-  {
-    NOTI_id: 14,
-    type: 'audit_log_event',
-    message: 'Security audit event recorded for a sensitive permission update.',
-    is_read: true,
-    created_at: '3 days ago',
-    group: 'Earlier',
-    role: 'ADMIN',
-    audience: 'SUPER_ADMIN'
-  }
-];
-const SEARCH_TASKS = [
-  { id: 'TM-1', title: 'Infrastructure setup', status: 'New', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-2', title: 'API Documentation update', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-3', title: 'Checkout flow mobile fix', status: 'In Testing', priority: 'High', assignee: 'Trong Nghia' },
-  { id: 'TM-4', title: 'Security Protocols Audit', status: 'Done', priority: 'High', assignee: 'Pham Tien' },
-  { id: 'TM-5', title: 'SSO Authentication implementation', status: 'In Progress', priority: 'Medium', assignee: 'Hoang Hoa' },
-  { id: 'TM-8', title: 'Database Migration Script', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
-  { id: 'TM-9', title: 'Dashboard Charts optimization', status: 'In Testing', priority: 'Medium', assignee: 'Trong Nghia' },
-  { id: 'TM-11', title: 'Push Notification Service', status: 'New', priority: 'High', assignee: 'Hoang Hoa' },
-];
+import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
+import { API_BASE_URL } from '../../api/axiosClient';
+import {
+  deleteNotification,
+  getNotificationDetail,
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationsRead,
+} from '../../api/notificationsApi';
+import { deleteSearchRecent, globalSearch, recordSearchRecent } from '../../api/searchApi';
 
-const SEARCH_SPACES = [
-  {
-    id: 'SP-001',
-    taskId: 'SP-001',
-    title: 'Task Management System',
-    description: 'Final project for task management system integration.',
-    owner: 'Trang Nguyen',
-    ownerInitials: 'TN',
-    memberCount: 4,
-    status: 'Active',
-    memberAccess: true
-  },
-  {
-    id: 'SP-002',
-    taskId: 'SP-002',
-    title: 'E-Commerce Platform',
-    description: 'Headless commerce rebuild with Next.js and high-performance API.',
-    owner: 'Hoang Hoa',
-    ownerInitials: 'HH',
-    memberCount: 3,
-    status: 'Active',
-    memberAccess: true
-  },
-  {
-    id: 'SP-003',
-    taskId: 'SP-003',
-    title: 'CRM System',
-    description: 'Legacy customer relationship management maintenance and data cleanup.',
-    owner: 'Alex Morgan',
-    ownerInitials: 'AM',
-    memberCount: 2,
-    status: 'Archived',
-    memberAccess: false
-  },
-];
+import { isNotificationWithinDisplayWindow } from '../../utils/notificationRetention';
+import {
+  getPrimaryNavigationItems,
+  getSupportNavigationItems,
+} from '../../utils/mainLayoutConfig';
 
-const SEARCH_USERS = [
-  { id: 'USR-1', name: 'Alex Morgan', email: 'alex.morgan@taskcore.com', role: 'Super Admin', status: 'Active', initials: 'AM', space: 'System' },
-  { id: 'USR-2', name: 'Trang Nguyen', email: 'trangnguyen@example.com', role: 'Owner', status: 'Active', initials: 'TN', space: 'Task Management System' },
-  { id: 'USR-3', name: 'Tien Pham', email: 'tienthicamphamqn20@gmail.com', role: 'User', status: 'Active', initials: 'TP', space: 'Task Management System' },
-  { id: 'USR-4', name: 'Hoang Hoa', email: 'hoanghoa@example.com', role: 'Owner', status: 'Active', initials: 'HH', space: 'E-Commerce Platform' },
-  { id: 'USR-5', name: 'Trong Nghia', email: 'trongnghia@example.com', role: 'User', status: 'Active', initials: 'TN', space: 'CRM System' },
-];
+const LAYOUT_QUERY_KEYS = ['role', 'spaceRole', 'user'];
+const NOTIFICATION_POLL_INTERVAL_MS = 25000;
+const SEARCH_DEBOUNCE_MS = 120;
+const RECENT_SEARCH_DEBOUNCE_MS = 0;
+const EMPTY_SEARCH_RESULTS = { spaces: [], tasks: [], users: [] };
+
+const copyLayoutQueryParams = (search) => {
+  const currentParams = new URLSearchParams(search);
+  const nextParams = new URLSearchParams();
+
+  LAYOUT_QUERY_KEYS.forEach((key) => {
+    const value = currentParams.get(key);
+    if (value) {
+      nextParams.set(key, value);
+    }
+  });
+
+  return nextParams;
+};
+
+const getLayoutSearch = (search) => {
+  const query = copyLayoutQueryParams(search).toString();
+  return query ? `?${query}` : '';
+};
+
 import usFlag from "../../assets/us.png";
 import vnFlag from "../../assets/vn.png";
+
+function formatNotificationTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+  }).format(date);
+}
+
+function notificationGroup(value) {
+  if (!value) return 'Earlier';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Earlier';
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const sameDay = (left, right) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+
+  if (sameDay(date, today)) return 'Today';
+  if (sameDay(date, yesterday)) return 'Yesterday';
+  return 'Earlier';
+}
+
+function mapNotification(notification) {
+  const metadata = notification.metadata || {};
+  const actorName = notification.actor?.full_name || metadata.triggered_by_name || '';
+  const targetUser = metadata.target_user || metadata.target_user_name || '';
+  const taskName = metadata.task_name || metadata.task_title || notification.task?.title || '';
+  const spaceName = metadata.space_name || metadata.name_space || metadata.space || '';
+  const sprintName = metadata.sprint_name || metadata.name_sprint || metadata.sprint || notification.task?.sprint_name || '';
+
+  return {
+    NOTI_id: notification.notification_id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    task_id: notification.task_id,
+    space_id: notification.space_id,
+    target_user_id: metadata.user_id || metadata.target_user_id,
+    audit_log_id: metadata.log_id || metadata.audit_log_id,
+    task_name: taskName,
+    sprint_name: sprintName,
+    space_name: spaceName,
+    target_user: targetUser,
+    triggered_by_name: actorName,
+    triggered_by_avatar: Boolean(actorName),
+    triggered_by_initials: getInitials(actorName),
+    is_read: notification.is_read,
+    created_at: formatNotificationTime(notification.created_at),
+    created_at_raw: notification.created_at,
+    group: notificationGroup(notification.created_at),
+    audience: notification.audience,
+    role: notification.audience === 'SUPER_ADMIN' ? 'ADMIN' : 'USER',
+    task_status: metadata.task_status,
+    new_status: metadata.new_status,
+    new_priority: metadata.new_priority || metadata.priority,
+  };
+}
+
+function getInitials(value = '') {
+  const words = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return 'U';
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join('');
+}
+
+function getBackendOrigin() {
+  try {
+    const url = new URL(API_BASE_URL);
+    return url.origin;
+  } catch {
+    return ''; // relative URL — same origin, proxy handles it
+  }
+}
+
+function normalizeAvatarUrl(avatarUrl) {
+  if (!avatarUrl) return '';
+  if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (path.startsWith('/media/')) return `${getBackendOrigin()}${path}`;
+  return avatarUrl;
+}
+
+function mapSearchSpace(space) {
+  const ownerName = space.owner?.full_name || '';
+  return {
+    id: space.space_id,
+    taskId: space.space_id,
+    title: space.name,
+    description: space.description || '',
+    owner: ownerName,
+    ownerInitials: space.owner?.initials || getInitials(ownerName),
+    memberCount: space.member_count || 0,
+    status: space.status || '',
+  };
+}
+
+function mapSearchTask(task) {
+  const assigneeNames = (task.assignees || [])
+    .map((assignee) => assignee.full_name)
+    .filter(Boolean);
+
+  return {
+    id: task.task_id,
+    spaceId: task.space_id,
+    title: task.title,
+    status: task.status || '',
+    priority: task.priority || '',
+    assignee: assigneeNames.join(', ') || 'Unassigned',
+  };
+}
+
+function mapSearchUser(user) {
+  return {
+    id: user.user_id,
+    name: user.full_name,
+    email: user.email,
+    role: user.display_role || user.system_role || 'User',
+    status: user.status || '',
+    initials: user.initials || getInitials(user.full_name),
+    space: user.space_name || (user.system_role === 'SUPER_ADMIN' ? 'System' : ''),
+  };
+}
+
+function mapGlobalSearchResponse(response, isSuperAdmin) {
+  return {
+    spaces: (response.spaces || []).map(mapSearchSpace),
+    tasks: (response.tasks || []).map(mapSearchTask),
+    users: isSuperAdmin ? (response.users || []).map(mapSearchUser) : [],
+  };
+}
 
 export default function MainLayout() {
   const location = useLocation();
@@ -212,6 +217,8 @@ export default function MainLayout() {
   const [tasksForModal, setTasksForModal] = useState([]);
   const [createTaskHandler, setCreateTaskHandler] = useState(null);
   const [createTaskInitialSprint, setCreateTaskInitialSprint] = useState('');
+  const [assigneesForModal, setAssigneesForModal] = useState([]);
+  const [currentSpaceNameForModal, setCurrentSpaceNameForModal] = useState('Task Management');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -219,11 +226,14 @@ export default function MainLayout() {
   const [showAvatarDropdown, setShowAvatarDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState({ spaces: [], tasks: [], users: [] });
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
 
   const avatarRef = useRef(null);
   const avatarDropdownRef = useRef(null);
   const [showApps, setShowApps] = useState(false);
-  const [language, setLanguage] = useState("en");
+  const { language, setLanguage } = useLanguage();
+  const { user: authUser, logout } = useAuth();
 
   const appsRef = useRef(null);
   const appsDropdownRef = useRef(null);
@@ -233,34 +243,165 @@ export default function MainLayout() {
   const settingsRef = useRef(null);
   const settingsDropdownRef = useRef(null);
   const searchRef = useRef(null);
+  const recentSearchCacheRef = useRef(new Map());
+  const activeSearchRequestIdRef = useRef(0);
 
-  const roleParam = searchParams.get('role')?.toUpperCase();
-  const currentRole = roleParam === 'USER' ? 'USER' : 'ADMIN';
-  const isSuperAdmin = currentRole === 'ADMIN';
+  const authRole = authUser?.role || 'USER';
+  const isSuperAdmin = authRole === 'SUPER_ADMIN';
+  const recentSearchCacheKey = `${authUser?.user_id || 'anonymous'}:${isSuperAdmin ? 'admin' : 'user'}`;
+  const currentRole = isSuperAdmin ? 'ADMIN' : 'USER';
   const currentSpaceRole = searchParams.get('spaceRole')?.toUpperCase() === 'OWNER' ? 'OWNER' : 'USER';
-  const currentUser = isSuperAdmin
-    ? { id: 'admin-demo-user', name: 'Alex Morgan', initials: 'AM', role: 'SUPER_ADMIN', displayRole: 'Super Admin' }
-    : { id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trang Nguyễn', initials: 'TN', role: 'USER' };
+  const currentUserName = authUser?.full_name || authUser?.email || 'User';
 
-  if (!isSuperAdmin) {
-    currentUser.name = 'Trang Nguyen';
-    currentUser.displayRole = currentSpaceRole === 'OWNER' ? 'Owner in this space' : 'User';
-  }
+  const currentUser = {
+    id: authUser?.user_id || '',
+    name: currentUserName,
+    email: authUser?.email || '',
+    initials: getInitials(currentUserName),
+    avatarUrl: normalizeAvatarUrl(authUser?.avatar_url || ''),
+    role: authRole,
+    displayRole: isSuperAdmin
+      ? 'Super Admin'
+      : currentSpaceRole === 'OWNER'
+        ? 'Owner in this space'
+        : 'User',
+  };
 
-  const [allNotifications, setAllNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const primaryNavigationItems = useMemo(
+    () => getPrimaryNavigationItems({ isSuperAdmin }),
+    [isSuperAdmin]
+  );
+
+  const supportNavigationItems = useMemo(
+    () => getSupportNavigationItems(),
+    []
+  );
+
+  const [allNotifications, setAllNotifications] = useState([]);
+  const [serverUnreadCount, setServerUnreadCount] = useState(0);
 
   const filteredNotifications = allNotifications.filter(n => {
+    if (!isNotificationWithinDisplayWindow(n)) {
+      return false;
+    }
     if (isSuperAdmin) {
       return n.audience === 'SUPER_ADMIN' || n.role === 'ADMIN';
     }
-    return n.audience === 'MEMBER' || n.audience === 'OWNER' || n.role === 'USER';
+    return n.audience === 'USER' || n.audience === 'OWNER' || n.audience === 'MEMBER' || n.role === 'USER';
   });
-  const unreadCount = filteredNotifications.filter(n => !n.is_read).length;
+  const unreadCount = serverUnreadCount;
 
-  const handleMarkAllRead = () => {
+  useEffect(() => {
+    let isMounted = true;
+    let isLoadingNotifications = false;
+    let pollTimerId;
+
+    async function loadNotifications() {
+      if (isLoadingNotifications || document.visibilityState === 'hidden') return;
+      isLoadingNotifications = true;
+
+      try {
+        const [response, unreadResponse] = await Promise.all([
+          getNotifications({ page: 1, page_size: 50 }),
+          getUnreadNotificationCount(),
+        ]);
+        if (!isMounted) return;
+        setAllNotifications((response.items || []).map(mapNotification));
+        setServerUnreadCount(unreadResponse.unread_count || 0);
+      } catch (error) {
+        if (error?.response?.status !== 401) {
+          console.error('Unable to load notifications', error);
+        }
+      } finally {
+        isLoadingNotifications = false;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        loadNotifications();
+      }
+    }
+
+    if (authUser?.user_id) {
+      loadNotifications();
+      pollTimerId = window.setInterval(loadNotifications, NOTIFICATION_POLL_INTERVAL_MS);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      setAllNotifications([]);
+      setServerUnreadCount(0);
+    }
+
+    return () => {
+      isMounted = false;
+      if (pollTimerId) {
+        window.clearInterval(pollTimerId);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [authUser?.user_id]);
+
+  const handleMarkAllRead = async () => {
+    const visibleIds = new Set(filteredNotifications.map((item) => item.NOTI_id));
     setAllNotifications(prev => prev.map(n =>
-      filteredNotifications.some(item => item.NOTI_id === n.NOTI_id) ? { ...n, is_read: true } : n
+      visibleIds.has(n.NOTI_id) ? { ...n, is_read: true } : n
     ));
+    setServerUnreadCount(0);
+
+    try {
+      await markNotificationsRead({ target: 'all' });
+    } catch (error) {
+      console.error('Unable to mark notifications as read', error);
+    }
+  };
+
+  const handleUpdateNotifications = async (nextNotifications) => {
+    const readIds = nextNotifications
+      .filter((nextNotification) => {
+        const previous = allNotifications.find((item) => item.NOTI_id === nextNotification.NOTI_id);
+        return previous && !previous.is_read && nextNotification.is_read;
+      })
+      .map((notification) => notification.NOTI_id);
+
+    setAllNotifications(nextNotifications);
+    setServerUnreadCount(nextNotifications.filter(item => !item.is_read).length);
+
+    if (!readIds.length) return;
+
+    try {
+      await markNotificationsRead({ target: 'selected', notificationIds: readIds });
+    } catch (error) {
+      console.error('Unable to update notification read state', error);
+    }
+  };
+
+  const handleNotificationRead = async (notification) => {
+    if (!notification || notification.is_read) return;
+
+    setAllNotifications(prev => prev.map(item =>
+      item.NOTI_id === notification.NOTI_id ? { ...item, is_read: true } : item
+    ));
+    setServerUnreadCount(count => Math.max(0, count - 1));
+
+    try {
+      await getNotificationDetail(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to mark notification as read', error);
+    }
+  };
+
+  const handleDeleteNotification = async (notification) => {
+    if (!notification?.NOTI_id) return;
+    setAllNotifications(prev => prev.filter(item => item.NOTI_id !== notification.NOTI_id));
+    if (!notification.is_read) {
+      setServerUnreadCount(count => Math.max(0, count - 1));
+    }
+
+    try {
+      await deleteNotification(notification.NOTI_id);
+    } catch (error) {
+      console.error('Unable to delete notification', error);
+    }
   };
 
   const [sprintsForModal, setSprintsForModal] = useState([
@@ -316,83 +457,166 @@ export default function MainLayout() {
     }
   }, [location.pathname, showNotifications, showSettings, showAvatarDropdown, showSearchDropdown,showApps]);
 
-  const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
-  const isTasksActive = location.pathname === '/dashboard/spaces' || location.pathname.includes('/dashboard/tasks');
-  const isUsersActive = location.pathname === '/dashboard/users';
-  const isProfileActive = location.pathname === '/dashboard/profile';
-  const isNotificationsActive = location.pathname === '/dashboard/notifications';
-  const isSettingsActive = location.pathname === '/dashboard/notification-settings';
-  const isHelpActive = location.pathname === '/dashboard/help';
-
   // Redirect non-admin users away from admin-only routes
   useEffect(() => {
     if (!isSuperAdmin) {
       // If on Dashboard (index) redirect to Space Management
       if (location.pathname === '/dashboard' || location.pathname === '/dashboard/') {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
       // If trying to access Users page, redirect to Space Management
       if (location.pathname.startsWith('/dashboard/users')) {
-        navigate('/dashboard/spaces' + location.search);
+        navigate('/dashboard/spaces' + getLayoutSearch(location.search));
       }
     }
   }, [isSuperAdmin, location.pathname, location.search, navigate]);
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-  const visibleSpaces = useMemo(() => {
-    const searchableSpaces = isSuperAdmin ? SEARCH_SPACES : SEARCH_SPACES.filter(space => space.memberAccess);
-    if (!normalizedSearchQuery) return searchableSpaces.slice(0, 3);
-    return searchableSpaces.filter(space =>
-      space.id.toLowerCase().includes(normalizedSearchQuery) ||
-      space.title.toLowerCase().includes(normalizedSearchQuery) ||
-      space.description.toLowerCase().includes(normalizedSearchQuery) ||
-      space.owner.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 5);
-  }, [isSuperAdmin, normalizedSearchQuery]);
+  useEffect(() => {
+    if (!authUser?.user_id || !showSearchDropdown) return;
 
-  const visibleTasks = useMemo(() => {
-    if (!normalizedSearchQuery) return SEARCH_TASKS.slice(0, 4);
-    return SEARCH_TASKS.filter(task =>
-      task.id.toLowerCase().includes(normalizedSearchQuery) ||
-      task.title.toLowerCase().includes(normalizedSearchQuery) ||
-      task.status.toLowerCase().includes(normalizedSearchQuery) ||
-      task.assignee.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 6);
-  }, [normalizedSearchQuery]);
+    const queryText = searchQuery.trim();
+    const isRecentRequest = !queryText;
+    const cachedRecentResults = isRecentRequest ? recentSearchCacheRef.current.get(recentSearchCacheKey) : null;
+    if (cachedRecentResults) {
+      setSearchResults(cachedRecentResults);
+      setIsSearchLoading(false);
+    }
 
-  const visibleUsers = useMemo(() => {
-    if (!isSuperAdmin) return [];
-    if (!normalizedSearchQuery) return SEARCH_USERS.slice(0, 4);
-    return SEARCH_USERS.filter(user =>
-      user.name.toLowerCase().includes(normalizedSearchQuery) ||
-      user.email.toLowerCase().includes(normalizedSearchQuery) ||
-      user.role.toLowerCase().includes(normalizedSearchQuery) ||
-      user.space.toLowerCase().includes(normalizedSearchQuery)
-    ).slice(0, 5);
-  }, [isSuperAdmin, normalizedSearchQuery]);
+    const requestId = activeSearchRequestIdRef.current + 1;
+    activeSearchRequestIdRef.current = requestId;
+    const controller = new AbortController();
+    const timerId = window.setTimeout(async () => {
+      if (!cachedRecentResults) {
+        setIsSearchLoading(true);
+      }
+      try {
+        const response = await globalSearch({
+          q: queryText || undefined,
+          types: isSuperAdmin ? undefined : 'spaces,tasks',
+          limitPerType: 5,
+          includeRecent: true,
+          signal: controller.signal,
+        });
+        if (activeSearchRequestIdRef.current !== requestId) return;
+        const mappedResults = mapGlobalSearchResponse(response, isSuperAdmin);
+        if (isRecentRequest) {
+          recentSearchCacheRef.current.set(recentSearchCacheKey, mappedResults);
+        }
+        setSearchResults(mappedResults);
+      } catch (error) {
+        if (error?.code === 'ERR_CANCELED') return;
+        if (activeSearchRequestIdRef.current === requestId && error?.response?.status !== 401) {
+          console.error('Unable to load global search results', error);
+        }
+        if (activeSearchRequestIdRef.current === requestId) {
+          setSearchResults(EMPTY_SEARCH_RESULTS);
+        }
+      } finally {
+        if (activeSearchRequestIdRef.current === requestId) {
+          setIsSearchLoading(false);
+        }
+      }
+    }, isRecentRequest ? RECENT_SEARCH_DEBOUNCE_MS : SEARCH_DEBOUNCE_MS);
 
+    return () => {
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, [authUser?.user_id, isSuperAdmin, recentSearchCacheKey, searchQuery, showSearchDropdown]);
+
+  const visibleSpaces = useMemo(() => searchResults.spaces, [searchResults.spaces]);
+  const visibleTasks = useMemo(() => searchResults.tasks, [searchResults.tasks]);
+  const visibleUsers = useMemo(() => (isSuperAdmin ? searchResults.users : []), [isSuperAdmin, searchResults.users]);
+
+  const isRecentSearchMode = !normalizedSearchQuery;
   const hasSearchResults = visibleSpaces.length > 0 || visibleTasks.length > 0 || visibleUsers.length > 0;
 
-  const dashboardPath = (path) => `${path}${location.search}`;
-
-  const openDashboardPath = (path) => {
-    window.location.assign(dashboardPath(path));
+  const buildSearchParams = (updates = {}, { preservePageParams = false } = {}) => {
+    const params = preservePageParams ? new URLSearchParams(location.search) : copyLayoutQueryParams(location.search);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+    const query = params.toString();
+    return query ? `?${query}` : '';
   };
 
-  const handleSearchSpaceClick = (taskId) => {
-    openDashboardPath(`/dashboard/tasks/${taskId}`);
+  const dashboardPath = (path, updates = {}) => `${path}${buildSearchParams(updates)}`;
+  const openDashboardPath = (path, updates = {}) => {
+    const targetPath = dashboardPath(path, updates);
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+
+    if (isLeavingTaskPage && typeof window !== 'undefined') {
+      window.location.assign(targetPath);
+      return;
+    }
+
+    navigate(targetPath);
+  };
+
+  const handleDashboardLinkClick = (event, path, updates = {}) => {
+    const isLeavingTaskPage = location.pathname.startsWith('/dashboard/tasks') && !path.startsWith('/dashboard/tasks');
+    if (!isLeavingTaskPage) return;
+
+    event.preventDefault();
+    openDashboardPath(path, updates);
+  };
+
+  const rememberSearchItem = async (entityType, entityId) => {
+    if (!entityType || !entityId) return;
+    recentSearchCacheRef.current.delete(recentSearchCacheKey);
+    try {
+      await recordSearchRecent({ entityType, entityId });
+    } catch (error) {
+      if (error?.response?.status !== 401) {
+        console.error('Unable to record recent search item', error);
+      }
+    }
+  };
+
+  const removeRecentSearchItem = async (event, entityType, entityId) => {
+    event.stopPropagation();
+    recentSearchCacheRef.current.delete(recentSearchCacheKey);
+    setSearchResults(prev => {
+      const collectionKey = `${entityType}s`;
+      return {
+        ...prev,
+        [collectionKey]: (prev[collectionKey] || []).filter(item => item.id !== entityId),
+      };
+    });
+    try {
+      await deleteSearchRecent({ entityType, entityId });
+    } catch (error) {
+      if (error?.response?.status !== 401) {
+        console.error('Unable to delete recent search item', error);
+      }
+    }
+  };
+
+  const handleSearchSpaceClick = async (space) => {
+    if (!space?.id) return;
+    rememberSearchItem('space', space.id);
+    openDashboardPath(`/dashboard/spaces/${space.id}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
 
-  const handleSearchTaskClick = (taskId) => {
-    openDashboardPath(`/dashboard/tasks/${taskId}`);
+  const handleSearchTaskClick = async (task) => {
+    if (!task?.spaceId) return;
+    rememberSearchItem('task', task.id);
+    navigate(`/dashboard/tasks/${task.spaceId}${buildSearchParams({ taskId: task.id })}`);
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
 
-  const handleSearchUserClick = () => {
-    openDashboardPath('/dashboard/users');
+  const handleSearchUserClick = async (user) => {
+    if (!isSuperAdmin || !user?.id) return;
+    rememberSearchItem('user', user.id);
+    openDashboardPath('/dashboard/users', { userId: user.id, mode: 'edit' });
     setSearchQuery('');
     setShowSearchDropdown(false);
   };
@@ -412,10 +636,9 @@ export default function MainLayout() {
     setShowAvatarDropdown(false); // Close dropdown after navigation
   };
 
-  const handleLogoutClick = () => {
-    // In a real application, this would involve clearing authentication tokens/state
-    console.log("User logged out"); // Placeholder for actual logout logic
-    navigate('/'); // Redirect to login or home page
+  const handleLogoutClick = async () => {
+    await logout();
+    navigate('/', { replace: true });
     setShowAvatarDropdown(false); // Close dropdown after logout
   };
   const handleChangeLanguage = (lang) => {
@@ -429,53 +652,12 @@ export default function MainLayout() {
     setCreateTaskHandler,
     setSprintsForModal,
     setCreateTaskInitialSprint,
+    setAssigneesForModal,
+    setCurrentSpaceNameForModal,
     currentRole,
     currentUser,
     currentSpaceRole,
     isSuperAdmin
-  };
-
-  const renderMainContent = () => {
-    const pathname = location.pathname.replace(/\/+$/, '') || '/dashboard';
-
-    if (pathname === '/dashboard') {
-      return <Dashboard />;
-    }
-
-    if (pathname === '/dashboard/spaces') {
-      return <SpaceManagement routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/users') {
-      return <UserManagement />;
-    }
-
-    if (pathname === '/dashboard/profile') {
-      return <ProfilePage routeContext={layoutContext} />;
-    }
-
-    if (pathname === '/dashboard/help') {
-      return <HelpCenter />;
-    }
-
-    if (pathname === '/dashboard/notification-settings') {
-      return <NotificationSettingsPage />;
-    }
-
-    if (pathname === '/dashboard/tasks' || pathname.startsWith('/dashboard/tasks/')) {
-      const spaceId = pathname.startsWith('/dashboard/tasks/')
-        ? decodeURIComponent(pathname.slice('/dashboard/tasks/'.length))
-        : undefined;
-
-      return (
-        <TaskManagement
-          routeContext={layoutContext}
-          spaceIdOverride={spaceId}
-        />
-      );
-    }
-
-    return <Dashboard />;
   };
 
   return (
@@ -508,106 +690,125 @@ export default function MainLayout() {
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 space-y-1 mt-4">
-          {/* Dashboard Item */}
-          {isSuperAdmin && (isDashboardActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="layout-grid"></i>
-                <span className="text-sm font-bold">Dashboard</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors" to={dashboardPath('/dashboard')}>
-              <i className="w-5 h-5 mr-3" data-lucide="layout-grid"></i>
-              <span className="text-sm font-medium">Dashboard</span>
-            </Link>
-          ))}
+<nav className="flex-1 px-3 space-y-1 mt-4">
+  {primaryNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
 
-          {/* Tasks Item */}
-          {isTasksActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 justify-between" to={dashboardPath('/dashboard/spaces')}>
-                <div className="flex items-center">
-                  <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="clipboard-list"></i>
-                  <span className="text-sm font-bold">Tasks</span>
-                </div>
-                <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl group transition-colors justify-between" to={dashboardPath('/dashboard/spaces')}>
-              <div className="flex items-center">
-                <i className="w-5 h-5 mr-3" data-lucide="clipboard-list"></i>
-                <span className="text-sm font-medium">Tasks</span>
-              </div>
-              <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-            </Link>
-          )}
+    const linkContent = (
+      <>
+        <div className="flex items-center min-w-0">
+          <i
+            className={`w-5 h-5 mr-3 shrink-0 ${
+              isActive ? 'text-[#2D1B4E]' : ''
+            }`}
+            data-lucide={item.icon}
+          ></i>
 
-          {/* Users Item */}
-          {isSuperAdmin && (isUsersActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/users')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="users"></i>
-                <span className="text-sm font-bold">Users</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/users')}>
-              <i className="w-5 h-5 mr-3" data-lucide="users"></i>
-              <span className="text-sm font-medium">Users</span>
-            </Link>
-          ))}
-        </nav>
-
-        {/* Bottom Navigation */}
-        <div className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${showSettings ? '-translate-y-[100px]' : ''}`}>
-          {/* Help Item */}
-          {isHelpActive ? (
-            <div className="relative flex items-center">
-              <div className="sidebar-active-indicator"></div>
-              <Link reloadDocument className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2" to={dashboardPath('/dashboard/help')}>
-                <i className="w-5 h-5 mr-3 text-[#2D1B4E]" data-lucide="help-circle"></i>
-                <span className="text-sm font-bold">Help</span>
-              </Link>
-            </div>
-          ) : (
-            <Link reloadDocument className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors" to={dashboardPath('/dashboard/help')}>
-              <i className="w-5 h-5 mr-3" data-lucide="help-circle"></i>
-              <span className="text-sm font-medium">Help</span>
-            </Link>
-          )}
-          <div className="relative" ref={settingsRef}>
-            <button
-              onClick={() => openDashboardPath('/dashboard/notification-settings')}
-              className={`flex items-center w-full px-4 py-3 rounded-xl transition-colors ${
-                isSettingsActive
-                  ? "bg-[#E0E8FF] text-[#2D1B4E]"
-                  : "text-[#6B7280] hover:bg-gray-50"
-              }`}
-            >
-              {isSettingsActive && <div className="sidebar-active-indicator"></div>}
-
-              <div className="flex items-center flex-1">
-                <i
-                  className={`w-5 h-5 mr-3 ${
-                    isSettingsActive ? "text-[#2D1B4E]" : ""
-                  }`}
-                  data-lucide="settings"
-                ></i>
-
-                <span className={`text-sm ${isSettingsActive ? "font-bold" : "font-medium"}`}>
-                  Settings
-                </span>
-              </div>
-            </button>
-          </div>
+          <span
+            className={`text-sm ${
+              isActive ? 'font-bold' : 'font-medium'
+            }`}
+          >
+            {item.label}
+          </span>
         </div>
+
+        {item.badge !== undefined && (
+          <span className="bg-[#EADFF9] text-[#2D1B4E] text-[10px] font-bold px-2 py-0.5 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </>
+    );
+
+    return isActive ? (
+      <div className="relative flex items-center" key={item.key}>
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className={`flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2 ${
+            item.badge !== undefined ? 'justify-between' : ''
+          }`}
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          {linkContent}
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className={`flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors ${
+          item.badge !== undefined ? 'justify-between' : ''
+        }`}
+        key={item.key}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        {linkContent}
+      </Link>
+    );
+  })}
+</nav>
+        {/* Bottom Navigation */}
+<div
+  className={`px-3 py-6 border-t border-gray-100 space-y-1 relative transition-transform duration-300 ${
+    showSettings ? '-translate-y-[100px]' : ''
+  }`}
+>
+  {supportNavigationItems.map((item) => {
+    const isActive = item.match(location.pathname);
+
+    return isActive ? (
+      <div
+        className="relative flex items-center"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+      >
+        <div className="sidebar-active-indicator"></div>
+
+        <Link
+          className="flex items-center flex-1 px-4 py-3 bg-[#E0E8FF] text-[#2D1B4E] rounded-xl transition-colors ml-2"
+          to={dashboardPath(item.path)}
+          onClick={(event) =>
+            handleDashboardLinkClick(event, item.path)
+          }
+        >
+          <i
+            className="w-5 h-5 mr-3 text-[#2D1B4E]"
+            data-lucide={item.icon}
+          ></i>
+
+          <span className="text-sm font-bold">
+            {item.label}
+          </span>
+        </Link>
+      </div>
+    ) : (
+      <Link
+        className="flex items-center px-4 py-3 text-[#6B7280] hover:bg-gray-50 rounded-xl transition-colors"
+        key={item.key}
+        ref={item.key === 'settings' ? settingsRef : undefined}
+        to={dashboardPath(item.path)}
+        onClick={(event) =>
+          handleDashboardLinkClick(event, item.path)
+        }
+      >
+        <i
+          className="w-5 h-5 mr-3"
+          data-lucide={item.icon}
+        ></i>
+
+        <span className="text-sm font-medium">
+          {item.label}
+        </span>
+      </Link>
+    );
+  })}
+</div>
       </aside>
       {/* END: LeftSidebar */}
 
@@ -642,12 +843,9 @@ export default function MainLayout() {
                   setShowSearchDropdown(true);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && visibleSpaces[0]) {
-                    handleSearchSpaceClick(visibleSpaces[0].taskId);
-                  } else if (event.key === 'Enter' && visibleUsers[0]) {
-                    handleSearchUserClick();
-                  } else if (event.key === 'Enter' && visibleTasks[0]) {
-                    handleSearchTaskClick(visibleTasks[0].id);
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    setShowSearchDropdown(true);
                   }
                 }}
               />
@@ -663,29 +861,30 @@ export default function MainLayout() {
                         {isSuperAdmin ? 'Quickly open spaces, users, or tasks.' : 'Quickly open spaces or tasks.'}
                       </p>
                     </div>
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="text-[11px] font-bold text-gray-400 hover:text-[#4C2B74]"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
 
                   <div className="max-h-[360px] overflow-y-auto custom-scrollbar py-2">
+                    {isSearchLoading && (
+                      <div className="px-4 py-3 text-xs font-semibold text-gray-400">
+                        Loading...
+                      </div>
+                    )}
+
                     {visibleSpaces.length > 0 && (
                       <div>
                         <div className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider">
                           Spaces
                         </div>
                         {visibleSpaces.map((space) => (
-                          <button
+                          <div
                             key={space.id}
-                            type="button"
-                            onClick={() => handleSearchSpaceClick(space.taskId)}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleSearchSpaceClick(space)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchSpaceClick(space);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#F0EDFF] border border-purple-100 flex items-center justify-center shrink-0">
                               <i className="w-4 h-4 text-[#4C2B74]" data-lucide="folder-kanban"></i>
@@ -703,7 +902,17 @@ export default function MainLayout() {
                                 <span className="truncate">Owner: {space.owner}</span>
                               </div>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'space', space.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -714,11 +923,15 @@ export default function MainLayout() {
                           Tasks
                         </div>
                         {visibleTasks.map((task) => (
-                          <button
+                          <div
                             key={task.id}
-                            type="button"
-                            onClick={() => handleSearchTaskClick(task.id)}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleSearchTaskClick(task)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchTaskClick(task);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#EEF2FF] border border-blue-100 flex items-center justify-center shrink-0">
                               <i className="w-4 h-4 text-[#4C2B74]" data-lucide="check-square"></i>
@@ -736,7 +949,17 @@ export default function MainLayout() {
                                 <span>{task.assignee}</span>
                               </div>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'task', task.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -747,11 +970,15 @@ export default function MainLayout() {
                           Users
                         </div>
                         {visibleUsers.map((user) => (
-                          <button
+                          <div
                             key={user.id}
-                            type="button"
-                            onClick={handleSearchUserClick}
-                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => handleSearchUserClick(user)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') handleSearchUserClick(user);
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-full bg-[#EADFF9] text-[#4C2B74] flex items-center justify-center text-xs font-black shrink-0">
                               {user.initials}
@@ -765,12 +992,22 @@ export default function MainLayout() {
                                 {user.email} - {user.space}
                               </p>
                             </div>
-                          </button>
+                            {isRecentSearchMode && (
+                              <button
+                                type="button"
+                                aria-label="Remove recent search"
+                                onClick={(event) => removeRecentSearchItem(event, 'user', user.id)}
+                                className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full text-xs font-black text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                X
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
 
-                    {!hasSearchResults && (
+                    {!isSearchLoading && !hasSearchResults && (
                       <div className="px-6 py-10 text-center">
                         <div className="w-12 h-12 mx-auto rounded-full bg-gray-50 flex items-center justify-center mb-3">
                           <i className="w-5 h-5 text-gray-300" data-lucide="search-x"></i>
@@ -822,7 +1059,7 @@ export default function MainLayout() {
                 />
 
                 <span className="text-sm font-medium">
-                    {language === "en"} 
+                    {language === "en" ? "EN" : "VI"}
                 </span>
 
                 <i
@@ -880,6 +1117,8 @@ export default function MainLayout() {
                   <NotificationDropdown
                     notifications={filteredNotifications}
                     onMarkAllRead={handleMarkAllRead}
+                    onNotificationClick={handleNotificationRead}
+                    onDeleteNotification={handleDeleteNotification}
                     onViewAll={() => {
                       setShowNotifications(false);
                       setShowNotificationsModal(true);
@@ -897,11 +1136,15 @@ export default function MainLayout() {
                 onClick={() => setShowAvatarDropdown(prev => !prev)}
                 className="flex items-center space-x-3 border-l pl-6 border-gray-200 font-['Inter']">
                 <div className="w-10 h-10 rounded-full bg-purple-100 border border-[#2D1B4E] flex items-center justify-center overflow-hidden shrink-0">
-                  <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
-                    <span className="text-[#2D1B4E] text-xs font-bold">
-                      {currentUser.initials}
-                    </span>
-                  </div>
+                  {currentUser.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-tr from-purple-200 to-indigo-100 flex items-center justify-center">
+                      <span className="text-[#2D1B4E] text-xs font-bold">
+                        {currentUser.initials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Name Section - flex-1 để đẩy icon sang phải */}
@@ -917,6 +1160,7 @@ export default function MainLayout() {
                 >
                     <AvatarDropdown
                         currentRole={currentRole}
+                        currentUser={currentUser}
                         onClose={() => setShowAvatarDropdown(false)}
                         onProfileClick={handleProfileClick}
                         onNotificationClick={handleNotificationClick}
@@ -932,9 +1176,7 @@ export default function MainLayout() {
 
         {/* BEGIN: MainContentArea */}
         <main className="flex-1 bg-[#F5F7FA] overflow-y-auto relative" data-purpose="main-display">
-          <React.Fragment key={location.pathname}>
-            {renderMainContent()}
-          </React.Fragment>
+          <Outlet key={`${location.pathname}${location.search}`} context={layoutContext} />
         </main>
         {/* END: MainContentArea */}
 
@@ -945,9 +1187,12 @@ export default function MainLayout() {
         onClose={() => { setShowCreateModal(false); setCreateTaskInitialSprint(''); }}
         tasks={tasksForModal}
         sprints={sprintsForModal}
+        assignees={assigneesForModal}
         initialSprint={createTaskInitialSprint}
+        currentSpaceName={currentSpaceNameForModal}
         onCreateTask={createTaskHandler}
         currentRole={currentRole}
+        currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
       />
 
@@ -958,7 +1203,8 @@ export default function MainLayout() {
         currentSpaceRole={currentSpaceRole}
         isSuperAdmin={isSuperAdmin}
         notifications={allNotifications}
-        onUpdateNotifications={setAllNotifications}
+        onUpdateNotifications={handleUpdateNotifications}
+        onDeleteNotification={handleDeleteNotification}
       />
     </div>
   );

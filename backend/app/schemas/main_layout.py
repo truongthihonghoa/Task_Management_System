@@ -1,36 +1,14 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
-
-
-class CurrentUserLayoutResponse(BaseModel):
-    user_id: str
-    full_name: str
-    email: str
-    initials: str
-    avatar_url: str | None
-    system_role: str
-    display_role: str
-
-
-class SidebarSummaryResponse(BaseModel):
-    task_count: int
-    can_view_dashboard: bool = False
-    can_view_users: bool = False
-    can_create_task: bool = False
 
 
 class MainLayoutPreferencesResponse(BaseModel):
     language: str = "en"
 
 
-class MainLayoutNotificationResponse(BaseModel):
-    unread_count: int
-
-
-class MainLayoutResponse(BaseModel):
-    current_user: CurrentUserLayoutResponse
-    sidebar: SidebarSummaryResponse
-    preferences: MainLayoutPreferencesResponse
-    notification: MainLayoutNotificationResponse
+class MainLayoutLanguageRequest(BaseModel):
+    language: Literal["en", "vi"]
 
 
 class SpacePermissionResponse(BaseModel):
@@ -97,3 +75,12 @@ class GlobalSearchResponse(BaseModel):
     spaces: list[GlobalSearchSpaceItem] = Field(default_factory=list)
     tasks: list[GlobalSearchTaskItem] = Field(default_factory=list)
     users: list[GlobalSearchUserItem] = Field(default_factory=list)
+
+
+class SearchRecentRequest(BaseModel):
+    entity_type: Literal["space", "task", "user"]
+    entity_id: str = Field(..., min_length=1, max_length=15)
+
+
+class SearchRecentDeleteResponse(BaseModel):
+    deleted_count: int

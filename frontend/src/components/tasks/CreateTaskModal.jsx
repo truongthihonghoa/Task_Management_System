@@ -18,12 +18,13 @@ const formatDateValue = (year, month, day) => {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const getInitialFormData = () => ({
-  space: 'Task Management System (SCRUM)',
+const getInitialFormData = (spaceName = 'Task Management') => ({
+  space: spaceName,
   status: 'New',
   summary: '',
   description: '',
   assignee: 'Unassigned',
+  assigneeId: '',
   priority: 'Medium',
   createdAt: formatDateValue(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()),
   completed_at: '',
@@ -104,20 +105,22 @@ function CalendarDropdown({ value, onSelect, onClose }) {
   );
 }
 
-const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSprint = '', onCreateTask, currentRole = 'ADMIN', currentUser }) => {
-  const statusOptions = currentRole === 'ADMIN'
+const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees = [], initialSprint = '', currentSpaceName = 'Task Management', onCreateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser }) => {
+  const statusOptions = currentSpaceRole === 'OWNER'
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
   const [formData, setFormData] = useState(getInitialFormData());
 
   useEffect(() => {
     if (isOpen) {
-      const initialData = getInitialFormData();
+      const initialData = getInitialFormData(currentSpaceName);
       if (initialSprint) {
         initialData.sprint = initialSprint;
       }
       setFormData(initialData);
       setErrors({});
+      setSubmitError('');
+      setIsSubmitting(false);
       setIsStatusOpen(false);
       setIsPriorityOpen(false);
       setIsAssigneeOpen(false);
@@ -127,9 +130,11 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
       setIsSprintOpen(false);
       setOnlyShowCurrentSpace(true);
     }
-  }, [isOpen, initialSprint]);
+  }, [isOpen, initialSprint, currentSpaceName]);
 
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
@@ -163,7 +168,8 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
       type: isImage ? 'image' : 'file',
       previewUrl: url,
       url,
-      uploadedBy: currentUserId
+      uploadedBy: currentUserId,
+      file
     };
   };
 
@@ -258,12 +264,13 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
 
-  const availableAssignees = [
+  const fallbackAssignees = [
     { name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
     { name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
     { name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
     { name: 'Unassigned', initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF', icon: 'person' }
   ];
+  const availableAssignees = assignees.length > 0 ? assignees : fallbackAssignees;
 
   useEffect(() => {
     if (isOpen && window.lucide) {
@@ -297,16 +304,26 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
     }
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    if (isSubmitting) return;
     if (!formData.summary.trim()) {
       setErrors({ summary: 'Summary is required' });
       return;
     }
+    setSubmitError('');
+    setIsSubmitting(true);
     if (onCreateTask) {
-      onCreateTask(formData);
+      try {
+        await onCreateTask(formData);
+      } catch (error) {
+        setSubmitError(error?.message || 'Unable to create this task.');
+        setIsSubmitting(false);
+        return;
+      }
     }
 
     if (!formData.createAnother) {
+      setIsSubmitting(false);
       handleClose();
     } else {
       if (formData.attachments) {
@@ -317,6 +334,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
         });
       }
       setFormData(prev => ({ ...prev, summary: '', description: '', comment: '', attachments: [] }));
+      setIsSubmitting(false);
     }
   };
 
@@ -354,7 +372,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
                 onChange={handleInputChange}
                 disabled={currentRole !== 'ADMIN'}
               >
-                <option>Task Management System (SCRUM)</option>
+                <option value={currentSpaceName}>{currentSpaceName}</option>
                 {currentRole === 'ADMIN' && (
                   <>
                     <option>Project Alpha (KANBAN)</option>
@@ -455,7 +473,10 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
                 className="select-custom flex items-center gap-3 w-full bg-white text-left"
               >
                 {(() => {
-                  const selectedProfile = availableAssignees.find(user => user.name === formData.assignee) || availableAssignees[0];
+                  const selectedProfile =
+                    availableAssignees.find(user => (user.user_id || user.id || '') === formData.assigneeId) ||
+                    availableAssignees.find(user => user.name === formData.assignee) ||
+                    availableAssignees[0];
                   return (
                     <>
                       <div
@@ -477,11 +498,15 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
                 >
                   {availableAssignees.map(user => (
                     <button
-                      key={user.name}
+                      key={user.user_id || user.id || user.name}
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFormData(prev => ({ ...prev, assignee: user.name }));
+                        setFormData(prev => ({
+                          ...prev,
+                          assignee: user.name,
+                          assigneeId: user.user_id || user.id || ''
+                        }));
                         setIsAssigneeOpen(false);
                       }}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
@@ -770,10 +795,17 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], initialSpr
             <label htmlFor="createAnother" className="text-sm ml-2 cursor-pointer">Create another</label>
           </div>
           <div className="footer-right">
-            <button className="btn-cancel" onClick={handleClose}>Cancel</button>
-            <button className="btn-create" onClick={handleCreate}>Create</button>
+            <button className="btn-cancel" onClick={handleClose} disabled={isSubmitting}>Cancel</button>
+            <button className="btn-create" onClick={handleCreate} disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create'}
+            </button>
           </div>
         </div>
+        {submitError && (
+          <div className="px-6 pb-4 text-[12px] font-semibold text-red-600">
+            {submitError}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +9,7 @@ from fastapi import HTTPException, status
 from app.api.v1 import users as users_api
 from app.repository import user as user_repository
 from app.services import user_service
+from app.services.storage_service import StoredUpload
 from app.schemas.pydantic_models import UserManagementUpdateRequest
 
 
@@ -15,6 +18,7 @@ class FakeDb:
         self.users = users or []
         self.added = []
         self.commits = 0
+        self.flushes = 0
         self.rollbacks = 0
 
     def add(self, value):
@@ -22,6 +26,9 @@ class FakeDb:
 
     def commit(self):
         self.commits += 1
+
+    def flush(self):
+        self.flushes += 1
 
     def rollback(self):
         self.rollbacks += 1
@@ -63,7 +70,7 @@ class FakeQuery:
 
 
 def make_user(**overrides):
-    now = datetime.utcnow()
+    now = vietnam_now()
     values = {
         "user_id": "USR00000001",
         "full_name": "Admin User",
@@ -140,17 +147,20 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
         {"status": "Active"},
         {"status": "Inactive"},
         {"status": "Locked"},
+        {"role": "SUPER_ADMIN"},
+        {"role": "USER"},
         {"is_verified": True},
         {"is_verified": False},
         {"failed_login_attempts": 0},
         {"failed_login_attempts": 3},
-        {"locked_until": datetime.utcnow()},
+        {"locked_until": vietnam_now()},
         {"locked_until": None},
         {
             "status": "Locked",
+            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
-            "locked_until": datetime.utcnow(),
+            "locked_until": vietnam_now(),
         },
     ],
 )
@@ -169,7 +179,8 @@ def test_validate_update_payload_accepts_allowed_fields(payload):
             {"email": "new@example.com", "full_name": "New Name"},
             "Read-only fields cannot be modified after registration: email, full_name",
         ),
-        ({"role": "SUPER_ADMIN"}, "Invalid update fields: role"),
+        ({"role": "OWNER"}, "Invalid role value"),
+        ({"role": "super_admin"}, "Invalid role value"),
         ({"avatar_url": "https://example.com/a.png"}, "Invalid update fields: avatar_url"),
         ({"status": "Deleted"}, "Invalid status value"),
         ({"status": "active"}, "Invalid status value"),
@@ -185,16 +196,18 @@ def test_validate_update_payload_rejects_invalid_fields(payload, message):
 
 
 def test_update_request_schema_accepts_allowed_fields():
-    locked_until = datetime.utcnow()
+    locked_until = vietnam_now()
 
     payload = UserManagementUpdateRequest(
         status="Locked",
+        role="SUPER_ADMIN",
         is_verified=True,
         failed_login_attempts=4,
         locked_until=locked_until,
     )
 
     assert payload.status == "Locked"
+    assert payload.role == "SUPER_ADMIN"
     assert payload.is_verified is True
     assert payload.failed_login_attempts == 4
     assert payload.locked_until == locked_until
@@ -204,6 +217,7 @@ def test_update_request_schema_accepts_allowed_fields():
     "payload",
     [
         {"status": "Deleted"},
+        {"role": "OWNER"},
         {"failed_login_attempts": -1},
         {"locked_until": "not-a-date"},
         {"email": "new@example.com"},
@@ -233,25 +247,27 @@ def test_get_user_or_404_raises_for_missing_user():
 
 
 def test_update_user_updates_only_allowed_fields():
-    original_updated_at = datetime.utcnow() - timedelta(days=1)
+    original_updated_at = vietnam_now() - timedelta(days=1)
     user = make_user(
         email="readonly@example.com",
         full_name="Read Only",
         password_hash="original-hash",
         status_user="Active",
+        role="USER",
         is_verified=False,
         failed_login_attempts=1,
         locked_until=None,
         updated_at=original_updated_at,
     )
     db = FakeDb(users=[user])
-    locked_until = datetime.utcnow() + timedelta(minutes=15)
+    locked_until = vietnam_now() + timedelta(minutes=15)
 
     response = user_service.update_user(
         db,
         user.user_id,
         {
             "status": "Locked",
+            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
             "locked_until": locked_until,
@@ -259,6 +275,7 @@ def test_update_user_updates_only_allowed_fields():
     )
 
     assert response.status_user == "Locked"
+    assert response.role == "SUPER_ADMIN"
     assert response.is_verified is True
     assert response.failed_login_attempts == 5
     assert response.locked_until == locked_until
@@ -268,50 +285,83 @@ def test_update_user_updates_only_allowed_fields():
     assert user.updated_at > original_updated_at
 
 
-def test_activate_user_sets_status_active():
+def test_activate_user_sets_status_active(monkeypatch):
     user = make_user(status_user="Inactive")
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.activate_user(db, user.user_id)
+    response = user_service.update_user_status(db, user.user_id, "Active", actor_id="USR00000001")
 
     assert response.status_user == "Active"
     assert user.status_user == "Active"
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["title"] == "User status changed"
+    assert notifications[0]["metadata"]["new_status"] == "Active"
 
 
-def test_deactivate_user_sets_status_inactive():
+def test_deactivate_user_sets_status_inactive(monkeypatch):
     user = make_user(status_user="Active")
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.deactivate_user(db, user.user_id)
+    response = user_service.update_user_status(db, user.user_id, "Inactive", actor_id="USR00000001")
 
     assert response.status_user == "Inactive"
     assert user.status_user == "Inactive"
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["metadata"]["new_status"] == "Inactive"
 
 
 def test_lock_user_sets_status_and_locked_until(monkeypatch):
     monkeypatch.setattr(user_service, "ACCOUNT_LOCK_MINUTES", 15)
     user = make_user(status_user="Active", locked_until=None)
     db = FakeDb(users=[user])
-    before = datetime.utcnow()
+    
+notifications = []
+monkeypatch.setattr(
+    user_service.notification_service,
+    "create_super_admin_notification",
+    lambda _db, **kwargs: notifications.append(kwargs),
+)
 
-    response = user_service.lock_user(db, user.user_id)
+before = vietnam_now()
 
-    after = datetime.utcnow()
+    response = user_service.update_user_lock_status(db, user.user_id, True, actor_id="USR00000001")
+
+    after = vietnam_now()
     assert response.status_user == "Locked"
     assert user.status_user == "Locked"
     assert user.locked_until is not None
     assert before + timedelta(minutes=15) <= user.locked_until <= after + timedelta(minutes=15)
+    assert notifications[0]["notification_type"] == "account_locked"
+    assert notifications[0]["metadata"]["target_user"] == user.email
 
 
-def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
+def test_unlock_user_sets_active_resets_attempts_and_clears_lock(monkeypatch):
     user = make_user(
         status_user="Locked",
         failed_login_attempts=5,
-        locked_until=datetime.utcnow() + timedelta(minutes=10),
+        locked_until=vietnam_now() + timedelta(minutes=10),
     )
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.unlock_user(db, user.user_id)
+    response = user_service.update_user_lock_status(db, user.user_id, False, actor_id="USR00000001")
 
     assert response.status_user == "Active"
     assert response.failed_login_attempts == 0
@@ -319,6 +369,8 @@ def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
     assert user.status_user == "Active"
     assert user.failed_login_attempts == 0
     assert user.locked_until is None
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["title"] == "Account unlocked"
 
 
 def test_user_response_never_exposes_password_hash():
@@ -328,6 +380,57 @@ def test_user_response_never_exposes_password_hash():
     response_data = response.model_dump()
 
     assert "password_hash" not in response_data
+
+
+def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path):
+    user = make_user(avatar_url=None)
+    db = FakeDb(users=[user])
+    file = SimpleNamespace(
+        filename="avatar.png",
+        content_type="image/png",
+        file=BytesIO(b"fake image content"),
+    )
+    monkeypatch.setattr(user_service, "MEDIA_ROOT", tmp_path)
+
+    avatar_url = user_service.update_user_avatar(db, user.user_id, file)
+
+    assert avatar_url.startswith("/media/avatars/")
+    assert avatar_url.endswith(".png")
+    assert user.avatar_url == avatar_url
+    assert db.flushes == 1
+    assert (tmp_path / avatar_url.removeprefix("/media/")).exists()
+
+
+def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
+    user = make_user(avatar_url=None)
+    db = FakeDb(users=[user])
+    file = SimpleNamespace(
+        filename="avatar.png",
+        content_type="image/png",
+        file=BytesIO(b"fake image content"),
+    )
+    calls = []
+
+    monkeypatch.setenv("MEDIA_STORAGE", "cloudinary")
+    monkeypatch.setattr(
+        user_service.storage_service,
+        "upload_to_cloudinary",
+        lambda received_file, **kwargs: calls.append((received_file, kwargs))
+        or StoredUpload(
+            file_path="taskflow/avatars/USR00000001/cloud-avatar",
+            file_url="https://res.cloudinary.com/demo/image/upload/cloud-avatar.png",
+            file_size=18,
+            public_id="taskflow/avatars/USR00000001/cloud-avatar",
+        ),
+    )
+
+    avatar_url = user_service.update_user_avatar(db, user.user_id, file)
+
+    assert avatar_url == "https://res.cloudinary.com/demo/image/upload/cloud-avatar.png"
+    assert user.avatar_url == avatar_url
+    assert db.flushes == 1
+    assert calls[0][1]["folder"] == "avatars/USR00000001"
+    assert calls[0][1]["resource_type"] == "image"
 
 
 def test_create_user_audit_log_stores_expected_fields():
@@ -361,6 +464,8 @@ def test_create_user_audit_log_stores_expected_fields():
         "DEACTIVATE_USER",
         "LOCK_USER",
         "UNLOCK_USER",
+        "UPDATE_USER_STATUS",
+        "UPDATE_USER_LOCK_STATUS",
     ],
 )
 def test_create_user_audit_log_supports_all_user_management_actions(action):

@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,26 +13,56 @@ from app.models.task_attachment import TaskAttachment
 from app.models.user import User
 from app.repository import media as media_repository
 from app.schemas.pydantic_models import MediaUploadResponse, TaskAttachmentListResponse, TaskAttachmentResponse
+from app.services import storage_service
 
 
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 
-ATTACHMENT_EXTENSIONS = {".pdf", ".zip", ".png", ".jpg", ".jpeg"}
+ATTACHMENT_EXTENSIONS = {
+    ".pdf",
+    ".zip",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+    ".csv",
+}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MEDIA_EXTENSIONS = ATTACHMENT_EXTENSIONS | IMAGE_EXTENSIONS
 ATTACHMENT_MIME_TYPES = {
     "application/pdf",
     "application/zip",
     "application/x-zip-compressed",
+    "application/octet-stream",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+    "text/csv",
     "image/png",
     "image/jpeg",
+    "image/jpg",
 }
 IMAGE_MIME_TYPES = {
     "image/png",
     "image/jpeg",
+    "image/jpg",
     "image/webp",
     "image/gif",
 }
+MEDIA_MIME_TYPES = ATTACHMENT_MIME_TYPES | IMAGE_MIME_TYPES
 
 
 def _get_active_task_or_404(db: Session, task_id: str) -> Task:
@@ -40,9 +71,16 @@ def _get_active_task_or_404(db: Session, task_id: str) -> Task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    if task.space is None or task.space.deleted_at is not None or task.space.status_space == "Deleted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is deleted")
+    return task
+
+
+def _ensure_task_space_active(task: Task) -> None:
+    if task.space is not None and task.space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if task.space is None or task.space.deleted_at is not None or task.space.status_space != "Active":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
-    return task
 
 
 def _is_space_owner(task: Task, user: User) -> bool:
@@ -82,16 +120,9 @@ def _validate_file(usage: str, file: UploadFile) -> str:
     extension = Path(safe_name).suffix.lower()
     mime_type = file.content_type
 
-    if usage == "attachment":
-        allowed_extensions = ATTACHMENT_EXTENSIONS
-        allowed_mime_types = ATTACHMENT_MIME_TYPES
-    else:
-        allowed_extensions = IMAGE_EXTENSIONS
-        allowed_mime_types = IMAGE_MIME_TYPES
-
-    if extension not in allowed_extensions:
+    if extension not in MEDIA_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File type is not allowed")
-    if mime_type and mime_type not in allowed_mime_types:
+    if mime_type and mime_type not in MEDIA_MIME_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File mime type is not allowed")
     return safe_name
 
@@ -104,10 +135,10 @@ def _relative_media_path(path: Path) -> str:
     return path.relative_to(MEDIA_ROOT).as_posix()
 
 
-def _get_attachment_usage(attachment: TaskAttachment) -> str:
-    first_folder = Path(attachment.file_path).parts[0] if attachment.file_path else "attachments"
+def get_task_attachment_usage(attachment: TaskAttachment) -> str:
+    path_parts = Path(attachment.file_path or "").parts
     for usage, folder in MEDIA_FOLDERS.items():
-        if folder == first_folder:
+        if folder in path_parts:
             return usage
     return "attachment"
 
@@ -153,7 +184,7 @@ def _create_attachment_record(
         mime_type=mime_type,
         file_size=file_size,
         uploaded_by=uploaded_by,
-        uploaded_at=datetime.utcnow(),
+        uploaded_at=vietnam_now(),
     )
     return media_repository.create_task_attachment(db, attachment)
 
@@ -192,16 +223,29 @@ def upload_task_media(
     current_user: User,
 ) -> MediaUploadResponse:
     task = _get_active_task_or_404(db, task_id)
+    _ensure_task_space_active(task)
     _ensure_can_upload_media(db, task, current_user)
 
     safe_name = _validate_file(usage, file)
     stored_name = f"{uuid4().hex}_{safe_name}"
-    media_folder = get_media_folder(usage, task_id)
-    target_path = media_folder / stored_name
-    file_size = _save_upload_file(file, target_path)
+    target_path = None
+    if storage_service.is_cloudinary_enabled():
+        uploaded = storage_service.upload_to_cloudinary(
+            file,
+            folder=f"tasks/{task_id}/{MEDIA_FOLDERS[usage]}",
+            public_id=stored_name,
+            max_size=MAX_UPLOAD_SIZE,
+        )
+        file_size = uploaded.file_size
+        relative_path = uploaded.public_id or uploaded.file_path
+        file_url = uploaded.file_url
+    else:
+        media_folder = get_media_folder(usage, task_id)
+        target_path = media_folder / stored_name
+        file_size = _save_upload_file(file, target_path)
+        relative_path = _relative_media_path(target_path)
+        file_url = _public_media_url(usage, task_id, stored_name)
 
-    relative_path = _relative_media_path(target_path)
-    file_url = _public_media_url(usage, task_id, stored_name)
     try:
         attachment = _create_attachment_record(
             db,
@@ -214,7 +258,7 @@ def upload_task_media(
             uploaded_by=current_user.user_id,
         )
     except Exception:
-        if target_path.exists():
+        if target_path is not None and target_path.exists():
             target_path.unlink()
         raise
 
@@ -226,6 +270,7 @@ def upload_task_media(
         mime_type=file.content_type,
         file_size=file_size,
         attachment_id=attachment.attachment_id,
+        public_id=uploaded.public_id if storage_service.is_cloudinary_enabled() else None,
     )
 
 
@@ -249,9 +294,14 @@ def list_task_attachments(
         page=page,
         page_size=page_size,
     )
+    attachment_items = [
+        attachment
+        for attachment in attachments
+        if get_task_attachment_usage(attachment) == "attachment"
+    ]
     return TaskAttachmentListResponse(
-        items=[TaskAttachmentResponse.model_validate(attachment) for attachment in attachments],
-        total=total,
+        items=[TaskAttachmentResponse.model_validate(attachment) for attachment in attachment_items],
+        total=len(attachment_items) if len(attachment_items) != total else total,
         page=page,
         page_size=page_size,
     )
@@ -268,11 +318,12 @@ def get_task_attachment(db: Session, attachment_id: str, current_user: User) -> 
 
 def delete_task_attachment(db: Session, attachment_id: str, current_user: User) -> TaskAttachmentResponse:
     attachment = _get_attachment_or_404(db, attachment_id)
-    _get_active_task_or_404(db, attachment.task_id)
+    task = _get_active_task_or_404(db, attachment.task_id)
+    _ensure_task_space_active(task)
     _ensure_attachment_active(attachment)
     _ensure_can_delete_attachment(attachment, current_user)
 
-    attachment.deleted_at = datetime.utcnow()
+    attachment.deleted_at = vietnam_now()
     media_repository.save_task_attachment(db, attachment)
     return TaskAttachmentResponse.model_validate(attachment)
 
@@ -285,28 +336,43 @@ def replace_task_attachment(
     current_user: User,
 ) -> TaskAttachmentResponse:
     attachment = _get_attachment_or_404(db, attachment_id)
-    _get_active_task_or_404(db, attachment.task_id)
+    task = _get_active_task_or_404(db, attachment.task_id)
+    _ensure_task_space_active(task)
     _ensure_attachment_active(attachment)
     _ensure_can_replace_attachment(attachment, current_user)
 
-    usage = _get_attachment_usage(attachment)
+    usage = get_task_attachment_usage(attachment)
     safe_name = _validate_file(usage, file)
     stored_name = f"{uuid4().hex}_{safe_name}"
-    media_folder = get_media_folder(usage, attachment.task_id)
-    target_path = media_folder / stored_name
-    file_size = _save_upload_file(file, target_path)
+    target_path = None
+    if storage_service.is_cloudinary_enabled():
+        uploaded = storage_service.upload_to_cloudinary(
+            file,
+            folder=f"tasks/{attachment.task_id}/{MEDIA_FOLDERS[usage]}",
+            public_id=stored_name,
+            max_size=MAX_UPLOAD_SIZE,
+        )
+        file_size = uploaded.file_size
+        file_path = uploaded.public_id or uploaded.file_path
+        file_url = uploaded.file_url
+    else:
+        media_folder = get_media_folder(usage, attachment.task_id)
+        target_path = media_folder / stored_name
+        file_size = _save_upload_file(file, target_path)
+        file_path = _relative_media_path(target_path)
+        file_url = _public_media_url(usage, attachment.task_id, stored_name)
 
     attachment.file_name = safe_name
-    attachment.file_path = _relative_media_path(target_path)
-    attachment.storage_url = _public_media_url(usage, attachment.task_id, stored_name)
+    attachment.file_path = file_path
+    attachment.storage_url = file_url
     attachment.mime_type = file.content_type
     attachment.file_size = file_size
-    attachment.uploaded_at = datetime.utcnow()
+    attachment.uploaded_at = vietnam_now()
 
     try:
         media_repository.save_task_attachment(db, attachment)
     except Exception:
-        if target_path.exists():
+        if target_path is not None and target_path.exists():
             target_path.unlink()
         raise
 

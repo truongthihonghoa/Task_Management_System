@@ -13,11 +13,14 @@ from passlib.context import CryptContext
 from app.repository.auth import get_user_by_id, get_user_token
 from app.db.session import get_db
 from app.models.user import User
+from jose import JWTError, ExpiredSignatureError, jwt
+from app.core.timezone import vietnam_now
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES","1"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS","1"))
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "15"))
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -43,14 +46,33 @@ def get_current_user(
 
     token = credentials.credentials
     user_id: str | None = None
+    stored_token = get_user_token(db, token)
+    now = vietnam_now()
 
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("user_id") or payload.get("sub")
+
+        token_user_id = payload.get("user_id") or payload.get("sub")
+
+        if (
+            payload.get("type") == "access"
+            and stored_token is not None
+            and stored_token.access_expires_at >= now
+            and stored_token.user_id == token_user_id
+        ):
+            user_id = token_user_id
+
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token has expired."
+        )
+
     except JWTError:
-        stored_token = get_user_token(db, token)
-        if stored_token and stored_token.access_expires_at >= datetime.utcnow():
-            user_id = stored_token.user_id
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token."
+        )
 
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token.")
@@ -76,12 +98,30 @@ def generate_otp() -> str:
 
 
 def create_access_token(payload: dict[str, Any]) -> tuple[str, datetime]:
-    expires_at = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expires_at = vietnam_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     token_payload = {**payload, "type": "access", "exp": expires_at}
     return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
 
 
 def create_refresh_token(payload: dict[str, Any]) -> tuple[str, datetime]:
-    expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = vietnam_now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     token_payload = {**payload, "type": "refresh", "exp": expires_at}
     return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
+
+
+def create_password_reset_token(payload: dict[str, Any]) -> tuple[str, datetime]:
+    expires_at = vietnam_now() + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    token_payload = {
+        **payload,
+        "type": "password_reset",
+        "jti": secrets.token_urlsafe(16),
+        "exp": expires_at,
+    }
+    return jwt.encode(token_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM), expires_at
+
+
+def decode_password_reset_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    if payload.get("type") != "password_reset":
+        raise JWTError("Invalid token type.")
+    return payload

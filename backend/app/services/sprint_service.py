@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from app.core.timezone import vietnam_now
 from typing import Iterable
 
 from fastapi import HTTPException, status
@@ -26,6 +27,8 @@ def _get_sprint_or_404(db: Session, sprint_id: str) -> Sprint:
 
 
 def _ensure_space_active(space: Space) -> None:
+    if space.status_space == "Archived":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space is archived")
     if space.status_space != "Active" or space.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Space must be active")
 
@@ -52,17 +55,18 @@ def _ensure_can_modify_space_sprints(db: Session, space: Space, user: User) -> N
     _ensure_can_view_space_sprints(db, space, user)
 
 
-def _ensure_space_owner(space: Space, user: User) -> None:
-    if space.owner_id != user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the space owner can perform this action",
-        )
-
-
 def _ensure_sprint_not_deleted(sprint: Sprint) -> None:
     if sprint.status == "Deleted":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is deleted")
+
+
+def _ensure_no_other_active_sprint(db: Session, sprint: Sprint) -> None:
+    active_sprint = sprint_repository.get_active_sprint_by_space(db, sprint.space_id)
+    if active_sprint and active_sprint.sprint_id != sprint.sprint_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complete the active sprint before activating another sprint",
+        )
 
 
 def _serialize_sprints(sprints: Iterable[Sprint]) -> list[SprintResponse]:
@@ -75,6 +79,58 @@ def _resolve_end_date(start_date: datetime | None, end_date: datetime | None, du
     return start_date + timedelta(weeks=duration_weeks)
 
 
+def _as_utc_naive(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def apply_sprint_automation(db: Session, space_id: str) -> None:
+    """Apply persisted auto_start and auto_complete settings for a space."""
+    now = datetime.utcnow()
+    sprints = sprint_repository.list_sprint_records(
+        db,
+        space_id=space_id,
+        include_deleted=False,
+    )
+    changed = False
+
+    for sprint in sprints:
+        if sprint.status != "Active" or not sprint.auto_complete:
+            continue
+        active_task_count = sprint_repository.count_active_tasks_by_sprint(db, sprint.sprint_id)
+        incomplete_task_count = sprint_repository.count_incomplete_tasks_by_sprint(db, sprint.sprint_id)
+        if active_task_count > 0 and incomplete_task_count == 0:
+            sprint.status = "Completed"
+            sprint.completed_at = now
+            sprint.updated_at = now
+            changed = True
+
+    active_sprint = next((sprint for sprint in sprints if sprint.status == "Active"), None)
+    if active_sprint is None:
+        for index, sprint in enumerate(sprints):
+            if sprint.status != "Planned" or not sprint.auto_start:
+                continue
+            start_date = _as_utc_naive(sprint.start_date)
+            if start_date is None or start_date > now:
+                continue
+            previous_sprints_completed = all(previous.status == "Completed" for previous in sprints[:index])
+            if not previous_sprints_completed:
+                continue
+
+            sprint.status = "Active"
+            sprint.updated_at = now
+            changed = True
+            break
+
+    if changed:
+        db.commit()
+        for sprint in sprints:
+            db.refresh(sprint)
+
+
 def list_sprints(
     db: Session,
     space_id: str,
@@ -84,6 +140,7 @@ def list_sprints(
 ) -> list[SprintResponse]:
     space = _get_space_or_404(db, space_id)
     _ensure_can_view_space_sprints(db, space, current_user)
+    apply_sprint_automation(db, space_id)
 
     sprints = sprint_repository.list_sprint_records(
         db,
@@ -97,6 +154,8 @@ def get_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRespons
     sprint = _get_sprint_or_404(db, sprint_id)
     space = sprint.space or _get_space_or_404(db, sprint.space_id)
     _ensure_can_view_space_sprints(db, space, current_user)
+    apply_sprint_automation(db, sprint.space_id)
+    sprint = _get_sprint_or_404(db, sprint_id)
     return SprintResponse.model_validate(sprint)
 
 
@@ -105,8 +164,8 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
     _ensure_space_active(space)
     _ensure_can_modify_space_sprints(db, space, current_user)
 
-    now = datetime.utcnow()
     duration_weeks = payload.duration_weeks or 2
+    now = vietnam_now()
     sprint = Sprint(
         space_id=space_id,
         goal=payload.goal,
@@ -119,7 +178,11 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
         created_at=now,
         updated_at=now,
     )
+    if sprint.status == "Active":
+        _ensure_no_other_active_sprint(db, sprint)
     sprint_repository.create_sprint_record(db, sprint)
+    apply_sprint_automation(db, space_id)
+    sprint = _get_sprint_or_404(db, sprint.sprint_id)
     return SprintResponse.model_validate(sprint)
 
 
@@ -143,12 +206,16 @@ def update_sprint(db: Session, sprint_id: str, payload: SprintUpdate, current_us
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="End date must be after start date",
         )
+    if update_data.get("status") == "Active":
+        _ensure_no_other_active_sprint(db, sprint)
 
     for field, value in update_data.items():
         setattr(sprint, field, value)
-    sprint.updated_at = datetime.utcnow()
+    sprint.updated_at = vietnam_now()
 
     sprint_repository.save_sprint(db, sprint)
+    apply_sprint_automation(db, sprint.space_id)
+    sprint = _get_sprint_or_404(db, sprint_id)
     return SprintResponse.model_validate(sprint)
 
 
@@ -158,7 +225,7 @@ def delete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResp
 
     space = sprint.space or _get_space_or_404(db, sprint.space_id)
     _ensure_space_active(space)
-    _ensure_space_owner(space, current_user)
+    _ensure_can_modify_space_sprints(db, space, current_user)
 
     active_task_count = sprint_repository.count_active_tasks_by_sprint(db, sprint_id)
     if active_task_count:
@@ -168,8 +235,28 @@ def delete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResp
         )
 
     sprint.status = "Deleted"
-    sprint.updated_at = datetime.utcnow()
+    sprint.updated_at = vietnam_now()
     sprint_repository.save_sprint(db, sprint)
+    return SprintResponse.model_validate(sprint)
+
+
+def activate_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResponse:
+    sprint = _get_sprint_or_404(db, sprint_id)
+    _ensure_sprint_not_deleted(sprint)
+    if sprint.status == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint cannot be activated")
+
+    space = sprint.space or _get_space_or_404(db, sprint.space_id)
+    _ensure_space_active(space)
+    _ensure_can_modify_space_sprints(db, space, current_user)
+    _ensure_no_other_active_sprint(db, sprint)
+
+    if sprint.status != "Active":
+        sprint.status = "Active"
+        sprint.updated_at = vietnam_now()
+        sprint_repository.save_sprint(db, sprint)
+    apply_sprint_automation(db, sprint.space_id)
+    sprint = _get_sprint_or_404(db, sprint_id)
     return SprintResponse.model_validate(sprint)
 
 
@@ -178,14 +265,25 @@ def complete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
     _ensure_sprint_not_deleted(sprint)
     if sprint.status == "Completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is already completed")
+    if sprint.status != "Active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only active sprints can be completed")
 
     space = sprint.space or _get_space_or_404(db, sprint.space_id)
     _ensure_space_active(space)
     _ensure_can_modify_space_sprints(db, space, current_user)
 
-    now = datetime.utcnow()
+    incomplete_task_count = sprint_repository.count_incomplete_tasks_by_sprint(db, sprint_id)
+    if incomplete_task_count:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sprint can only be completed when all tasks are done",
+        )
+
+    now = vietnam_now()
     sprint.status = "Completed"
     sprint.completed_at = now
     sprint.updated_at = now
     sprint_repository.save_sprint(db, sprint)
+    apply_sprint_automation(db, sprint.space_id)
+    sprint = _get_sprint_or_404(db, sprint_id)
     return SprintResponse.model_validate(sprint)
