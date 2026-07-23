@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import main_layout as main_layout_api
+from app.api.v1 import search as search_api
 from app.core import security
 from app.services import main_layout_service
 from app.schemas.pydantic_models import UpdateProfileRequest
@@ -80,10 +81,15 @@ def test_openapi_keeps_only_backend_owned_main_layout_routes():
     assert "/api/v1/main-layout/profile" not in openapi["paths"]
     assert "/api/v1/main-layout/logout" not in openapi["paths"]
     assert "/api/v1/main-layout/spaces/{space_id}/context" not in openapi["paths"]
+    assert "/api/v1/me" not in openapi["paths"]
+    assert "/api/v1/me/sidebar-summary" not in openapi["paths"]
     assert "/api/v1/me/preferences" in openapi["paths"]
     assert "/api/v1/me/preferences/language" in openapi["paths"]
-    assert "/api/v1/me/profile" in openapi["paths"]
-    assert "/api/v1/me/spaces/{space_id}/context" in openapi["paths"]
+    assert "/api/v1/me/profile" not in openapi["paths"]
+    assert "/api/v1/me/spaces/{space_id}/context" not in openapi["paths"]
+    assert "/api/v1/search/global" in openapi["paths"]
+    assert "/api/v1/search/recent" in openapi["paths"]
+    assert "/api/v1/search/recent/{entity_type}/{entity_id}" in openapi["paths"]
     assert openapi["paths"]["/api/v1/me/preferences"]["get"]["tags"] == ["current user"]
 
 
@@ -526,3 +532,39 @@ def test_global_search_rejects_invalid_types():
             limit_per_type=5,
         )
     assert exc.value.status_code == 422
+
+
+def test_search_recent_endpoints_use_current_user(monkeypatch):
+    db = object()
+    user = make_user()
+    calls = []
+
+    monkeypatch.setattr(
+        search_api.main_layout_service,
+        "record_search_recent",
+        lambda received_db, **kwargs: calls.append(("record", received_db, kwargs)),
+    )
+    monkeypatch.setattr(
+        search_api.main_layout_service,
+        "delete_search_recent",
+        lambda received_db, **kwargs: calls.append(("delete", received_db, kwargs)) or 1,
+    )
+
+    record_response = search_api.record_search_recent(
+        SimpleNamespace(entity_type="task", entity_id="TSK00000001"),
+        db=db,
+        current_user=user,
+    )
+    delete_response = search_api.delete_search_recent(
+        "task",
+        "TSK00000001",
+        db=db,
+        current_user=user,
+    )
+
+    assert record_response is None
+    assert delete_response.deleted_count == 1
+    assert calls == [
+        ("record", db, {"user": user, "entity_type": "task", "entity_id": "TSK00000001"}),
+        ("delete", db, {"user": user, "entity_type": "task", "entity_id": "TSK00000001"}),
+    ]
