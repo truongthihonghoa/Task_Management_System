@@ -305,11 +305,23 @@ class TaskAttachmentResponse(BaseModel):
     url: Optional[str] = None
     name: Optional[str] = None
     size: Optional[str] = None
+    usage: Optional[MediaUsage] = None
+    cloudinary_public_id: Optional[str] = None
 
     @model_validator(mode="after")
     def hydrate_frontend_fields(self) -> "TaskAttachmentResponse":
         is_image = (self.mime_type or "").startswith("image/")
         file_url = self.storage_url or (f"/media/{self.file_path}" if self.file_path else None)
+        path_parts = self.file_path.split("/") if self.file_path else []
+        if self.usage is None:
+            if "comments" in path_parts:
+                self.usage = "comment"
+            elif "descriptions" in path_parts:
+                self.usage = "description"
+            else:
+                self.usage = "attachment"
+        if self.cloudinary_public_id is None and self.storage_url and self.storage_url.startswith(("http://", "https://")):
+            self.cloudinary_public_id = self.file_path
         self.type = self.type or ("image" if is_image else "file")
         self.url = self.url or file_url
         self.previewUrl = self.previewUrl or (file_url if is_image else None)
@@ -341,6 +353,7 @@ class MediaUploadResponse(BaseModel):
     mime_type: Optional[str]
     file_size: int
     attachment_id: Optional[str] = None
+    public_id: Optional[str] = None
 
 
 class TaskCommentResponse(BaseModel):
@@ -658,6 +671,7 @@ class UserLockUpdateRequest(BaseModel):
     locked: bool
 
 class UserProfileResponse(BaseModel):
+    user_id: str
     avatar_url: str | None
     full_name: str
     email: str

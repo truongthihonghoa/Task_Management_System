@@ -19,21 +19,50 @@ from app.services import storage_service
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
 
-ATTACHMENT_EXTENSIONS = {".pdf", ".zip", ".png", ".jpg", ".jpeg"}
+ATTACHMENT_EXTENSIONS = {
+    ".pdf",
+    ".zip",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+    ".csv",
+}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MEDIA_EXTENSIONS = ATTACHMENT_EXTENSIONS | IMAGE_EXTENSIONS
 ATTACHMENT_MIME_TYPES = {
     "application/pdf",
     "application/zip",
     "application/x-zip-compressed",
+    "application/octet-stream",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+    "text/csv",
     "image/png",
     "image/jpeg",
+    "image/jpg",
 }
 IMAGE_MIME_TYPES = {
     "image/png",
     "image/jpeg",
+    "image/jpg",
     "image/webp",
     "image/gif",
 }
+MEDIA_MIME_TYPES = ATTACHMENT_MIME_TYPES | IMAGE_MIME_TYPES
 
 
 def _get_active_task_or_404(db: Session, task_id: str) -> Task:
@@ -91,16 +120,9 @@ def _validate_file(usage: str, file: UploadFile) -> str:
     extension = Path(safe_name).suffix.lower()
     mime_type = file.content_type
 
-    if usage == "attachment":
-        allowed_extensions = ATTACHMENT_EXTENSIONS
-        allowed_mime_types = ATTACHMENT_MIME_TYPES
-    else:
-        allowed_extensions = IMAGE_EXTENSIONS
-        allowed_mime_types = IMAGE_MIME_TYPES
-
-    if extension not in allowed_extensions:
+    if extension not in MEDIA_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File type is not allowed")
-    if mime_type and mime_type not in allowed_mime_types:
+    if mime_type and mime_type not in MEDIA_MIME_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File mime type is not allowed")
     return safe_name
 
@@ -113,10 +135,10 @@ def _relative_media_path(path: Path) -> str:
     return path.relative_to(MEDIA_ROOT).as_posix()
 
 
-def _get_attachment_usage(attachment: TaskAttachment) -> str:
-    first_folder = Path(attachment.file_path).parts[0] if attachment.file_path else "attachments"
+def get_task_attachment_usage(attachment: TaskAttachment) -> str:
+    path_parts = Path(attachment.file_path or "").parts
     for usage, folder in MEDIA_FOLDERS.items():
-        if folder == first_folder:
+        if folder in path_parts:
             return usage
     return "attachment"
 
@@ -215,7 +237,7 @@ def upload_task_media(
             max_size=MAX_UPLOAD_SIZE,
         )
         file_size = uploaded.file_size
-        relative_path = uploaded.file_path
+        relative_path = uploaded.public_id or uploaded.file_path
         file_url = uploaded.file_url
     else:
         media_folder = get_media_folder(usage, task_id)
@@ -248,6 +270,7 @@ def upload_task_media(
         mime_type=file.content_type,
         file_size=file_size,
         attachment_id=attachment.attachment_id,
+        public_id=uploaded.public_id if storage_service.is_cloudinary_enabled() else None,
     )
 
 
@@ -271,9 +294,14 @@ def list_task_attachments(
         page=page,
         page_size=page_size,
     )
+    attachment_items = [
+        attachment
+        for attachment in attachments
+        if get_task_attachment_usage(attachment) == "attachment"
+    ]
     return TaskAttachmentListResponse(
-        items=[TaskAttachmentResponse.model_validate(attachment) for attachment in attachments],
-        total=total,
+        items=[TaskAttachmentResponse.model_validate(attachment) for attachment in attachment_items],
+        total=len(attachment_items) if len(attachment_items) != total else total,
         page=page,
         page_size=page_size,
     )
@@ -313,7 +341,7 @@ def replace_task_attachment(
     _ensure_attachment_active(attachment)
     _ensure_can_replace_attachment(attachment, current_user)
 
-    usage = _get_attachment_usage(attachment)
+    usage = get_task_attachment_usage(attachment)
     safe_name = _validate_file(usage, file)
     stored_name = f"{uuid4().hex}_{safe_name}"
     target_path = None
@@ -325,7 +353,7 @@ def replace_task_attachment(
             max_size=MAX_UPLOAD_SIZE,
         )
         file_size = uploaded.file_size
-        file_path = uploaded.file_path
+        file_path = uploaded.public_id or uploaded.file_path
         file_url = uploaded.file_url
     else:
         media_folder = get_media_folder(usage, attachment.task_id)

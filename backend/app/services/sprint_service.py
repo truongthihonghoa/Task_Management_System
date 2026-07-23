@@ -1,4 +1,4 @@
-from datetime import datetime, titimedelta, timezone
+from datetime import datetime, timedelta, timezone
 from app.core.timezone import vietnam_now
 from typing import Iterable
 
