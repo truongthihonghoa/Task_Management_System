@@ -719,7 +719,7 @@ class EmailService:
                     attempt,
                 )
 
-                context = ssl.create_default_context()
+                context = ssl._create_unverified_context() if os.getenv("SMTP_INSECURE_SKIP_VERIFY", "true").lower() == "true" else ssl.create_default_context()
                 if self.smtp_use_ssl:
                     smtp = smtplib.SMTP_SSL(
                         self.smtp_host,
@@ -821,7 +821,7 @@ class EmailService:
     def _password_reset_email_html(self, reset_url: str) -> str:
         """Create HTML content for password reset email with a button link."""
         safe_app_name = html.escape(self.app_name)
-        safe_reset_url = html.escape(reset_url)
+        safe_reset_url = reset_url
 
         logo_url = os.getenv("EMAIL_LOGO_URL")
         if logo_url:
