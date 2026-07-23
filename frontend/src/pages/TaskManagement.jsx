@@ -9,6 +9,7 @@ import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
 import { DEMO_SPACES } from './SpaceManagement';
+import axiosClient, { API_BASE_URL } from '../api/axiosClient';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
@@ -158,8 +159,163 @@ const isTaskDueToday = (dateValue, status, apiDueToday = undefined) => {
 const DUE_TODAY_TEXT_CLASS = 'text-[#92400E]';
 const DUE_TODAY_BADGE_CLASS = 'bg-[#FEF3C7] text-[#92400E]';
 const DUE_TODAY_BORDER_CLASS = 'border-[#FCD34D]';
+const OVERDUE_TEXT_CLASS = 'text-[#BA1A1A]';
+const OVERDUE_BADGE_CLASS = 'bg-[#FFF0F0] text-[#BA1A1A]';
+const OVERDUE_BORDER_CLASS = 'border-[#FCA5A5]';
 
 const SPRINT_NAME_PREFIX = 'SCRUM Sprint';
+
+const TASK_STATUS_TO_API = {
+  New: 'new',
+  'In Progress': 'in_progress',
+  'In Testing': 'in_testing',
+  'Pending Review': 'pending_review',
+  'Need Revision': 'need_revision',
+  Done: 'done',
+  Cancelled: 'cancelled',
+};
+
+const TASK_STATUS_FROM_API = Object.fromEntries(
+  Object.entries(TASK_STATUS_TO_API).map(([label, value]) => [value, label])
+);
+
+const TASK_PRIORITY_TO_API = {
+  High: 'HIGH',
+  Medium: 'MEDIUM',
+  Low: 'LOW',
+};
+
+const TASK_PRIORITY_FROM_API = {
+  HIGH: 'High',
+  MEDIUM: 'Medium',
+  LOW: 'Low',
+};
+
+const ASSIGNEE_COLORS = ['#2f3650', '#F97316', '#14B8A6', '#7C3AED', '#2563EB', '#059669', '#DB2777'];
+
+const getErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (Array.isArray(detail)) {
+    return detail.map(item => item?.msg || String(item)).join(', ') || fallback;
+  }
+  return detail || error?.message || fallback;
+};
+
+const formatSprintDateRange = (startDate, endDate) => {
+  if (!startDate && !endDate) return '';
+  const format = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+  return [format(startDate), format(endDate)].filter(Boolean).join(' - ');
+};
+
+const mapApiSprint = (sprint) => ({
+  id: sprint.sprint_id,
+  name: sprint.name || 'SCRUM Sprint',
+  dateRange: formatSprintDateRange(sprint.start_date, sprint.end_date),
+  startDate: sprint.start_date || '',
+  endDate: sprint.end_date || '',
+  duration: sprint.duration_weeks || 2,
+  goal: sprint.goal || '',
+  autoStart: Boolean(sprint.auto_start),
+  autoComplete: Boolean(sprint.auto_complete),
+  status: sprint.status || 'Planned',
+  tasks: [],
+  raw: sprint,
+});
+
+const mapApiUserSummary = (user, index = 0) => {
+  const name = user?.full_name || user?.name || user?.email || 'Unknown User';
+  return {
+    id: user?.user_id || user?.id || '',
+    user_id: user?.user_id || user?.id || '',
+    name,
+    email: user?.email || '',
+    initials: getInitials(name),
+    color: ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
+    textColor: '#FFFFFF',
+  };
+};
+
+const mapApiSpaceMember = (member, index = 0) => ({
+  ...mapApiUserSummary(member.user || { user_id: member.user_id }, index),
+  role: member.role,
+  memberStatus: member.status,
+  spaceMemberId: member.space_member_id,
+});
+
+const mapApiTaskAssignee = (entry, index = 0) => ({
+  entryId: entry.assignee_entry_id,
+  assignee_entry_id: entry.assignee_entry_id,
+  taskId: entry.task_id,
+  assigneeId: entry.assignee_id,
+  assignee_id: entry.assignee_id,
+  assignedAt: entry.assignee_at,
+  assignee_at: entry.assignee_at,
+  user: mapApiUserSummary(entry.assignee || { user_id: entry.assignee_id }, index),
+  raw: entry,
+});
+
+const resolveMediaUrl = (url) => {
+  if (!url) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(url)) return url;
+  if (!url.startsWith('/media/')) return url;
+
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${url}`;
+    } catch {
+      return url;
+    }
+  }
+
+  return url;
+};
+
+const mapApiAttachment = (attachment) => ({
+  ...attachment,
+  url: resolveMediaUrl(attachment.url || attachment.storage_url || ''),
+  previewUrl: resolveMediaUrl(attachment.previewUrl || attachment.url || attachment.storage_url || ''),
+});
+
+const mapApiTask = (task) => {
+  const assignees = (task.assignees || []).map(mapApiTaskAssignee);
+  const primaryAssignee = task.primary_assignee
+    ? mapApiTaskAssignee(task.primary_assignee)
+    : assignees[0] || null;
+
+  return {
+    id: task.task_id,
+    taskId: task.task_id,
+    spaceId: task.space_id,
+    sprintId: task.sprint_id,
+    sprint: task.sprint?.name || task.sprint_name || '',
+    title: task.title || 'Untitled task',
+    assignee: primaryAssignee?.user?.name || '',
+    assigneeId: primaryAssignee?.assigneeId || '',
+    assignees,
+    pts: Number(task.story_points) || 0,
+    status: TASK_STATUS_FROM_API[task.task_status] || task.task_status || 'New',
+    priority: TASK_PRIORITY_FROM_API[task.priority] || task.priority || 'Medium',
+    completed_at: task.completed_at || '',
+    date: formatTaskDate(task.completed_at || task.created_at),
+    createdAt: formatTaskDate(task.created_at),
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+    description: task.description || '',
+    is_overdue: Boolean(task.is_overdue),
+    is_due_today: Boolean(task.is_due_today),
+    attachments: (task.attachments || []).map(mapApiAttachment),
+    comments: task.comments || [],
+    assignmentHistory: task.assignment_history || [],
+    creatorId: task.creator_id,
+    creator: task.creator_name || task.creator?.full_name || '',
+    raw: task,
+  };
+};
 
 const getSprintNumber = (sprintName) => {
   const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
@@ -188,6 +344,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setCreateTaskHandler,
     setSprintsForModal,
     setCreateTaskInitialSprint,
+    setAssigneesForModal,
+    setCurrentSpaceNameForModal,
     currentRole = 'ADMIN',
     currentUser,
     currentSpaceRole = 'USER'
@@ -196,8 +354,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const spaceId = spaceIdOverride || routeSpaceId;
   const isAdmin = currentRole === 'ADMIN';
   const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
+  const [apiSpace, setApiSpace] = useState(null);
   const projectOwnerId = selectedSpace?.ownerId;
-  const pageTitle = selectedSpace?.title || 'Task Management';
+  const pageTitle = apiSpace?.title || selectedSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
@@ -207,6 +366,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Sprint popover and complete modal states
   const [isSprintInfoOpen, setIsSprintInfoOpen] = useState(false);
   const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
+  const [completeSprintTarget, setCompleteSprintTarget] = useState(null);
   const sprintInfoAnchorRef = useRef(null);
   const boardScrollRef = useRef(null);
   const boardAutoScrollFrameRef = useRef(null);
@@ -262,19 +422,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Delete Sprint confirm states
   const [deleteSprintConfirmId, setDeleteSprintConfirmId] = useState(null);
 
-  const [tasks, setTasks] = useState([
-    { id: "TM-1", title: "Infrastructure setup", assignee: "Pham Tien", pts: 4, status: "New", priority: "High", date: "Jun 24, 2026", description: "" },
-    { id: "TM-2", title: "API Documentation update", assignee: "Hoang Hoa", pts: 3, status: "In Progress", priority: "Medium", date: "Jun 28, 2026", description: "" },
-    { id: "TM-3", title: "Checkout flow mobile fix", assignee: "Trong Nghia", pts: 5, status: "In Testing", priority: "High", date: "Jul 02, 2026", description: "" },
-    { id: "TM-4", title: "Security Protocols Audit", assignee: "Pham Tien", pts: 8, status: "Done", priority: "High", date: "Jun 20, 2026", description: "" },
-    { id: "TM-5", title: "SSO Authentication implementation", assignee: "Hoang Hoa", pts: 2, status: "In Progress", priority: "Medium", date: "Jun 25, 2026", description: "" },
-    { id: "TM-6", title: "API Integration & Testing", assignee: "Trong Nghia", pts: 3, status: "Pending Review", priority: "High", date: "Jul 05, 2026", description: "" },
-    { id: "TM-7", title: "User Feedback UI Refactor", assignee: "Pham Tien", pts: 2, status: "Need Revision", priority: "Low", date: "Jul 10, 2026", description: "" },
-    { id: "TM-8", title: "Database Migration Script", assignee: "Hoang Hoa", pts: 5, status: "New", priority: "High", date: "Jul 12, 2026", description: "" },
-    { id: "TM-9", title: "Dashboard Charts optimization", assignee: "Trong Nghia", pts: 3, status: "In Testing", priority: "Medium", date: "Jul 15, 2026", description: "" },
-    { id: "TM-10", title: "Mobile App Performance Tuning", assignee: "Trong Nghia", pts: 4, status: "In Testing", priority: "Medium", date: "Jul 18, 2026", description: "" },
-    { id: "TM-11", title: "Push Notification Service", assignee: "Hoang Hoa", pts: 3, status: "New", priority: "High", date: "Jul 20, 2026", description: "" },
-  ]);
+  const [tasks, setTasks] = useState([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [tasksError, setTasksError] = useState('');
+  const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
@@ -295,15 +446,162 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const canManagePeople = isSpaceOwner || isSpaceMember;
   const canSelectTasks = canModifyTasks || canManageTasks;
   const canDirectAddPeople = isSpaceOwner;
-  const projectAssigneeOptions = [
-    availableAssignees[0],
+  const projectAssigneeOptions = React.useMemo(() => [
+    { ...availableAssignees[0], id: '', user_id: '' },
     ...projectPeople.map(person => ({
+      id: person.id || person.user_id,
+      user_id: person.user_id || person.id,
       name: person.name,
       initials: person.initials || getInitials(person.name),
       color: person.color || '#5E4DB2',
       textColor: person.textColor || '#FFFFFF',
     })),
-  ];
+  ], [projectPeople]);
+
+  useEffect(() => {
+    if (setCurrentSpaceNameForModal) {
+      setCurrentSpaceNameForModal(pageTitle);
+    }
+  }, [pageTitle, setCurrentSpaceNameForModal]);
+
+  const loadTaskData = useCallback(async () => {
+    if (!spaceId) {
+      setTasks([]);
+      setApiSpace(null);
+      return;
+    }
+
+    setIsLoadingTasks(true);
+    setTasksError('');
+
+    try {
+      const [spaceResponse, sprintResponse, taskResponse, memberResponse] = await Promise.all([
+        axiosClient.get(`/spaces/${spaceId}`),
+        axiosClient.get(`/spaces/${spaceId}/sprints`),
+        axiosClient.get(`/spaces/${spaceId}/tasks`, {
+          params: {
+            page: 1,
+            page_size: 100,
+            active_sprint_only: false,
+          },
+        }),
+        axiosClient.get(`/spaces/${spaceId}/members`),
+      ]);
+
+      const nextSpace = spaceResponse.data;
+      const nextSprints = (sprintResponse.data || []).map(mapApiSprint);
+      const orderedSprints = nextSprints.filter(sprint => sprint.status !== 'Deleted');
+      const firstSprint = orderedSprints[0] || null;
+      const remainingSprints = firstSprint
+        ? orderedSprints.slice(1)
+        : [];
+      const nextTasks = (taskResponse.data?.items || []).map(mapApiTask);
+      const nextMembers = (memberResponse.data || [])
+        .filter(member => member.status === 'Active')
+        .map(mapApiSpaceMember);
+
+      setApiSpace({
+        id: nextSpace.space_id,
+        title: nextSpace.name_space || 'Task Management',
+        ownerId: nextSpace.owner_id,
+        status: nextSpace.status_space,
+      });
+      setProjectPeople(nextMembers);
+      setTasks(nextTasks);
+      setSelectedTasks([]);
+
+      if (firstSprint) {
+        setSprint1Data({
+          ...firstSprint,
+          dateRange: firstSprint.dateRange || 'No dates set',
+        });
+      } else {
+        setSprint1Data(prev => ({
+          ...prev,
+          id: '',
+          name: 'No sprint available',
+          dateRange: 'Create a sprint before adding tasks',
+        }));
+      }
+      setExtraSprints(remainingSprints.map(sprint => ({
+        ...sprint,
+        tasks: nextTasks.filter(task => task.sprintId === sprint.id),
+      })));
+      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [sprint.id, true])));
+    } catch (error) {
+      setTasks([]);
+      setApiSpace(null);
+      setTasksError(getErrorMessage(error, 'Unable to load tasks for this space.'));
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [spaceId, setExtraSprints]);
+
+  useEffect(() => {
+    loadTaskData();
+  }, [loadTaskData]);
+
+  const updateTaskRequest = useCallback(async (taskId, updates) => {
+    const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
+    const updatedTask = mapApiTask(response.data);
+    setTasks(prev => prev.map(task => task.id === taskId ? updatedTask : task));
+    setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
+    return updatedTask;
+  }, []);
+
+  const applyTaskAssignees = useCallback((taskId, assigneeEntries = []) => {
+    const assignees = assigneeEntries.map(mapApiTaskAssignee);
+    const primaryAssignee = assignees[0] || null;
+    const updates = {
+      assignees,
+      assignee: primaryAssignee?.user?.name || '',
+      assigneeId: primaryAssignee?.assigneeId || '',
+    };
+
+    setTasks(prev => prev.map(task => (
+      task.id === taskId ? { ...task, ...updates } : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId ? { ...prev, ...updates } : prev
+    ));
+    return updates;
+  }, []);
+
+  const syncTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const currentAssignees = currentTask?.assignees || [];
+    const currentPrimary = currentAssignees[0] || null;
+
+    if (!assigneeUserId) {
+      await Promise.all(currentAssignees.map(entry =>
+        axiosClient.delete(`/tasks/${taskId}/assignees/${entry.assigneeId}`, {
+          data: { reason: 'Updated from task board' },
+        })
+      ));
+      return applyTaskAssignees(taskId, []);
+    }
+
+    if (currentPrimary?.assigneeId === assigneeUserId) {
+      return {
+        assignees: currentAssignees,
+        assignee: currentPrimary.user?.name || '',
+        assigneeId: currentPrimary.assigneeId,
+      };
+    }
+
+    const response = currentPrimary
+      ? await axiosClient.put(`/tasks/${taskId}/assignees`, {
+        previous_assignee_id: currentPrimary.assigneeId,
+        new_assignee_id: assigneeUserId,
+        reason: 'Updated from task board',
+      })
+      : await axiosClient.post(`/tasks/${taskId}/assignees`, {
+        assignee_ids: [assigneeUserId],
+        reason: 'Assigned from task board',
+      });
+
+    return applyTaskAssignees(taskId, response.data?.assignees || []);
+  }, [applyTaskAssignees, selectedTaskDetail, tasks]);
 
   const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
     const normalizedSearch = peopleSearch.trim().toLowerCase();
@@ -411,33 +709,76 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   }, [sprint1Data, extraSprints, setSprintsForModal]);
 
-  const handleCreateTask = useCallback((taskData) => {
-    if (!canModifyTasks) return;
-
-    const isSprint1 = !taskData.sprint || taskData.sprint === sprint1Data.name;
-    const newTask = {
-      title: taskData.summary,
-      assignee: taskData.assignee === 'Unassigned' ? '' : taskData.assignee,
-      pts: Number(taskData.storyPoints) || 0,
-      status: taskData.status,
-      priority: taskData.priority,
-      completed_at: taskData.completed_at || '',
-      date: formatTaskDate(taskData.completed_at || taskData.createdAt),
-      description: taskData.description || ""
-    };
-
-    if (isSprint1) {
-      setTasks(prev => [...prev, { ...newTask, id: getNextTaskId(prev) }]);
-    } else {
-      setExtraSprints(prevExtras => prevExtras.map(s => {
-        if (s.name === taskData.sprint) {
-          const extraId = `TM-${Math.floor(Math.random() * 1000) + 100}`;
-          return { ...s, tasks: [...(s.tasks || []), { ...newTask, id: extraId }] };
-        }
-        return s;
-      }));
+  useEffect(() => {
+    if (setAssigneesForModal) {
+      setAssigneesForModal(projectAssigneeOptions);
     }
-  }, [canModifyTasks, sprint1Data.name]);
+  }, [projectAssigneeOptions, setAssigneesForModal]);
+
+  const handleCreateTask = useCallback(async (taskData) => {
+    if (!canModifyTasks || !spaceId) return;
+    if (!spaceId) {
+      throw new Error('Open a space before creating a task.');
+    }
+    setTasksError('');
+
+    const sprintOptions = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+    const selectedSprint = sprintOptions.find(sprint => sprint.name === taskData.sprint) || sprintOptions[0];
+    if (!selectedSprint?.id) {
+      throw new Error('This space does not have a sprint yet. Create a sprint before adding tasks.');
+    }
+
+    const selectedAssignee = projectAssigneeOptions.find(user =>
+      user.user_id === taskData.assigneeId ||
+      user.id === taskData.assigneeId ||
+      (!taskData.assigneeId && user.name === taskData.assignee)
+    );
+    const selectedAssigneeId = selectedAssignee?.user_id || selectedAssignee?.id || '';
+
+    const formData = new FormData();
+    formData.append('title', taskData.summary.trim());
+    formData.append('sprint_id', selectedSprint.id);
+    formData.append('priority', TASK_PRIORITY_TO_API[taskData.priority] || 'MEDIUM');
+    formData.append('task_status', TASK_STATUS_TO_API[taskData.status] || 'new');
+    formData.append('story_points', String(Number(taskData.storyPoints) || 0));
+    if (taskData.description) formData.append('description', taskData.description);
+    if (taskData.completed_at) formData.append('completed_at', new Date(taskData.completed_at).toISOString());
+    if (selectedAssigneeId) formData.append('assignee_ids', selectedAssigneeId);
+    (taskData.attachments || []).forEach((attachment) => {
+      if (attachment.file instanceof File) {
+        formData.append('attachments', attachment.file);
+      }
+    });
+
+    const response = await axiosClient.post(`/spaces/${spaceId}/tasks`, formData);
+    let createdTask = mapApiTask(response.data);
+    if (selectedAssigneeId && createdTask.assignees.length === 0) {
+      try {
+        const assigneeResponse = await axiosClient.post(`/tasks/${createdTask.id}/assignees`, {
+          assignee_ids: [selectedAssigneeId],
+          reason: 'Assigned while creating task',
+        });
+        const assignees = assigneeResponse.data?.assignees || [];
+        const assigneeUpdates = {
+          assignees: assignees.map(mapApiTaskAssignee),
+        };
+        const primaryAssignee = assigneeUpdates.assignees[0] || null;
+        createdTask = {
+          ...createdTask,
+          ...assigneeUpdates,
+          assignee: primaryAssignee?.user?.name || '',
+          assigneeId: primaryAssignee?.assigneeId || '',
+        };
+      } catch (error) {
+        setTasksError(
+          `Task was created, but assignee could not be saved: ${getErrorMessage(error, 'Unable to assign this task.')}`
+        );
+      }
+    }
+    setTasks(prev => [createdTask, ...prev]);
+
+    return createdTask;
+  }, [canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
 
   useEffect(() => {
     if (!setCreateTaskHandler) return undefined;
@@ -445,6 +786,20 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setCreateTaskHandler(() => handleCreateTask);
     return () => setCreateTaskHandler(null);
   }, [handleCreateTask, setCreateTaskHandler]);
+
+  const handleOpenTaskDetail = useCallback(async (task) => {
+    if (!task?.id) return;
+    setSelectedTaskDetail(task);
+    setTasksError('');
+    try {
+      const response = await axiosClient.get(`/tasks/${task.id}`);
+      const detailedTask = mapApiTask(response.data);
+      setSelectedTaskDetail(detailedTask);
+      setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to load task details.'));
+    }
+  }, []);
 
   // Keep selected task detail in sync with the latest task state
   useEffect(() => {
@@ -460,9 +815,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!routeTaskId) return;
     const taskFromRoute = tasks.find(task => task.id === routeTaskId);
     if (taskFromRoute && selectedTaskDetail?.id !== taskFromRoute.id) {
-      setSelectedTaskDetail(taskFromRoute);
+      handleOpenTaskDetail(taskFromRoute);
     }
-  }, [routeTaskId, selectedTaskDetail?.id, tasks]);
+  }, [handleOpenTaskDetail, routeTaskId, selectedTaskDetail?.id, tasks]);
 
   const handleCloseTaskDetail = () => {
     setSelectedTaskDetail(null);
@@ -482,36 +837,47 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   };
 
-  const handleDeleteSelectedTasks = () => {
+  const handleDeleteSelectedTasks = async () => {
     if (selectedTasks.length === 0) return;
     if (!canManageTasks) {
       alert('You do not have permission to delete selected tasks.');
       return;
     }
-    setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
-    setExtraSprints(prev => prev.map(s => ({
-      ...s,
-      tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
-    })));
-    if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
-      setSelectedTaskDetail(null);
+    setTasksError('');
+    try {
+      await Promise.all(selectedTasks.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
+      setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+      setExtraSprints(prev => prev.map(s => ({
+        ...s,
+        tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
+      })));
+      if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
+        setSelectedTaskDetail(null);
+      }
+      setSelectedTasks([]);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete selected tasks.'));
+      loadTaskData();
     }
-    setSelectedTasks([]);
   };
 
   const toolbarStatuses = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
 
-  const changeStatusForSelected = (newStatus) => {
+  const changeStatusForSelected = async (newStatus) => {
     if (!newStatus) return;
     if (!canModifyTasks) return;
-    setTasks(prev => prev.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t));
-    setExtraSprints(prev => prev.map(s => ({
-      ...s,
-      tasks: s.tasks.map(t => selectedTasks.includes(t.id) ? { ...t, status: newStatus } : t)
-    })));
-    setShowToolbarStatusMenu(false);
+    setTasksError('');
+    try {
+      await Promise.all(selectedTasks.map(taskId => updateTaskRequest(taskId, {
+        task_status: TASK_STATUS_TO_API[newStatus] || 'new',
+      })));
+      setShowToolbarStatusMenu(false);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update selected tasks.'));
+      loadTaskData();
+    }
   };
 
   const toggleTask = (id) => {
@@ -592,22 +958,24 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   useEffect(() => stopBoardAutoScroll, [stopBoardAutoScroll]);
 
-  const onDragEnd = (result) => {
+  const onDragEnd = async (result) => {
     stopBoardAutoScroll();
     if (!canModifyTasks) return;
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-    const updatedTasks = Array.from(tasks);
-    const taskIndex = updatedTasks.findIndex(t => t.id === draggableId);
-
-    if (taskIndex !== -1) {
-      updatedTasks[taskIndex] = {
-        ...updatedTasks[taskIndex],
-        status: destination.droppableId
-      };
-      setTasks(updatedTasks);
+    const previousTasks = tasks;
+    setTasks(prev => prev.map(task => (
+      task.id === draggableId ? { ...task, status: destination.droppableId } : task
+    )));
+    try {
+      await updateTaskRequest(draggableId, {
+        task_status: TASK_STATUS_TO_API[destination.droppableId] || 'new',
+      });
+    } catch (error) {
+      setTasks(previousTasks);
+      setTasksError(getErrorMessage(error, 'Unable to update task status.'));
     }
   };
 
@@ -615,40 +983,75 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setView(newView);
   };
 
-  const handleDeleteTask = (taskId) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
-    setTaskToDelete(null);
+  const handleDeleteTask = async (taskId) => {
+    setTasksError('');
+    try {
+      await axiosClient.delete(`/tasks/${taskId}`);
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      setTaskToDelete(null);
+      if (selectedTaskDetail?.id === taskId) {
+        setSelectedTaskDetail(null);
+      }
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete this task.'));
+    }
   };
 
-  const handleCreateSprint = () => {
-    if (!canModifyTasks) return;
+  const handleCreateSprint = async () => {
+    if (!canModifyTasks || !spaceId) return;
 
     const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
-    // Start date = 2 weeks after previous sprint starts (rough estimate)
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + (nextNum - 1) * 14);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 13);
-    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const newSprint = {
-      id: `sprint-${nextNum}`,
-      name: `${SPRINT_NAME_PREFIX} ${nextNum}`,
-      dateRange: `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-      tasks: [],
-      isCompleted: false,
-    };
-    setExtraSprints(prev => [...prev, newSprint]);
-    setExpandedSprints(prev => ({ ...prev, [newSprint.id]: true }));
-  };
 
+    setTasksError('');
+    try {
+      const response = await axiosClient.post(`/spaces/${spaceId}/sprints`, {
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        duration_weeks: 2,
+        status: 'Planned',
+        auto_start: false,
+        auto_complete: false,
+      });
+      const createdSprint = mapApiSprint(response.data);
+      setExpandedSprints(prev => ({ ...prev, [createdSprint.id]: true }));
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to create sprint.'));
+    }
+  };
   const toggleSprintExpanded = (sprintId) => {
     setExpandedSprints(prev => ({ ...prev, [sprintId]: !prev[sprintId] }));
   };
 
-  const handleDeleteExtraSprint = (sprintId) => {
-    setExtraSprints(prev => prev.filter(s => s.id !== sprintId));
-    setOpenSprintMenuId(null);
-    setDeleteSprintConfirmId(null);
+  const handleDeleteSprint = async (sprintId) => {
+    if (!canModifyTasks || !sprintId) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.delete(`/sprints/${sprintId}`);
+      setOpenSprintMenuId(null);
+      setDeleteSprintConfirmId(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to delete sprint.'));
+    }
+  };
+
+  const handleActivateSprint = async (sprintId) => {
+    if (!canModifyTasks || !sprintId) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.post(`/sprints/${sprintId}/activate`);
+      setOpenSprintMenuId(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to activate sprint.'));
+    }
   };
 
   const handleOpenEditSprint = (sprintData) => {
@@ -657,14 +1060,26 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setOpenSprintMenuId(null);
   };
 
-  const handleUpdateSprint = (updatedSprint) => {
-    if (updatedSprint.id === 'sprint-1') {
-      setSprint1Data(updatedSprint);
-    } else {
-      setExtraSprints(prev => prev.map(s => s.id === updatedSprint.id ? { ...s, ...updatedSprint } : s));
+  const handleUpdateSprint = async (updatedSprint) => {
+    if (!canModifyTasks || !updatedSprint?.id) return;
+
+    setTasksError('');
+    try {
+      await axiosClient.patch(`/sprints/${updatedSprint.id}`, {
+        name: updatedSprint.name,
+        goal: updatedSprint.goal || null,
+        start_date: updatedSprint.startDate ? new Date(updatedSprint.startDate).toISOString() : null,
+        end_date: updatedSprint.endDate ? new Date(updatedSprint.endDate).toISOString() : null,
+        duration_weeks: Number(updatedSprint.duration) || 2,
+        auto_start: Boolean(updatedSprint.autoStart),
+        auto_complete: Boolean(updatedSprint.autoComplete),
+      });
+      setIsEditSprintOpen(false);
+      setSprintToEdit(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update sprint.'));
     }
-    setIsEditSprintOpen(false);
-    setSprintToEdit(null);
   };
 
   // Close sprint menus when clicking outside
@@ -680,6 +1095,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   }, [openSprintMenuId]);
 
   const filteredTasks = tasks.filter(task => {
+    const normalizedSearch = taskSearchQuery.trim().toLowerCase();
+    if (normalizedSearch) {
+      const matchesSearch = String(task.id || '').toLowerCase().includes(normalizedSearch) ||
+        String(task.title || '').toLowerCase().includes(normalizedSearch);
+      if (!matchesSearch) return false;
+    }
+
     if (selectedAssigneeFilter && selectedAssigneeFilter !== 'All') {
       if (selectedAssigneeFilter === 'Unassigned') {
         if (task.assignee) return false;
@@ -721,15 +1143,188 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         return 0;
     }
   });
+  const primarySprintTasks = sprint1Data.id
+    ? filteredTasks.filter(task => task.sprintId === sprint1Data.id)
+    : filteredTasks;
+  const displayedSprints = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+  const getTasksForSprint = (sprintId) => (
+    sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
+  );
+  const isSprintCompleted = (sprint) => {
+    if (sprint?.status !== 'Completed') return false;
+    const sprintTasks = getTasksForSprint(sprint.id);
+    return sprintTasks.length === 0 || sprintTasks.every(task => task.status === 'Done');
+  };
+  const arePreviousSprintsCompleted = (sprint) => {
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex <= 0) return sprintIndex === 0;
+    return displayedSprints.slice(0, sprintIndex).every(isSprintCompleted);
+  };
+  const hasActiveSprintBefore = (sprint) => {
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex <= 0) return false;
+    return displayedSprints.slice(0, sprintIndex).some(item => item.status === 'Active');
+  };
+  const shouldShowStartSprint = (sprint) => {
+    if (!sprint?.id) return false;
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    return sprintIndex > 0 && sprint.status !== 'Completed';
+  };
+  const canStartSprint = (sprint) => {
+    if (!shouldShowStartSprint(sprint)) return false;
+    return arePreviousSprintsCompleted(sprint) && !hasActiveSprintBefore(sprint);
+  };
+  const completeSprintTasks = completeSprintTarget
+    ? getTasksForSprint(completeSprintTarget.id)
+    : primarySprintTasks;
+
+  const openCompleteSprint = (sprint) => {
+    if (!sprint?.id) return;
+    setCompleteSprintTarget(sprint);
+    setIsCompleteSprintOpen(true);
+  };
+
+  const getSprintAction = (sprint) => {
+    if (!sprint?.id || !canModifyTasks) return null;
+    const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
+    if (sprintIndex === 0 || (sprint.status === 'Active' && canStartSprint(sprint))) {
+      return {
+        label: 'Complete sprint',
+        onClick: () => openCompleteSprint(sprint),
+      };
+    }
+    if (shouldShowStartSprint(sprint)) {
+      const startEnabled = canStartSprint(sprint);
+      return {
+        label: 'Start sprint',
+        disabled: !startEnabled,
+        title: startEnabled ? undefined : 'Complete the previous sprint before starting this sprint.',
+        onClick: () => {
+          if (startEnabled) handleActivateSprint(sprint.id);
+        },
+      };
+    }
+    return null;
+  };
+
+  const handleCompleteSprint = async () => {
+    if (!canModifyTasks || !completeSprintTarget?.id) return;
+
+    setTasksError('');
+    try {
+      const targetIndex = displayedSprints.findIndex(sprint => sprint.id === completeSprintTarget.id);
+      const activeLaterSprint = displayedSprints
+        .slice(Math.max(targetIndex + 1, 0))
+        .find(sprint => sprint.status === 'Active');
+      if (activeLaterSprint) {
+        await axiosClient.patch(`/sprints/${activeLaterSprint.id}`, { status: 'Planned' });
+      }
+      if (completeSprintTarget.status !== 'Active') {
+        await axiosClient.post(`/sprints/${completeSprintTarget.id}/activate`);
+      }
+      await axiosClient.post(`/sprints/${completeSprintTarget.id}/complete`);
+      setIsCompleteSprintOpen(false);
+      setCompleteSprintTarget(null);
+      await loadTaskData();
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to complete sprint.'));
+    }
+  };
 
   const visibleStatuses = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
 
-  const handleUpdateTask = (updatedTask) => {
+  const handleUpdateAssignee = async (taskId, user) => {
     if (!canModifyTasks) return;
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-    setSelectedTaskDetail(updatedTask);
+    setTasksError('');
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const nextAssigneeId = user?.user_id || user?.id || '';
+    const nextAssigneeName = nextAssigneeId ? user?.name || '' : '';
+    const optimisticAssignee = nextAssigneeId
+      ? [{
+        entryId: `optimistic-${taskId}-${nextAssigneeId}`,
+        assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
+        taskId,
+        assigneeId: nextAssigneeId,
+        assignee_id: nextAssigneeId,
+        assignedAt: new Date().toISOString(),
+        assignee_at: new Date().toISOString(),
+        user: mapApiUserSummary(user),
+      }]
+      : [];
+
+    setTasks(prev => prev.map(task => (
+      task.id === taskId
+        ? {
+          ...task,
+          assignees: optimisticAssignee,
+          assignee: nextAssigneeName,
+          assigneeId: nextAssigneeId,
+        }
+        : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId
+        ? {
+          ...prev,
+          assignees: optimisticAssignee,
+          assignee: nextAssigneeName,
+          assigneeId: nextAssigneeId,
+        }
+        : prev
+    ));
+    try {
+      await syncTaskAssigneeRequest(taskId, nextAssigneeId);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update task assignee.'));
+      if (previousTask) {
+        setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
+        setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
+      }
+      loadTaskData();
+    }
+  };
+
+  const handleUpdateTask = async (updatedTask) => {
+    if (!canModifyTasks) return;
+    const currentTask = tasks.find(task => task.id === updatedTask.id) || selectedTaskDetail;
+    if (!currentTask) return;
+
+    const assigneeChanged = (updatedTask.assigneeId || '') !== (currentTask.assigneeId || '') || updatedTask.assignee !== currentTask.assignee;
+    if (assigneeChanged) {
+      const selectedAssignee = projectAssigneeOptions.find(user =>
+        (updatedTask.assigneeId && (user.user_id === updatedTask.assigneeId || user.id === updatedTask.assigneeId)) ||
+        user.name === updatedTask.assignee
+      );
+      await handleUpdateAssignee(updatedTask.id, selectedAssignee || { user_id: '' });
+    }
+
+    const updates = {};
+    if (updatedTask.title !== currentTask.title) updates.title = updatedTask.title;
+    if (updatedTask.description !== currentTask.description) updates.description = updatedTask.description || null;
+    if (updatedTask.priority !== currentTask.priority) updates.priority = TASK_PRIORITY_TO_API[updatedTask.priority] || 'MEDIUM';
+    if (updatedTask.status !== currentTask.status) updates.task_status = TASK_STATUS_TO_API[updatedTask.status] || 'new';
+    if (Number(updatedTask.pts) !== Number(currentTask.pts)) updates.story_points = Number(updatedTask.pts) || 0;
+    const nextCompletedAt = updatedTask.completed_at || null;
+    const currentCompletedAt = currentTask.completed_at || null;
+    if (nextCompletedAt !== currentCompletedAt) {
+      updates.completed_at = nextCompletedAt ? new Date(nextCompletedAt).toISOString() : null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      if (assigneeChanged) return;
+      setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
+      setSelectedTaskDetail(updatedTask);
+      return;
+    }
+
+    try {
+      await updateTaskRequest(updatedTask.id, updates);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to update this task.'));
+      setSelectedTaskDetail(currentTask);
+    }
   };
 
   const handleMoveTaskWithinStatus = (taskId, direction) => {
@@ -994,6 +1589,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         <Dashboard embedded forcedRole={summaryRole} spaceMemberCount={spaceMemberCount} />
       )}
 
+      {tasksError && view !== 'summary' && (
+        <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-[12px] font-semibold text-red-700">
+          {tasksError}
+        </div>
+      )}
+
+      {isLoadingTasks && view !== 'summary' && (
+        <div className="mb-4 rounded-lg border border-[#E5E0EF] bg-white px-4 py-3 text-[12px] font-semibold text-[#4C2B74] shadow-sm">
+          Loading tasks...
+        </div>
+      )}
+
       {/* Filters Section */}
       {view !== 'summary' && (
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -1005,6 +1612,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 className="pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded text-[11px] w-[220px] focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2] outline-none text-[#32275E]"
                 placeholder="Filter by ID or title..."
                 type="text"
+                value={taskSearchQuery}
+                onChange={(event) => setTaskSearchQuery(event.target.value)}
               />
             </div>
             {/* Status Filter */}
@@ -1166,15 +1775,20 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             {/* Sprint Actions */}
             {view === 'board' && (
               <div className="flex items-center gap-2">
-                {canModifyTasks && (
-                  <button
-                    onClick={() => setIsCompleteSprintOpen(true)}
-                    disabled={filteredTasks.length === 0}
-                    className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                  >
-                    Complete sprint
-                  </button>
-                )}
+                {canModifyTasks && (() => {
+                  const sprintAction = getSprintAction(sprint1Data);
+                  if (!sprintAction) return null;
+                  return (
+                    <button
+                      onClick={sprintAction.onClick}
+                      disabled={sprintAction.disabled}
+                      title={sprintAction.title}
+                      className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                    >
+                      {sprintAction.label}
+                    </button>
+                  );
+                })()}
                 <button
                   ref={sprintInfoAnchorRef}
                   onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
@@ -1296,8 +1910,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   tasks={filteredTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
                   onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
-                  onOpenDetail={setSelectedTaskDetail}
+                  onOpenDetail={handleOpenTaskDetail}
                   onMoveTask={handleMoveTaskWithinStatus}
+                  onPatchTask={updateTaskRequest}
+                  onUpdateAssignee={handleUpdateAssignee}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
                   canModifyTasks={canModifyTasks}
@@ -1340,29 +1956,34 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <span className="text-[11px] text-outline">{sprint1Data.dateRange}</span>
                   <span className="material-symbols-outlined text-[14px] text-outline">info</span>
                 </div>
-                <span className="text-[11px] text-outline">({filteredTasks.length} work items)</span>
+                <span className="text-[11px] text-outline">({primarySprintTasks.length} work items)</span>
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-1">
                   <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
-                    {filteredTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
+                    {primarySprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
                   </span>
                   <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
-                    {filteredTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                    {primarySprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
                   </span>
                   <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
-                    {filteredTasks.filter(t => t.status === 'Done').length}
+                    {primarySprintTasks.filter(t => t.status === 'Done').length}
                   </span>
                 </div>
-                {canModifyTasks && (
-                  <button
-                    onClick={() => setIsCompleteSprintOpen(true)}
-                    disabled={filteredTasks.length === 0}
-                    className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${filteredTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                  >
-                    Complete sprint
-                  </button>
-                )}
+                {canModifyTasks && (() => {
+                  const sprintAction = getSprintAction(sprint1Data);
+                  if (!sprintAction) return null;
+                  return (
+                    <button
+                      onClick={sprintAction.onClick}
+                      disabled={sprintAction.disabled}
+                      title={sprintAction.title}
+                      className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                    >
+                      {sprintAction.label}
+                    </button>
+                  );
+                })()}
                 {/* Sprint 1 ... dropdown menu */}
                 {canModifyTasks && (
                 <div className="relative" data-sprint-menu>
@@ -1374,6 +1995,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   </button>
                   {openSprintMenuId === 'sprint-1' && (
                     <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                      {canStartSprint(sprint1Data) && (
+                        <button
+                          onClick={() => handleActivateSprint(sprint1Data.id)}
+                          className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                        >
+                          Start sprint
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenEditSprint(sprint1Data)}
                         className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
@@ -1381,7 +2010,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         Edit sprint
                       </button>
                       <button
-                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId('sprint-1'); }}
+                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
                         className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
                       >
                         Delete sprint
@@ -1408,7 +2037,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
-                    {filteredTasks.map(task => (
+                    {primarySprintTasks.map(task => (
                       <TaskRow
                         key={task.id}
                         {...task}
@@ -1418,10 +2047,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         isSelected={selectedTasks.includes(task.id)}
                         isAnySelected={selectedTasks.length > 0}
                         onToggle={() => toggleTask(task.id)}
-                        onOpenDetail={() => setSelectedTaskDetail(task)}
+                        onOpenDetail={() => handleOpenTaskDetail(task)}
                         onDelete={() => setTaskToDelete(task)}
                         assigneeOptions={projectAssigneeOptions}
-                        onUpdateAssignee={(newAssignee) => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t))}
+                        onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
                       />
                     ))}
                   </tbody>
@@ -1446,7 +2075,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           </div>
 
           {/* EXTRA SPRINTS (created dynamically) */}
-          {extraSprints.map((sprint) => (
+          {extraSprints.map((sprint) => {
+            const extraSprintTasks = filteredTasks.filter(task => task.sprintId === sprint.id);
+            return (
             <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
               {/* Sprint Header */}
               <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
@@ -1464,23 +2095,34 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <span className="text-[11px] text-outline">{sprint.dateRange}</span>
                     <span className="material-symbols-outlined text-[14px] text-outline">info</span>
                   </div>
-                  <span className="text-[11px] text-outline">({sprint.tasks.length} work items)</span>
+                  <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex gap-1">
-                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">0</span>
-                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">0</span>
-                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">0</span>
+                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
+                      {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
+                      {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
+                      {extraSprintTasks.filter(t => t.status === 'Done').length}
+                    </span>
                   </div>
-                  {canModifyTasks && (
-                    <button
-                      onClick={() => setIsCompleteSprintOpen(true)}
-                      disabled={sprint.tasks.length === 0}
-                      className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprint.tasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                    >
-                      Complete sprint
-                    </button>
-                  )}
+                  {canModifyTasks && (() => {
+                    const sprintAction = getSprintAction(sprint);
+                    if (!sprintAction) return null;
+                    return (
+                      <button
+                        onClick={sprintAction.onClick}
+                        disabled={sprintAction.disabled}
+                        title={sprintAction.title}
+                        className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                      >
+                        {sprintAction.label}
+                      </button>
+                    );
+                  })()}
                   {/* Extra sprint ... dropdown menu */}
                   {canModifyTasks && (
                   <div className="relative" data-sprint-menu>
@@ -1492,6 +2134,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     </button>
                     {openSprintMenuId === sprint.id && (
                       <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                        {shouldShowStartSprint(sprint) && (
+                          <button
+                            disabled={!canStartSprint(sprint)}
+                            title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
+                            onClick={() => {
+                              if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
+                            }}
+                            className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
+                          >
+                            Start sprint
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenEditSprint(sprint)}
                           className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
@@ -1512,7 +2166,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
 
               {/* Sprint Body */}
-              {expandedSprints[sprint.id] && sprint.tasks.length > 0 && (
+              {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
                 <div className="max-h-[500px] overflow-y-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
@@ -1527,7 +2181,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant">
-                      {sprint.tasks.map(task => (
+                      {extraSprintTasks.map(task => (
                         <TaskRow
                           key={task.id}
                           {...task}
@@ -1537,21 +2191,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           isSelected={selectedTasks.includes(task.id)}
                           isAnySelected={selectedTasks.length > 0}
                           onToggle={() => toggleTask(task.id)}
-                          onOpenDetail={() => setSelectedTaskDetail(task)}
+                          onOpenDetail={() => handleOpenTaskDetail(task)}
                           onDelete={() => {
-                            setExtraSprints(prev => prev.map(s => ({
-                              ...s,
-                              tasks: s.tasks.filter(t => t.id !== task.id)
-                            })));
-                            setTaskToDelete(null);
+                            setTaskToDelete(task);
                           }}
                           assigneeOptions={projectAssigneeOptions}
-                          onUpdateAssignee={(newAssignee) => {
-                            setExtraSprints(prev => prev.map(s => ({
-                              ...s,
-                              tasks: s.tasks.map(t => t.id === task.id ? { ...t, assignee: newAssignee === 'Unassigned' ? '' : newAssignee } : t)
-                            })));
-                          }}
+                          onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
                         />
                       ))}
                     </tbody>
@@ -1560,7 +2205,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               )}
 
               {/* Sprint Body - Empty State */}
-              {expandedSprints[sprint.id] && sprint.tasks.length === 0 && (
+              {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
                 <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
                   <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
                   <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
@@ -1583,7 +2228,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           {/* CREATE SPRINT BUTTON */}
           {canModifyTasks && <div className="mt-4 flex justify-end" id="backlog-section">
@@ -1602,7 +2248,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       {/* Bottom-fixed selection toolbar */}
       {selectedTasks.length > 0 && canSelectTasks && (
         <div className="fixed left-6 right-6 bottom-4 z-50 flex justify-center pointer-events-none">
-          <div className="w-full max-w-[620px] pointer-events-auto rounded-xl border border-[#D8D1FF] bg-[#FBFAFF] px-3 py-2 text-[#2D1B4E] shadow-[0_10px_30px_rgba(94,77,178,0.16)] relative">
+          <div className="w-full max-w-[620px] pointer-events-auto rounded-xl border border-[#6B7280] bg-white px-3 py-2 text-[#2D1B4E] shadow-[0_10px_30px_rgba(94,77,178,0.16)] relative">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="rounded-lg bg-[#F0EDFF] px-2.5 py-1 text-[13px] font-bold text-[#5E4DB2]">{selectedTasks.length} selected</span>
@@ -1672,10 +2318,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       <CompleteSprintModal
         isOpen={isCompleteSprintOpen}
-        onClose={() => setIsCompleteSprintOpen(false)}
-        sprintName={sprint1Data.name}
-        completedTasksCount={tasks.filter(t => t.status === 'Done').length}
-        openTasksCount={tasks.filter(t => t.status !== 'Done').length}
+        onClose={() => { setIsCompleteSprintOpen(false); setCompleteSprintTarget(null); }}
+        sprintName={completeSprintTarget?.name || sprint1Data.name}
+        completedTasksCount={completeSprintTasks.filter(t => t.status === 'Done').length}
+        openTasksCount={completeSprintTasks.filter(t => t.status !== 'Done').length}
+        onComplete={handleCompleteSprint}
       />
 
       <EditSprintModal
@@ -1705,9 +2352,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <p className="mt-1 text-sm text-gray-600 leading-relaxed">
                     Are you sure you want to delete{' '}
                     <strong className="text-[#121c2a]">
-                      {deleteSprintConfirmId === 'sprint-1'
-                        ? sprint1Data.name
-                        : extraSprints.find(s => s.id === deleteSprintConfirmId)?.name || 'this sprint'}
+                      {[sprint1Data, ...extraSprints].find(s => s.id === deleteSprintConfirmId)?.name || 'this sprint'}
                     </strong>?
                   </p>
                 </div>
@@ -1720,13 +2365,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    if (deleteSprintConfirmId !== 'sprint-1') {
-                      handleDeleteExtraSprint(deleteSprintConfirmId);
-                    } else {
-                      setDeleteSprintConfirmId(null);
-                    }
-                  }}
+                  onClick={() => handleDeleteSprint(deleteSprintConfirmId)}
                   className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Delete
@@ -1742,6 +2381,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         task={selectedTaskDetail}
         onClose={handleCloseTaskDetail}
         tasks={tasks}
+        assigneeOptions={projectAssigneeOptions}
         currentRole={currentRole}
         currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
@@ -1758,7 +2398,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -1779,7 +2419,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
@@ -1798,17 +2438,23 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
-  const isOverdue = isTaskOverdue(task.completed_at || date, status, task.is_overdue);
-  const isDueToday = !isOverdue && isTaskDueToday(task.completed_at || date, status, task.is_due_today);
+  const [hasPreviewImageError, setHasPreviewImageError] = React.useState(false);
+  const isOverdue = isTaskOverdue(task.completed_at || date, status);
+  const isDueToday = !isOverdue && isTaskDueToday(task.completed_at || date, status);
   const displayDate = task.completed_at ? formatTaskDate(task.completed_at) : date;
   const taskCardDateClass = isOverdue
-    ? 'bg-[#FFF0F0] text-[#BA1A1A]'
+    ? OVERDUE_BADGE_CLASS
     : isDueToday
       ? DUE_TODAY_BADGE_CLASS
       : 'bg-surface-container text-on-surface-variant';
+  const taskCardStateClass = isOverdue
+    ? 'border-white'
+    : isDueToday
+      ? DUE_TODAY_BORDER_CLASS
+      : '';
   const [isEditing, setIsEditing] = React.useState(false);
   const [tempPts, setTempPts] = React.useState(pts);
   const [showMenu, setShowMenu] = React.useState(false);
@@ -1824,6 +2470,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
+  const assigneeProfile = assigneeOptions.find(user => user.name === task.assignee || user.user_id === task.assigneeId) || getAssigneeProfile(task.assignee);
+
+  useEffect(() => {
+    setHasPreviewImageError(false);
+  }, [previewImage]);
 
   // Đóng menu khi click ra ngoài
   useEffect(() => {
@@ -1884,7 +2535,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           style={{ ...provided.draggableProps.style }}
-          className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${isDueToday ? DUE_TODAY_BORDER_CLASS : ''} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
+          className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${taskCardStateClass} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
           onClick={(e) => {
             if (e.defaultPrevented) return;
             onOpenDetail && onOpenDetail(task);
@@ -1979,9 +2630,14 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                       <button
                         key={s}
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           setTasks(prev => prev.map(t => t.id === id ? { ...t, status: s } : t));
+                          try {
+                            await onPatchTask?.(id, { task_status: TASK_STATUS_TO_API[s] || 'new' });
+                          } catch {
+                            setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+                          }
                           setShowMenu(false);
                           setShowStatusSubMenu(false);
                         }}
@@ -2004,9 +2660,19 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
               <span className="text-[11px] font-semibold">{displayDate}</span>
             </div>
           </div>
-          {previewImage ? (
-            <div className="mb-3 overflow-hidden rounded-xl">
-              <img src={previewImage} alt={`Preview for ${title}`} className="w-full h-28 object-cover rounded-xl" />
+          {previewImage && !hasPreviewImageError ? (
+            <div className="mb-3 h-28 overflow-hidden rounded-lg bg-surface-container">
+              <img
+                src={previewImage}
+                alt=""
+                className="block h-full w-full object-cover"
+                onError={() => setHasPreviewImageError(true)}
+              />
+            </div>
+          ) : previewImage ? (
+            <div className="mb-3 flex h-16 items-center gap-2 rounded-lg border border-dashed border-outline-variant bg-surface-container px-3 text-[11px] font-semibold text-outline">
+              <span className="material-symbols-outlined text-[18px]">image</span>
+              <span className="truncate">Image preview unavailable</span>
             </div>
           ) : null}
           <div className="flex justify-between items-center mt-auto">
@@ -2029,10 +2695,20 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                     autoFocus
                   />
                   <div className="flex justify-between border-t border-outline-variant pt-1 mt-1">
-                    <button className="hover:bg-green-100 rounded p-0.5" onClick={() => setIsEditing(false)}>
+                    <button
+                      className="hover:bg-green-100 rounded p-0.5"
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        try {
+                          await onPatchTask?.(id, { story_points: Number(tempPts) || 0 });
+                        } finally {
+                          setIsEditing(false);
+                        }
+                      }}
+                    >
                       <span className="material-symbols-outlined text-[14px] text-green-600">done</span>
                     </button>
-                    <button className="hover:bg-red-100 rounded p-0.5" onClick={() => setIsEditing(false)}>
+                    <button className="hover:bg-red-100 rounded p-0.5" onClick={(event) => { event.stopPropagation(); setIsEditing(false); setTempPts(pts); }}>
                       <span className="material-symbols-outlined text-[14px] text-red-600">close</span>
                     </button>
                   </div>
@@ -2056,9 +2732,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                   setShowAssigneeMenu(prev => !prev);
                 }}
                 className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                style={{ backgroundColor: getAssigneeProfile(task.assignee).color, color: getAssigneeProfile(task.assignee).textColor || '#111' }}
+                style={{ backgroundColor: assigneeProfile.color, color: assigneeProfile.textColor || '#111' }}
               >
-                {getAssigneeProfile(task.assignee).initials || <span className="material-symbols-outlined">person</span>}
+                {assigneeProfile.initials || <span className="material-symbols-outlined">person</span>}
               </button>
               {showAssigneeMenu && (
                 <div
@@ -2070,9 +2746,10 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                     <button
                       key={user.name}
                       type="button"
-                      onClick={() => {
-                        setTasks(prev => prev.map(t => t.id === id ? { ...t, assignee: user.name === 'Unassigned' ? '' : user.name } : t));
+                      onClick={async (event) => {
+                        event.stopPropagation();
                         setShowAssigneeMenu(false);
+                        await onUpdateAssignee?.(id, user);
                       }}
                       className="w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left hover:bg-[#EBF0FF] transition-colors"
                     >
@@ -2096,10 +2773,10 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
 }
 
 function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
-  const isOverdue = isTaskOverdue(completed_at || date, status, is_overdue);
-  const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status, is_due_today);
+  const isOverdue = isTaskOverdue(completed_at || date, status);
+  const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;
-  const dateTextClass = isOverdue ? 'text-[#BA1A1A]' : isDueToday ? DUE_TODAY_TEXT_CLASS : 'text-outline';
+  const dateTextClass = isOverdue ? OVERDUE_TEXT_CLASS : isDueToday ? DUE_TODAY_TEXT_CLASS : 'text-outline';
   const statusClass = status === 'Need Revision'
     ? 'bg-[#FFF0F0] text-[#BA1A1A]'
     : status === 'Done'
@@ -2109,8 +2786,30 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
         : 'bg-[#E0E8FF] text-[#003d9b]';
 
   const [showAssigneeMenu, setShowAssigneeMenu] = useState(false);
+  const [assigneeMenuPos, setAssigneeMenuPos] = useState({ top: 0, left: 0 });
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
+
+  const toggleAssigneeMenu = (event) => {
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    if (showAssigneeMenu) {
+      setShowAssigneeMenu(false);
+      return;
+    }
+
+    const rect = assigneeBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = 176;
+      const viewportPadding = 8;
+      const left = Math.min(
+        Math.max(rect.left, viewportPadding),
+        window.innerWidth - menuWidth - viewportPadding
+      );
+      setAssigneeMenuPos({ top: rect.bottom + 6, left });
+    }
+    setShowAssigneeMenu(true);
+  };
 
   useEffect(() => {
     if (!showAssigneeMenu) return;
@@ -2151,17 +2850,13 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
       <td className="px-4 py-2">
         <div className="relative inline-flex items-center">
           {(() => {
-            const profile = getAssigneeProfile(assignee);
+            const profile = assigneeOptions.find(user => user.name === assignee) || getAssigneeProfile(assignee);
             return (
               <div className="relative">
                 <button
                   ref={assigneeBtnRef}
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!canModifyTasks) return;
-                    setShowAssigneeMenu(prev => !prev);
-                  }}
+                  onClick={toggleAssigneeMenu}
                   className={`flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] transition-colors ${canModifyTasks ? 'hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                 >
                   <div
@@ -2172,19 +2867,21 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                   </div>
                   <span>{assignee || 'Unassigned'}</span>
                 </button>
-                {showAssigneeMenu && canModifyTasks && (
+                {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
                     ref={assigneeMenuRef}
-                    className="absolute left-0 top-full mt-2 w-44 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                    style={{ position: 'fixed', top: assigneeMenuPos.top, left: assigneeMenuPos.left, zIndex: 10000 }}
+                    className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {assigneeOptions.map(user => (
                       <button
                         key={user.name}
-                        type="button"
-                        onClick={() => {
-                          onUpdateAssignee && onUpdateAssignee(user.name === 'Unassigned' ? '' : user.name);
+                      type="button"
+                        onClick={async (event) => {
+                          event.stopPropagation();
                           setShowAssigneeMenu(false);
+                          await onUpdateAssignee?.(user);
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] hover:bg-[#EBF0FF] transition-colors"
                       >
@@ -2197,7 +2894,8 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                         <span>{user.name}</span>
                       </button>
                     ))}
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             );
@@ -2233,3 +2931,4 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
     </tr>
   );
 }
+

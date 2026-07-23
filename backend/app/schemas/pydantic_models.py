@@ -365,6 +365,32 @@ class TaskCommentListResponse(BaseModel):
     page_size: int
 
 
+class TaskAssigneeResponse(BaseModel):
+    assignee_entry_id: str
+    task_id: str
+    assignee_id: str
+    assignee_at: datetime
+    assignee: UserSummaryResponse | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AssignmentHistoryResponse(BaseModel):
+    assignment_history_id: str
+    task_id: str
+    previous_assignee_id: str | None
+    new_assignee_id: str | None
+    changed_by: str
+    reason: str | None
+    change_status: str | None
+    changed_at: datetime
+    previous_assignee: UserSummaryResponse | None = None
+    new_assignee: UserSummaryResponse | None = None
+    changed_by_user: UserSummaryResponse | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class TaskListItemResponse(BaseModel):
     task_id: str
     space_id: str
@@ -379,6 +405,7 @@ class TaskListItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     sprint: Optional[SprintSummaryResponse] = None
+    assignees: list[TaskAssigneeResponse] = Field(default_factory=list)
     attachments: list[TaskAttachmentResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
@@ -489,32 +516,6 @@ class LoginUserResponse(BaseModel):
     full_name: str
     email: str
     role: str
-
-    model_config = {"from_attributes": True}
-
-
-class TaskAssigneeResponse(BaseModel):
-    assignee_entry_id: str
-    task_id: str
-    assignee_id: str
-    assignee_at: datetime
-    assignee: UserSummaryResponse | None = None
-
-    model_config = {"from_attributes": True}
-
-
-class AssignmentHistoryResponse(BaseModel):
-    assignment_history_id: str
-    task_id: str
-    previous_assignee_id: str | None
-    new_assignee_id: str | None
-    changed_by: str
-    reason: str | None
-    change_status: str | None
-    changed_at: datetime
-    previous_assignee: UserSummaryResponse | None = None
-    new_assignee: UserSummaryResponse | None = None
-    changed_by_user: UserSummaryResponse | None = None
 
     model_config = {"from_attributes": True}
 

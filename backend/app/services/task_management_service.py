@@ -6,12 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.repository import recent_view as recent_view_repository
 from app.repository import task as task_repository
-from app.services import media_service
+from app.services import media_service, sprint_service
 from app.models.space import Space
 from app.models.sprint import Sprint
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.pydantic_models import (
+    AssignTaskAssigneesRequest,
     TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
@@ -120,6 +121,7 @@ def _apply_task_date_flags(response: TaskListItemResponse, task: Task) -> TaskLi
 def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     response = TaskListItemResponse.model_validate(task)
     _apply_task_date_flags(response, task)
+    response.assignees = sorted(response.assignees, key=lambda assignee: assignee.assignee_at)
     response.attachments = sorted(
         [attachment for attachment in response.attachments if attachment.deleted_at is None],
         key=lambda attachment: attachment.uploaded_at,
@@ -172,6 +174,7 @@ def create_task(
     current_user: User,
     *,
     attachments: Iterable[UploadFile] | None = None,
+    assignee_ids: Iterable[str] | None = None,
 ) -> TaskDetailResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_active(space)
@@ -203,6 +206,26 @@ def create_task(
             file=attachment,
             current_user=current_user,
         )
+    normalized_assignee_ids = list(
+        dict.fromkeys(
+            assignee_id.strip()
+            for assignee_id in assignee_ids or []
+            if assignee_id and assignee_id.strip()
+        )
+    )
+    if normalized_assignee_ids:
+        from app.services.task_assignment_service import TaskAssignmentService
+
+        TaskAssignmentService().assign_task_assignees(
+            db,
+            task.task_id,
+            AssignTaskAssigneesRequest(
+                assignee_ids=normalized_assignee_ids,
+                reason="Assigned while creating task",
+            ),
+            current_user,
+        )
+    sprint_service.apply_sprint_automation(db, space_id)
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
@@ -222,6 +245,7 @@ def list_tasks(
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
+    sprint_service.apply_sprint_automation(db, space_id)
 
     tasks, total = task_repository.list_task_records(
         db,
@@ -272,6 +296,7 @@ def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardR
     space = _get_space_or_404(db, space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
+    sprint_service.apply_sprint_automation(db, space_id)
 
     grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
     for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
@@ -312,6 +337,7 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
     task.updated_at = datetime.utcnow()
 
     task_repository.save_task(db, task)
+    sprint_service.apply_sprint_automation(db, task.space_id)
     return _build_task_detail_response(_get_task_or_404(db, task.task_id))
 
 
