@@ -1,4 +1,6 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
+import unicodedata
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -9,6 +11,55 @@ from app.models.task import Task
 from app.models.task_assignee import TaskAssignee
 from app.models.user import User
 from app.models.user_preference import UserPreference
+
+
+SEARCH_ALIASES = (
+    (("quan", "quan ly"), ("manage", "management", "admin", "administration")),
+    (("cong viec", "viec"), ("task", "tasks", "work")),
+    (("nguoi dung", "thanh vien"), ("user", "users", "member", "members")),
+    (("thong bao",), ("notification", "notifications", "alert", "alerts")),
+    (("khong gian", "du an"), ("space", "spaces", "project", "projects", "workspace")),
+    (("bao mat",), ("security", "permission", "permissions")),
+    (("kiem tra", "nhat ky"), ("audit", "log", "logs")),
+    (("moi",), ("new",)),
+    (("dang lam", "dang thuc hien"), ("in_progress", "in progress", "progress")),
+    (("kiem thu",), ("in_testing", "testing", "test")),
+    (("cho duyet",), ("pending_review", "pending review", "review")),
+    (("can sua", "can chinh sua"), ("need_revision", "need revision", "revision")),
+    (("hoan thanh", "xong"), ("done", "completed", "complete")),
+    (("qua han",), ("overdue",)),
+    (("cao",), ("high",)),
+    (("trung binh",), ("medium",)),
+    (("thap",), ("low",)),
+)
+
+
+def _normalize_search_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", value or "")
+    without_marks = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    return " ".join(without_marks.lower().split())
+
+
+def _search_terms(query_text: str) -> list[str]:
+    raw = (query_text or "").strip()
+    normalized = _normalize_search_text(raw)
+    terms = {raw, normalized}
+
+    for triggers, aliases in SEARCH_ALIASES:
+        if any(trigger in normalized for trigger in triggers):
+            terms.update(aliases)
+
+    return [term for term in terms if term]
+
+
+def _ilike_any(*columns, query_text: str):
+    return or_(
+        *[
+            column.ilike(f"%{term}%")
+            for term in _search_terms(query_text)
+            for column in columns
+        ]
+    )
 
 
 def _active_space_filter():
@@ -64,12 +115,11 @@ def create_user_preference(db: Session, *, user_id: str, language: str) -> UserP
 
 def update_user_preference(preference: UserPreference, *, language: str) -> UserPreference:
     preference.language = language
-    preference.updated_at = datetime.utcnow()
+    preference.updated_at = vietnam_now()
     return preference
 
 
 def search_spaces(db: Session, *, user: User, query_text: str, limit: int) -> list[tuple[Space, int]]:
-    pattern = f"%{query_text}%"
     member_counts = (
         db.query(
             SpaceMember.space_id.label("space_id"),
@@ -90,10 +140,14 @@ def search_spaces(db: Session, *, user: User, query_text: str, limit: int) -> li
     if query_text:
         query = query.filter(
             or_(
-                Space.space_id.ilike(pattern),
-                Space.name_space.ilike(pattern),
-                Space.description.ilike(pattern),
-                Space.owner.has(User.full_name.ilike(pattern)),
+                _ilike_any(
+                    Space.space_id,
+                    Space.name_space,
+                    Space.description,
+                    Space.status_space,
+                    query_text=query_text,
+                ),
+                Space.owner.has(_ilike_any(User.full_name, User.email, query_text=query_text)),
             )
         )
     return (
@@ -104,7 +158,6 @@ def search_spaces(db: Session, *, user: User, query_text: str, limit: int) -> li
 
 
 def search_tasks(db: Session, *, user: User, query_text: str, limit: int, space_id: str | None = None) -> list[Task]:
-    pattern = f"%{query_text}%"
     query = (
         db.query(Task)
         .join(Space, Task.space_id == Space.space_id)
@@ -124,12 +177,17 @@ def search_tasks(db: Session, *, user: User, query_text: str, limit: int, space_
     if query_text:
         query = query.filter(
             or_(
-                Task.task_id.ilike(pattern),
-                Task.title.ilike(pattern),
-                Task.description.ilike(pattern),
-                Task.task_status.ilike(pattern),
-                Task.priority.ilike(pattern),
-                Task.assignees.any(TaskAssignee.assignee.has(User.full_name.ilike(pattern))),
+                _ilike_any(
+                    Task.task_id,
+                    Task.title,
+                    Task.description,
+                    Task.task_status,
+                    Task.priority,
+                    query_text=query_text,
+                ),
+                Task.assignees.any(
+                    TaskAssignee.assignee.has(_ilike_any(User.full_name, User.email, query_text=query_text))
+                ),
             )
         )
     return (
@@ -140,19 +198,19 @@ def search_tasks(db: Session, *, user: User, query_text: str, limit: int, space_
 
 
 def search_users(db: Session, *, query_text: str, limit: int) -> list[User]:
-    pattern = f"%{query_text}%"
     query = db.query(User).options(
         selectinload(User.owned_spaces),
         selectinload(User.space_memberships).joinedload(SpaceMember.space),
     )
     if query_text:
         query = query.filter(
-            or_(
-                User.user_id.ilike(pattern),
-                User.full_name.ilike(pattern),
-                User.email.ilike(pattern),
-                User.status_user.ilike(pattern),
-                User.role.ilike(pattern),
+            _ilike_any(
+                User.user_id,
+                User.full_name,
+                User.email,
+                User.status_user,
+                User.role,
+                query_text=query_text,
             )
         )
     return query.order_by(User.updated_at.desc(), User.created_at.desc(), User.user_id.asc()).limit(limit).all()

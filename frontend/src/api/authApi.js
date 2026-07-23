@@ -142,3 +142,11 @@ export async function register({ email, fullName, password, confirmPassword, rem
 
   return { ...response.data, user };
 }
+
+export async function uploadRegistrationAvatar(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await axiosClient.post('/auth/register/avatar', formData);
+  return response.data;
+}

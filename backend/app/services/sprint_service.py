@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, titimedelta, timezone
+from app.core.timezone import vietnam_now
 from typing import Iterable
 
 from fastapi import HTTPException, status
@@ -164,7 +165,7 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
     _ensure_can_modify_space_sprints(db, space, current_user)
 
     duration_weeks = payload.duration_weeks or 2
-    now = datetime.utcnow()
+    now = vietnam_now()
     sprint = Sprint(
         space_id=space_id,
         goal=payload.goal,
@@ -210,7 +211,7 @@ def update_sprint(db: Session, sprint_id: str, payload: SprintUpdate, current_us
 
     for field, value in update_data.items():
         setattr(sprint, field, value)
-    sprint.updated_at = datetime.utcnow()
+    sprint.updated_at = vietnam_now()
 
     sprint_repository.save_sprint(db, sprint)
     apply_sprint_automation(db, sprint.space_id)
@@ -234,7 +235,7 @@ def delete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResp
         )
 
     sprint.status = "Deleted"
-    sprint.updated_at = datetime.utcnow()
+    sprint.updated_at = vietnam_now()
     sprint_repository.save_sprint(db, sprint)
     return SprintResponse.model_validate(sprint)
 
@@ -252,7 +253,7 @@ def activate_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
 
     if sprint.status != "Active":
         sprint.status = "Active"
-        sprint.updated_at = datetime.utcnow()
+        sprint.updated_at = vietnam_now()
         sprint_repository.save_sprint(db, sprint)
     apply_sprint_automation(db, sprint.space_id)
     sprint = _get_sprint_or_404(db, sprint_id)
@@ -278,7 +279,7 @@ def complete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
             detail="Sprint can only be completed when all tasks are done",
         )
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     sprint.status = "Completed"
     sprint.completed_at = now
     sprint.updated_at = now

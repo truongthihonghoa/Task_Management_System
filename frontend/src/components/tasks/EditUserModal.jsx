@@ -24,6 +24,7 @@ const CreateUserModal = ({
   isOpen,
   selectedUser = null,
   onClose,
+  onSave,
   onSaveSuccess,
 }) => {
   const isEditMode = Boolean(selectedUser);
@@ -31,6 +32,7 @@ const CreateUserModal = ({
   const [form, setForm]             = useState(EMPTY_FORM);
   const [showPassword, setShowPwd]  = useState(false);
   const [errors, setErrors]         = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── Sync form whenever the modal opens or context changes ────────────────────
   useEffect(() => {
@@ -49,6 +51,7 @@ const CreateUserModal = ({
     }
 
     setErrors({});
+    setIsSubmitting(false);
     setShowPwd(false);
   }, [isOpen, selectedUser]);
 
@@ -77,13 +80,38 @@ const CreateUserModal = ({
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
-  const handleSubmit = () => {
+  const getApiErrorMessage = (error) => {
+    const detail = error?.response?.data?.detail;
+    const message = error?.response?.data?.message;
+
+    if (message) return message;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+    if (detail?.message) return detail.message;
+
+    return 'Unable to save user changes. Please try again.';
+  };
+
+  const handleSubmit = async () => {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
-    const msg = `User "${form.fullName}" updated successfully!`;
-    onSaveSuccess?.(msg);
-    onClose();
+    setIsSubmitting(true);
+    setErrors({});
+
+    try {
+      if (onSave) {
+        await onSave(form, selectedUser);
+      } else {
+        const msg = `User "${form.fullName}" updated successfully!`;
+        onSaveSuccess?.(msg);
+        onClose();
+      }
+    } catch (error) {
+      setErrors({ submit: getApiErrorMessage(error) });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -169,7 +197,10 @@ const CreateUserModal = ({
                     onChange={handleChange(field)}
                     className="w-full h-10 px-4 pr-9 rounded-md border border-gray-200 bg-white text-sm text-gray-800 outline-none appearance-none cursor-pointer transition focus:ring-2 focus:ring-[#5e4db2]/30 focus:border-[#5e4db2]"
                   >
-                    {options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    {(field === 'role'
+                      ? ['Super Admin', 'User']
+                      : Array.from(new Set([form.status, 'Active', 'Inactive', 'Locked'].filter(Boolean)))
+                    ).map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                   <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-gray-400">
@@ -181,21 +212,29 @@ const CreateUserModal = ({
             ))}
           </div>
 
+          {errors.submit && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {errors.submit}
+            </div>
+          )}
+
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-gray-100 bg-gray-50/60">
           <button
             onClick={onClose}
+            disabled={isSubmitting}
             className="px-5 py-2 text-[16px] font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            className="px-5 py-2 text-[16px] font-medium bg-[#4C1D95] hover:bg-[#3B1578] active:scale-95 text-white rounded-md shadow-md shadow-purple-900/20 transition-all"
+            disabled={isSubmitting}
+            className="px-5 py-2 text-[16px] font-medium bg-[#4C1D95] hover:bg-[#3B1578] active:scale-95 text-white rounded-md shadow-md shadow-purple-900/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            Save Changes
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>

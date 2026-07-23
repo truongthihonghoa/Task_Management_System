@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from types import SimpleNamespace
 
 import pytest
@@ -38,7 +39,6 @@ def test_assignment_routes_are_documented_under_task_management():
     ]
 
 
-def test_create_task_delegates_to_service(monkeypatch):
 def test_create_task_delegates_form_payload_and_attachments_to_service(monkeypatch):
     db = object()
     user = SimpleNamespace(user_id="USR00000003", role="USER")
@@ -294,7 +294,7 @@ def test_create_task_uploads_attachments_after_task_is_created(monkeypatch):
 
 
 def test_task_list_item_hydrates_image_attachment_for_board_preview():
-    now = datetime.utcnow()
+    now = vietnam_now()
     task = SimpleNamespace(
         task_id="TSK00000007",
         space_id="SPC00000002",
@@ -371,7 +371,7 @@ def test_task_due_today_flag_is_calculated_from_completed_at():
 
 
 def test_task_list_item_response_includes_overdue_flag():
-    now = datetime.utcnow()
+    now = vietnam_now()
     task = SimpleNamespace(
         task_id="TSK00000007",
         space_id="SPC00000002",
@@ -393,7 +393,7 @@ def test_task_list_item_response_includes_overdue_flag():
 
 
 def test_task_list_item_response_includes_due_today_flag():
-    now = datetime.utcnow()
+    now = vietnam_now()
     task = SimpleNamespace(
         task_id="TSK00000007",
         space_id="SPC00000002",

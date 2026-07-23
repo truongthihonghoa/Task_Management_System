@@ -430,6 +430,7 @@ class TaskBoardResponse(BaseModel):
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
+PASSWORD_RESET_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
 
 
 def normalize_email(value: str) -> str:
@@ -555,9 +556,17 @@ class LoginResponse(BaseModel):
 
 
 class ResetPasswordRequest(EmailRequest):
-    token: str = Field(..., min_length=6, max_length=6)
+    token: str = Field(..., min_length=32, max_length=2048)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
+
+    @field_validator("token")
+    @classmethod
+    def validate_reset_token(cls, value: str) -> str:
+        token = value.strip()
+        if not PASSWORD_RESET_TOKEN_PATTERN.fullmatch(token):
+            raise ValueError("Invalid password reset token.")
+        return token
 
     @field_validator("password")
     @classmethod
@@ -634,6 +643,7 @@ class UserManagementListResponse(BaseModel):
 
 class UserManagementUpdateRequest(BaseModel):
     status: UserStatus | None = None
+    role: Literal["SUPER_ADMIN", "USER"] | None = None
     is_verified: bool | None = None
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None

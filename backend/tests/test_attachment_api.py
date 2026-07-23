@@ -1,6 +1,9 @@
+from io import BytesIO
 from types import SimpleNamespace
 
 from app.api.v1 import attachments, media
+from app.services import media_service as media_service_module
+from app.services.storage_service import StoredUpload
 
 
 def test_attachment_upload_delegates_to_media_service(monkeypatch):
@@ -97,3 +100,58 @@ def test_attachment_routes_delegate_to_service(monkeypatch):
         ("delete", db, "TAT00000001", user),
         ("replace", db, "TAT00000001", {"file": upload, "current_user": user}),
     ]
+
+
+def test_upload_task_media_uses_cloudinary_when_enabled(monkeypatch):
+    db = object()
+    task = SimpleNamespace(
+        task_id="TSK00000007",
+        space_id="SPC00000001",
+        deleted_at=None,
+        space=SimpleNamespace(deleted_at=None, status_space="Active", owner_id="USR00000001"),
+    )
+    user = SimpleNamespace(user_id="USR00000001", role="SUPER_ADMIN")
+    upload = SimpleNamespace(
+        filename="task-image.png",
+        content_type="image/png",
+        file=BytesIO(b"fake image content"),
+    )
+    calls = []
+
+    monkeypatch.setenv("MEDIA_STORAGE", "cloudinary")
+    monkeypatch.setattr(
+        media_service_module.media_repository,
+        "get_task_with_space",
+        lambda _db, task_id: task,
+    )
+    monkeypatch.setattr(
+        media_service_module.storage_service,
+        "upload_to_cloudinary",
+        lambda file, **kwargs: calls.append((file, kwargs))
+        or StoredUpload(
+            file_path="taskflow/tasks/TSK00000007/attachments/cloud-image",
+            file_url="https://res.cloudinary.com/demo/image/upload/cloud-image.png",
+            file_size=18,
+            public_id="taskflow/tasks/TSK00000007/attachments/cloud-image",
+        ),
+    )
+
+    def create_attachment(_db, attachment):
+        attachment.attachment_id = "TAT00000001"
+        return attachment
+
+    monkeypatch.setattr(media_service_module.media_repository, "create_task_attachment", create_attachment)
+
+    response = media_service_module.upload_task_media(
+        db,
+        "TSK00000007",
+        usage="attachment",
+        file=upload,
+        current_user=user,
+    )
+
+    assert response.file_url == "https://res.cloudinary.com/demo/image/upload/cloud-image.png"
+    assert response.file_path == "taskflow/tasks/TSK00000007/attachments/cloud-image"
+    assert response.file_size == 18
+    assert response.attachment_id == "TAT00000001"
+    assert calls[0][1]["folder"] == "tasks/TSK00000007/attachments"

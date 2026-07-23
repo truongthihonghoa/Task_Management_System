@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 import logging
 
 from fastapi import HTTPException, status
@@ -192,7 +193,7 @@ def create_task_comment(
     _ensure_can_create_comment(db, task, current_user)
     _validate_parent_comment(db, task_id, payload.parent_comment_id)
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     comment = TaskComment(
         task_id=task_id,
         user_id=current_user.user_id,
@@ -240,7 +241,7 @@ def update_task_comment(
 
     comment.comment = payload.comment
     comment.is_edited = True
-    comment.updated_at = datetime.utcnow()
+    comment.updated_at = vietnam_now()
     comment_repository.save_comment(db, comment)
     _notify_comment_event(
         db,
@@ -262,7 +263,7 @@ def delete_task_comment(db: Session, comment_id: str, current_user: User) -> Tas
     if comment.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Comment is already deleted")
 
-    now = datetime.utcnow()
+    now = vietnam_now()
     comment.deleted_at = now
     comment.updated_at = now
     comment_repository.save_comment(db, comment)

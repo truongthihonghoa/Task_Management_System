@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from types import SimpleNamespace
 
 import pytest
@@ -348,7 +349,7 @@ def test_permissions_and_deleted_task_guards(monkeypatch):
         )
     assert super_admin_exc.value.status_code == 403
 
-    install_common_task_mocks(monkeypatch, task=make_task(deleted_at=datetime.utcnow()))
+    install_common_task_mocks(monkeypatch, task=make_task(deleted_at=vietnam_now()))
     with pytest.raises(HTTPException) as deleted_exc:
         service.get_task_assignees(db, "TSK00000001", make_user("USR00000001"))
     assert deleted_exc.value.status_code == 400

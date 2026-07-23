@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -101,7 +102,7 @@ def update_read_state(
             updated_count = notification_repository.mark_all_read(
                 db,
                 user_id=current_user.user_id,
-                read_at=datetime.utcnow(),
+                read_at=vietnam_now(),
             )
         else:
             updated_count = notification_repository.bulk_mark_read_state(
@@ -109,7 +110,7 @@ def update_read_state(
                 user_id=current_user.user_id,
                 notification_ids=payload.notification_ids or [],
                 is_read=payload.is_read,
-                read_at=datetime.utcnow() if payload.is_read else None,
+                read_at=vietnam_now() if payload.is_read else None,
             )
         db.commit()
     except Exception:
@@ -137,7 +138,7 @@ def get_notification(
     if not notification.is_read:
         try:
             notification.is_read = True
-            notification.read_at = datetime.utcnow()
+            notification.read_at = vietnam_now()
             db.commit()
             db.refresh(notification)
         except Exception:

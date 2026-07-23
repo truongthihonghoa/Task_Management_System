@@ -10,6 +10,7 @@ import {
   getCurrentUser,
   setCurrentUser,
 } from '../services/tokenStorage';
+import { getProfile } from "../api/profileApi";
 
 const AuthContext = createContext(null);
 
@@ -18,15 +19,27 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const login = useCallback(async ({ email, password, remember }) => {
-    setIsLoading(true);
-    try {
-      const response = await loginRequest({ email, password, remember });
-      setUser(response.user);
-      return response;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  setIsLoading(true);
+
+  try {
+    const response = await loginRequest({
+      email,
+      password,
+      remember,
+    });
+
+    // Lấy profile đầy đủ
+    const profile = await getProfile();
+
+    // Đồng bộ Context + Storage
+    setCurrentUser(profile);
+    setUser(profile);
+
+    return response;
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
 
   const register = useCallback(async ({ email, fullName, password, confirmPassword, remember }) => {
     setIsLoading(true);

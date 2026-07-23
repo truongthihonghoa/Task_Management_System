@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
@@ -20,11 +21,11 @@ class NotificationListResult:
 
 
 def notification_display_cutoff(now: datetime | None = None) -> datetime:
-    return (now or datetime.utcnow()) - timedelta(days=NOTIFICATION_DISPLAY_DAYS)
+    return (now or vietnam_now()) - timedelta(days=NOTIFICATION_DISPLAY_DAYS)
 
 
 def notification_retention_cutoff(now: datetime | None = None) -> datetime:
-    current = now or datetime.utcnow()
+    current = now or vietnam_now()
     month = current.month - NOTIFICATION_RETENTION_MONTHS
     year = current.year
     while month <= 0:

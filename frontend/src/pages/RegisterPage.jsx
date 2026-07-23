@@ -1,6 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { uploadRegistrationAvatar } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
+import { setCurrentUser } from '../services/tokenStorage';
+
+const AVATAR_ALLOWED_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
 function getErrorMessage(error) {
   const detail = error?.response?.data?.detail;
@@ -17,7 +22,8 @@ function getErrorMessage(error) {
 export default function CompleteAccount() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register } = useAuth();
+  const { register, setUser } = useAuth();
+  const avatarInputRef = useRef(null);
   const verifiedEmail = location.state?.email || '';
   const isVerified = Boolean(location.state?.verified);
 
@@ -26,6 +32,8 @@ export default function CompleteAccount() {
     password: '',
     confirmPassword: '',
   });
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,6 +58,12 @@ export default function CompleteAccount() {
     return () => window.clearTimeout(clearAutofill);
   }, []);
 
+  useEffect(() => () => {
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+  }, [avatarPreview]);
+
   const requirements = {
     length: formData.password.length >= 8,
     upper: /[A-Z]/.test(formData.password),
@@ -71,6 +85,43 @@ export default function CompleteAccount() {
   const handleInputChange = (e) => {
     const { id, value } = e.target;
     setFormData((prev) => ({ ...prev, [id]: value }));
+    setErrorMessage('');
+  };
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!AVATAR_ALLOWED_TYPES.has(file.type)) {
+      setErrorMessage('Avatar must be a JPG, PNG, or WEBP image.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > AVATAR_MAX_SIZE_BYTES) {
+      setErrorMessage('Avatar file size must be 5 MB or less.');
+      e.target.value = '';
+      return;
+    }
+
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setErrorMessage('');
+  };
+
+  const handleRemoveAvatar = () => {
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = '';
+    }
+    setAvatarFile(null);
+    setAvatarPreview('');
     setErrorMessage('');
   };
 
@@ -103,6 +154,18 @@ export default function CompleteAccount() {
         confirmPassword: formData.confirmPassword,
         remember: true,
       });
+
+      if (avatarFile) {
+        const avatarResponse = await uploadRegistrationAvatar(avatarFile);
+        const nextUser = {
+          ...(response.user || {}),
+          avatar_url: avatarResponse.avatar_url,
+        };
+        setCurrentUser(nextUser, { persist: true });
+        setUser(nextUser);
+        response.user = nextUser;
+      }
+
       setIsSuccess(true);
       setTimeout(() => {
         navigate(response.user?.role === 'SUPER_ADMIN' ? '/dashboard' : '/dashboard/spaces', { replace: true });
@@ -165,6 +228,49 @@ export default function CompleteAccount() {
             <form className="space-y-6" onSubmit={handleSubmit} autoComplete="off">
               <input className="hidden" type="text" name="fake-register-username" autoComplete="username" tabIndex={-1} aria-hidden="true" />
               <input className="hidden" type="password" name="fake-register-password" autoComplete="current-password" tabIndex={-1} aria-hidden="true" />
+              <div className="space-y-3">
+                <label className="text-[12px] font-medium text-[#434655] block" htmlFor="avatarFile">Avatar Photo</label>
+                <div className="flex items-center gap-4 rounded-lg border border-[#c3c6d7] bg-[#faf8ff] p-4">
+                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-[#c3c6d7] bg-[#ededf9] flex items-center justify-center text-[#4B3277]">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Avatar preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="material-symbols-outlined text-[30px]">account_circle</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <input
+                      ref={avatarInputRef}
+                      id="avatarFile"
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarChange}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        htmlFor="avatarFile"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#ededf9] px-3 py-2 text-[13px] font-semibold text-[#4B3277] transition-colors hover:bg-[#e2d8fb]"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">upload</span>
+                        Upload
+                      </label>
+                      {avatarPreview && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-lg border border-[#c3c6d7] px-3 py-2 text-[13px] font-semibold text-[#434655] transition-colors hover:bg-white"
+                          onClick={handleRemoveAvatar}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">close</span>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-[#737686]">Optional. JPG, PNG, or WEBP up to 5 MB.</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[12px] font-medium text-[#434655] block" htmlFor="fullName">Full Name</label>
                 <div className="relative">

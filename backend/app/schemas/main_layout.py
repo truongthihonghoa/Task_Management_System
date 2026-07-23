@@ -1,14 +1,6 @@
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
-
-
-class MainLayoutResponse(BaseModel):
-    data: dict[str, Any] = Field(default_factory=dict)
-
-
-class SidebarSummaryResponse(BaseModel):
-    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class MainLayoutPreferencesResponse(BaseModel):
@@ -83,3 +75,12 @@ class GlobalSearchResponse(BaseModel):
     spaces: list[GlobalSearchSpaceItem] = Field(default_factory=list)
     tasks: list[GlobalSearchTaskItem] = Field(default_factory=list)
     users: list[GlobalSearchUserItem] = Field(default_factory=list)
+
+
+class SearchRecentRequest(BaseModel):
+    entity_type: Literal["space", "task", "user"]
+    entity_id: str = Field(..., min_length=1, max_length=15)
+
+
+class SearchRecentDeleteResponse(BaseModel):
+    deleted_count: int

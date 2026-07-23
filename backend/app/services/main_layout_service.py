@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ from app.schemas.main_layout import (
 )
 
 SEARCH_TYPES = {"spaces", "tasks", "users"}
+RECENT_ENTITY_TYPES = {"space", "task", "user"}
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = {"en", "vi"}
 
@@ -137,7 +139,7 @@ def get_profile(user: User) -> UserProfileResponse:
 
 def update_profile(db: Session, *, user: User, payload: UpdateProfileRequest) -> UserProfileResponse:
     user.full_name = payload.full_name
-    user.updated_at = datetime.utcnow()
+    user.updated_at = vietnam_now()
     return UserProfileResponse.model_validate(user)
 
 
@@ -327,3 +329,25 @@ def global_search(
         ]
 
     return GlobalSearchResponse(query=query_text, spaces=spaces, tasks=tasks, users=users)
+
+
+def record_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> None:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    recent_view_repository.record_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
+
+def delete_search_recent(db: Session, *, user: User, entity_type: str, entity_id: str) -> int:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid recent view entity type.")
+    return recent_view_repository.delete_recent_view(
+        db,
+        user_id=user.user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from app.core.timezone import vietnam_now
 from types import SimpleNamespace
 
 import pytest
@@ -218,7 +219,7 @@ def test_delete_space_allows_archived_space_for_owner(monkeypatch):
 
 def test_unarchive_space_reopens_archived_space_for_owner(monkeypatch):
     created_at = datetime(2026, 7, 1, 9, 0, 0)
-    archived_at = datetime.utcnow()
+    archived_at = vietnam_now()
     owner = SimpleNamespace(user_id="USR00000003", status_user="Active")
     archived_space = SimpleNamespace(
         space_id="SPC00000002",
@@ -280,7 +281,7 @@ def test_unarchive_space_reopens_archived_space_for_owner(monkeypatch):
 
 def test_unarchive_space_rejects_expired_reopen_window(monkeypatch):
     owner = SimpleNamespace(user_id="USR00000003")
-    archived_at = datetime.utcnow() - timedelta(days=8)
+    archived_at = vietnam_now() - timedelta(days=8)
     archived_space = SimpleNamespace(
         space_id="SPC00000002",
         owner_id=owner.user_id,
@@ -305,9 +306,9 @@ def test_unarchive_space_rejects_deleted_space(monkeypatch):
         space_id="SPC00000002",
         owner_id=owner.user_id,
         status_space="Deleted",
-        archived_at=datetime.utcnow(),
+        archived_at=vietnam_now(),
         reopen_until=None,
-        deleted_at=datetime.utcnow(),
+        deleted_at=vietnam_now(),
     )
 
     monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: deleted_space)
@@ -325,7 +326,7 @@ def test_delete_space_rejects_already_deleted_space(monkeypatch):
         space_id="SPC00000002",
         owner_id=owner.user_id,
         status_space="Deleted",
-        deleted_at=datetime.utcnow(),
+        deleted_at=vietnam_now(),
     )
 
     monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: deleted_space)

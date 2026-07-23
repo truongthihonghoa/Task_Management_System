@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.core.timezone import vietnam_now
 
 from sqlalchemy import and_, func, or_
 from sqlalchemy.dialects.postgresql import insert
@@ -47,7 +48,7 @@ def record_recent_view(
     if entity_type not in RECENT_ENTITY_TYPES:
         raise ValueError("Invalid recent view entity type.")
 
-    now = viewed_at or datetime.utcnow()
+    now = viewed_at or vietnam_now()
     statement = (
         insert(RecentView)
         .values(
@@ -63,6 +64,29 @@ def record_recent_view(
     )
     db.execute(statement)
     db.commit()
+
+
+def delete_recent_view(
+    db: Session,
+    *,
+    user_id: str,
+    entity_type: str,
+    entity_id: str,
+) -> int:
+    if entity_type not in RECENT_ENTITY_TYPES:
+        raise ValueError("Invalid recent view entity type.")
+
+    deleted = (
+        db.query(RecentView)
+        .filter(
+            RecentView.user_id == user_id,
+            RecentView.entity_type == entity_type,
+            RecentView.entity_id == entity_id,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted)
 
 
 def list_recent_spaces(db: Session, *, user: User, limit: int) -> list[tuple[Space, int, datetime]]:
