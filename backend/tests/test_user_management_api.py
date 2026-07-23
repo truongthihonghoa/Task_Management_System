@@ -273,50 +273,81 @@ def test_update_user_updates_only_allowed_fields():
     assert user.updated_at > original_updated_at
 
 
-def test_activate_user_sets_status_active():
+def test_activate_user_sets_status_active(monkeypatch):
     user = make_user(status_user="Inactive")
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.update_user_status(db, user.user_id, "Active")
+    response = user_service.update_user_status(db, user.user_id, "Active", actor_id="USR00000001")
 
     assert response.status_user == "Active"
     assert user.status_user == "Active"
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["title"] == "User status changed"
+    assert notifications[0]["metadata"]["new_status"] == "Active"
 
 
-def test_deactivate_user_sets_status_inactive():
+def test_deactivate_user_sets_status_inactive(monkeypatch):
     user = make_user(status_user="Active")
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.update_user_status(db, user.user_id, "Inactive")
+    response = user_service.update_user_status(db, user.user_id, "Inactive", actor_id="USR00000001")
 
     assert response.status_user == "Inactive"
     assert user.status_user == "Inactive"
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["metadata"]["new_status"] == "Inactive"
 
 
 def test_lock_user_sets_status_and_locked_until(monkeypatch):
     monkeypatch.setattr(user_service, "ACCOUNT_LOCK_MINUTES", 15)
     user = make_user(status_user="Active", locked_until=None)
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
     before = datetime.utcnow()
 
-    response = user_service.update_user_lock_status(db, user.user_id, True)
+    response = user_service.update_user_lock_status(db, user.user_id, True, actor_id="USR00000001")
 
     after = datetime.utcnow()
     assert response.status_user == "Locked"
     assert user.status_user == "Locked"
     assert user.locked_until is not None
     assert before + timedelta(minutes=15) <= user.locked_until <= after + timedelta(minutes=15)
+    assert notifications[0]["notification_type"] == "account_locked"
+    assert notifications[0]["metadata"]["target_user"] == user.email
 
 
-def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
+def test_unlock_user_sets_active_resets_attempts_and_clears_lock(monkeypatch):
     user = make_user(
         status_user="Locked",
         failed_login_attempts=5,
         locked_until=datetime.utcnow() + timedelta(minutes=10),
     )
     db = FakeDb(users=[user])
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
-    response = user_service.update_user_lock_status(db, user.user_id, False)
+    response = user_service.update_user_lock_status(db, user.user_id, False, actor_id="USR00000001")
 
     assert response.status_user == "Active"
     assert response.failed_login_attempts == 0
@@ -324,6 +355,8 @@ def test_unlock_user_sets_active_resets_attempts_and_clears_lock():
     assert user.status_user == "Active"
     assert user.failed_login_attempts == 0
     assert user.locked_until is None
+    assert notifications[0]["notification_type"] == "user_deactivated"
+    assert notifications[0]["title"] == "Account unlocked"
 
 
 def test_user_response_never_exposes_password_hash():

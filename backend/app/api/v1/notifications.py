@@ -15,20 +15,16 @@ from app.repository import notification as notification_repository
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.notification import (
-    NotificationBulkIdsRequest,
     NotificationBulkUpdateResponse,
-    NotificationDeleteResponse,
     NotificationListResponse,
     NotificationReadStateRequest,
     NotificationResponse,
     NotificationUnreadCountResponse,
 )
-from app.services.notification_service import NotificationService
 
 
 NOTIFICATION_TAG = "notifications"
-router = APIRouter(prefix="/notifications", tags=["notifications"])
-notification_service = NotificationService()
+router = APIRouter(prefix="/notifications")
 
 
 @router.get(
@@ -120,51 +116,6 @@ def update_read_state(
         db.rollback()
         raise
     return NotificationBulkUpdateResponse(updated_count=updated_count)
-
-
-@router.delete(
-    "",
-    response_model=NotificationDeleteResponse,
-    tags=[NOTIFICATION_TAG],
-    summary="Bulk delete notifications",
-    description="Deletes selected notifications from the last 30 days for the authenticated user.",
-)
-def bulk_delete_notifications(
-    payload: NotificationBulkIdsRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationDeleteResponse:
-    try:
-        deleted_count = notification_repository.bulk_delete_notifications(
-            db,
-            user_id=current_user.user_id,
-            notification_ids=payload.notification_ids,
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationDeleteResponse(message="Notifications deleted.", deleted_count=deleted_count)
-
-
-@router.delete(
-    "/read",
-    response_model=NotificationDeleteResponse,
-    tags=[NOTIFICATION_TAG],
-    summary="Delete read notifications",
-    description="Deletes read notifications from the last 30 days for the authenticated user.",
-)
-def delete_read_notifications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationDeleteResponse:
-    try:
-        deleted_count = notification_repository.delete_read_notifications(db, user_id=current_user.user_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationDeleteResponse(message="Read notifications deleted.", deleted_count=deleted_count)
 
 
 @router.get(

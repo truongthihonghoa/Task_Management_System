@@ -6,8 +6,6 @@ from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.notification_preference import (
-    NotificationPreferenceListResponse,
-    NotificationPreferencePatchRequest,
     NotificationPreferenceResponse,
     NotificationPreferenceUpdateRequest,
 )
@@ -16,24 +14,6 @@ from app.services.notification_preference_service import NotificationPreferenceS
 
 router = APIRouter(prefix="/notification-preferences", tags=["notification preferences"])
 preference_service = NotificationPreferenceService()
-
-
-@router.get(
-    "",
-    response_model=NotificationPreferenceListResponse,
-    summary="Get current user's notification preferences",
-)
-def list_notification_preferences(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationPreferenceListResponse:
-    try:
-        preferences = preference_service.get_preferences_for_user(db, user=current_user)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return NotificationPreferenceListResponse(items=preferences)
 
 
 @router.get(
@@ -70,28 +50,6 @@ def update_notification_preference(
 ) -> NotificationPreferenceResponse:
     try:
         preference = preference_service.update_preference(db, user=current_user, scope=scope.value, payload=payload)
-        db.commit()
-        db.refresh(preference)
-    except Exception:
-        db.rollback()
-        raise
-    return preference
-
-
-@router.patch(
-    "/{scope}",
-    response_model=NotificationPreferenceResponse,
-    summary="Partially update notification preference by scope",
-    responses={403: {"description": "Permission denied"}},
-)
-def patch_notification_preference(
-    scope: NotificationPreferenceScope,
-    payload: NotificationPreferencePatchRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> NotificationPreferenceResponse:
-    try:
-        preference = preference_service.patch_preference(db, user=current_user, scope=scope.value, payload=payload)
         db.commit()
         db.refresh(preference)
     except Exception:

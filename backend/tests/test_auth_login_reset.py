@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.services import auth_service
 from app.repository.auth import PASSWORD_RESET
-from app.schemas.pydantic_models import EmailRequest, LoginRequest, ResetPasswordRequest
+from app.schemas.pydantic_models import EmailRequest, LoginRequest, RegisterRequest, ResetPasswordRequest
 
 
 class FakeDb:
@@ -132,9 +132,15 @@ def test_login_wrong_password_increments_failed_attempts(monkeypatch):
 def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     db = FakeDb()
     user = make_user(failed_login_attempts=auth_service.MAX_FAILED_LOGIN_ATTEMPTS - 1)
+    notifications = []
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
     monkeypatch.setattr(auth_service, "verify_password", lambda password, password_hash: False)
+    monkeypatch.setattr(
+        auth_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         auth_service.login(db, user.email, "Wrong@123")
@@ -142,6 +148,57 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
     assert_http_error(exc_info, 401, "Invalid email or password.")
     assert user.status_user == "Locked"
     assert user.locked_until is not None
+    assert notifications[0]["notification_type"] == "account_locked"
+    assert notifications[0]["metadata"]["email"] == user.email
+    assert db.commits == 1
+
+
+def test_register_notifies_super_admins(monkeypatch):
+    db = FakeDb()
+    now = datetime.utcnow()
+    token = make_token(
+        email="new.user@example.com",
+        token_type=auth_service.EMAIL_VERIFICATION,
+        expires_at=now + timedelta(minutes=15),
+        used_at=now,
+    )
+    user = make_user(
+        user_id="USR00000009",
+        full_name="New User",
+        email="new.user@example.com",
+        role="USER",
+    )
+    notifications = []
+
+    db.flush = lambda: None
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type=auth_service.EMAIL_VERIFICATION: token)
+    monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: None)
+    monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
+    monkeypatch.setattr(auth_service, "create_user", lambda _db, **kwargs: user)
+    monkeypatch.setattr(auth_service, "_materialize_accepted_space_invitations", lambda _db, created_user, received_now: None)
+    monkeypatch.setattr(auth_service, "create_access_token", lambda payload: ("access-token", now + timedelta(minutes=30)))
+    monkeypatch.setattr(auth_service, "create_refresh_token", lambda payload: ("refresh-token", now + timedelta(days=7)))
+    monkeypatch.setattr(auth_service, "create_user_token", lambda _db, **kwargs: None)
+    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: None)
+    monkeypatch.setattr(
+        auth_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
+
+    response = auth_service.register(
+        db,
+        RegisterRequest(
+            email=user.email,
+            full_name=user.full_name,
+            password="Password@123",
+            confirm_password="Password@123",
+        ),
+    )
+
+    assert response.email == user.email
+    assert notifications[0]["notification_type"] == "user_registered"
+    assert notifications[0]["metadata"]["email"] == user.email
     assert db.commits == 1
 
 

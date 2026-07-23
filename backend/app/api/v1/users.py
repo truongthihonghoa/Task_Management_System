@@ -242,6 +242,7 @@ def update_user_status(
             db,
             user_id,
             payload.status,
+            actor_id=current_user.user_id,
         )
 
         user_repo.create_user_audit_log(
@@ -276,6 +277,7 @@ def update_user_lock_status(
             db,
             user_id,
             payload.locked,
+            actor_id=current_user.user_id,
         )
 
         user_repo.create_user_audit_log(
