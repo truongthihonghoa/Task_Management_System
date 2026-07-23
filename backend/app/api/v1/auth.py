@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.core.email import send_verification_email
 from app.core.security import create_access_token, create_refresh_token, generate_otp, hash_password, verify_password
 
-from app.services.notification_service import NotificationService
 
 from app.services import auth_service, user_service
 from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  
@@ -51,9 +50,6 @@ from app.services import auth_service
 from app.services.auth_service import MAX_FAILED_LOGIN_ATTEMPTS, ACCOUNT_LOCK_MINUTES  # noqa: F401 — re-exported for tests
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-router = APIRouter(prefix="/auth", tags=["auth"])
-notification_service = NotificationService()
 
 
 @router.post("/check-email", response_model=MessageResponse, status_code=200)

@@ -4,6 +4,7 @@ user_service.py — Business logic for user management and profiles.
 
 import os
 import uuid
+import logging
 from datetime import datetime, timedelta
 from app.core.timezone import vietnam_now
 from pathlib import Path
@@ -26,12 +27,22 @@ from app.schemas.pydantic_models import (
     UserStatusUpdateRequest,
     UserLockUpdateRequest,
 )
+from app.services.notification_service import NotificationService
 
 SUPPORTED_STATUSES = {"Pending", "Active", "Inactive", "Locked"}
 SORT_FIELDS = {"created_at", "full_name", "email", "last_login"}
 READ_ONLY_UPDATE_FIELDS = {"email", "full_name", "password_hash"}
 ALLOWED_UPDATE_FIELDS = {"status", "is_verified", "failed_login_attempts", "locked_until"}
 ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "15"))
+logger = logging.getLogger(__name__)
+notification_service = NotificationService()
+
+
+def _notify_super_admins(db: Session, **kwargs) -> None:
+    try:
+        notification_service.create_super_admin_notification(db, **kwargs)
+    except Exception:
+        logger.exception("Unable to create super admin user-management notification.")
 
 
 def _user_response(user: User) -> UserManagementResponse:
@@ -142,6 +153,7 @@ def update_user_status(
     db: Session,
     user_id: str,
     new_status: str,
+    actor_id: str | None = None,
 ) -> UserManagementResponse:
     if new_status not in {"Active", "Inactive"}:
         raise HTTPException(
@@ -150,12 +162,28 @@ def update_user_status(
         )
 
     user = get_user_or_404(db, user_id)
+    previous_status = user.status_user
 
     user_repo.update_user_fields(
         db,
         user,
         {"status_user": new_status},
     )
+    if previous_status != new_status:
+        _notify_super_admins(
+            db,
+            notification_type="user_deactivated",
+            title="User status changed",
+            message=f"User {user.email} status changed from {previous_status} to {new_status}.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "new_status": new_status,
+            },
+        )
 
     return _user_response(user)
 
@@ -163,9 +191,11 @@ def update_user_lock_status(
     db: Session,
     user_id: str,
     locked: bool,
+    actor_id: str | None = None,
 ) -> UserManagementResponse:
 
     user = get_user_or_404(db, user_id)
+    previous_status = user.status_user
 
     if locked:
         locked_until = vietnam_now() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
@@ -178,6 +208,20 @@ def update_user_lock_status(
                 "locked_until": locked_until,
             },
         )
+        _notify_super_admins(
+            db,
+            notification_type="account_locked",
+            title="Account locked",
+            message=f"User {user.email} account was locked by a Super Admin.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "locked_until": locked_until.isoformat(),
+            },
+        )
     else:
         user_repo.update_user_fields(
             db,
@@ -186,6 +230,20 @@ def update_user_lock_status(
                 "status_user": "Active",
                 "failed_login_attempts": 0,
                 "locked_until": None,
+            },
+        )
+        _notify_super_admins(
+            db,
+            notification_type="user_deactivated",
+            title="Account unlocked",
+            message=f"User {user.email} account was unlocked and set to Active.",
+            actor_id=actor_id,
+            metadata={
+                "user_id": user.user_id,
+                "email": user.email,
+                "target_user": user.email,
+                "previous_status": previous_status,
+                "new_status": "Active",
             },
         )
 

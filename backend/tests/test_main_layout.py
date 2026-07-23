@@ -84,7 +84,7 @@ def test_openapi_keeps_only_backend_owned_main_layout_routes():
     assert "/api/v1/me/preferences/language" in openapi["paths"]
     assert "/api/v1/me/profile" in openapi["paths"]
     assert "/api/v1/me/spaces/{space_id}/context" in openapi["paths"]
-    assert openapi["paths"]["/api/v1/me/preferences"]["get"]["tags"] == ["Current User"]
+    assert openapi["paths"]["/api/v1/me/preferences"]["get"]["tags"] == ["current user"]
 
 
 def test_get_preferences_uses_default_when_missing(monkeypatch):

@@ -15,7 +15,7 @@ from app.schemas.pydantic_models import UpdateProfileRequest, UserProfileRespons
 from app.services import main_layout_service
 
 
-router = APIRouter(prefix="/main-layout", tags=["main layout"])
+router = APIRouter(prefix="/me", tags=["current user"])
 
 
 @router.get("", response_model=MainLayoutResponse)

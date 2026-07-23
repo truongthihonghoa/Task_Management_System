@@ -149,6 +149,7 @@ def make_notification(**overrides):
         "read_at": None,
         "created_at": datetime(2026, 7, 10, 8, 0, 0),
         "actor": make_user("USR00000002"),
+        "task": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -240,6 +241,22 @@ def test_system_notification_can_have_null_actor():
 
     assert response.actor is None
     assert response.actor_id is None
+
+
+def test_notification_response_includes_task_sprint_summary():
+    response = NotificationResponse.model_validate(
+        make_notification(
+            task=SimpleNamespace(
+                task_id="TSK00000012",
+                title="Detail Task Screen",
+                sprint=SimpleNamespace(name="SCRUM Sprint 2"),
+            )
+        )
+    )
+
+    assert response.task.task_id == "TSK00000012"
+    assert response.task.title == "Detail Task Screen"
+    assert response.task.sprint_name == "SCRUM Sprint 2"
 
 
 def test_list_filters_are_forwarded_to_repository(monkeypatch):
@@ -339,7 +356,6 @@ def test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoi
     app.openapi_schema = None
     openapi = app.openapi()
     notifications_path = openapi["paths"]["/api/v1/notifications"]
-    read_path = openapi["paths"]["/api/v1/notifications/read"]
     detail_path = openapi["paths"]["/api/v1/notifications/{notification_id}"]
     page_size_param = next(
         param
@@ -349,20 +365,19 @@ def test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoi
 
     assert schema is None
     assert "post" not in notifications_path
+    assert "delete" not in notifications_path
     assert page_size_param["schema"]["maximum"] == 100
     assert "patch" in openapi["paths"]["/api/v1/notifications/read-state"]
     assert "/api/v1/notifications/read-all" not in openapi["paths"]
-    assert "patch" not in read_path
+    assert "/api/v1/notifications/read" not in openapi["paths"]
     assert "patch" not in detail_path
     assert "/api/v1/notifications/{notification_id}/read" not in openapi["paths"]
     assert "/api/v1/notifications/{notification_id}/unread" not in openapi["paths"]
-    assert notifications_path["get"]["tags"] == ["Notifications"]
-    assert openapi["paths"]["/api/v1/notifications/unread-count"]["get"]["tags"] == ["Notifications"]
-    assert detail_path["get"]["tags"] == ["Notifications"]
-    assert openapi["paths"]["/api/v1/notifications/read-state"]["patch"]["tags"] == ["Notifications"]
-    assert notifications_path["delete"]["tags"] == ["Notifications"]
-    assert read_path["delete"]["tags"] == ["Notifications"]
-    assert detail_path["delete"]["tags"] == ["Notifications"]
+    assert notifications_path["get"]["tags"] == ["notifications"]
+    assert openapi["paths"]["/api/v1/notifications/unread-count"]["get"]["tags"] == ["notifications"]
+    assert detail_path["get"]["tags"] == ["notifications"]
+    assert openapi["paths"]["/api/v1/notifications/read-state"]["patch"]["tags"] == ["notifications"]
+    assert detail_path["delete"]["tags"] == ["notifications"]
 
 
 def test_get_notification_marks_unread_notification_as_read(monkeypatch):
@@ -485,33 +500,6 @@ def test_delete_single_returns_204_and_other_user_returns_404(monkeypatch):
     assert exc_info.value.status_code == 404
 
 
-def test_delete_read_and_bulk_delete_use_current_user(monkeypatch):
-    captured_read = {}
-    captured_bulk = {}
-    monkeypatch.setattr(
-        notification_api.notification_repository,
-        "delete_read_notifications",
-        lambda _db, **kwargs: captured_read.update(kwargs) or 3,
-    )
-    monkeypatch.setattr(
-        notification_api.notification_repository,
-        "bulk_delete_notifications",
-        lambda _db, **kwargs: captured_bulk.update(kwargs) or 2,
-    )
-
-    read_response = notification_api.delete_read_notifications(db=FakeDb(), current_user=make_user("USR00000008"))
-    bulk_response = notification_api.bulk_delete_notifications(
-        NotificationBulkIdsRequest(notification_ids=["NTF00000001"]),
-        db=FakeDb(),
-        current_user=make_user("USR00000008"),
-    )
-
-    assert read_response.deleted_count == 3
-    assert bulk_response.deleted_count == 2
-    assert captured_read["user_id"] == "USR00000008"
-    assert captured_bulk["user_id"] == "USR00000008"
-
-
 def test_preference_scopes_for_user_owner_and_super_admin():
     service = NotificationPreferenceService()
 
@@ -583,7 +571,7 @@ def test_preference_put_patch_and_reset(monkeypatch):
         scope="USER_ACCOUNT",
         payload=NotificationPreferenceUpdateRequest(
             email_enabled=False,
-            email_frequency="DAILY_DIGEST",
+            email_frequency="INSTANT",
             email_settings={"task_assigned": True},
             app_settings={"task_assigned": False},
         ),
@@ -597,9 +585,19 @@ def test_preference_put_patch_and_reset(monkeypatch):
     service.reset_preference(FakeDb(), user=make_user(), scope="USER_ACCOUNT")
 
     assert updates[0]["email_enabled"] is False
-    assert updates[0]["email_frequency"] == "DAILY_DIGEST"
+    assert updates[0]["email_frequency"] == "INSTANT"
     assert updates[1]["app_settings"] == {"task_assigned": True, "comment_added": False}
     assert updates[2]["app_settings"]["owner_space_update"] is True
+
+
+def test_preference_update_rejects_digest_until_digest_jobs_exist():
+    with pytest.raises(ValidationError):
+        NotificationPreferenceUpdateRequest(
+            email_enabled=True,
+            email_frequency="DAILY_DIGEST",
+            email_settings={"task_assigned": True},
+            app_settings={"task_assigned": True},
+        )
 
 
 def test_preference_validation_rejects_bad_frequency_settings_shape_value_and_scope_key():
@@ -658,12 +656,20 @@ def test_owner_can_enable_owner_space_update_without_owning_a_space(monkeypatch)
 
 
 def test_preference_api_never_accepts_user_id_from_client():
-    openapi = __import__("app.main", fromlist=["app"]).app.openapi()
-    request_ref = openapi["paths"]["/api/v1/notification-preferences/{scope}"]["put"]["requestBody"]["content"][
+    app = __import__("app.main", fromlist=["app"]).app
+    app.openapi_schema = None
+    openapi = app.openapi()
+    preferences_path = openapi["paths"]["/api/v1/notification-preferences/{scope}"]
+    request_ref = preferences_path["put"]["requestBody"]["content"][
         "application/json"
     ]["schema"]["$ref"]
     schema_name = request_ref.rsplit("/", 1)[-1]
 
+    assert "/api/v1/notification-preferences" not in openapi["paths"]
+    assert "get" in preferences_path
+    assert "put" in preferences_path
+    assert "patch" not in preferences_path
+    assert "post" in openapi["paths"]["/api/v1/notification-preferences/{scope}/reset"]
     assert "user_id" not in openapi["components"]["schemas"][schema_name]["properties"]
 
 
@@ -863,6 +869,139 @@ def test_notification_service_does_not_send_email_when_email_setting_disabled(mo
 
     assert notification is not None
     assert sent == []
+
+
+def test_notification_service_does_not_send_email_when_email_frequency_off(monkeypatch):
+    service = NotificationService()
+    db = FakeDb(
+        {
+            ("User", "USR00000001"): make_user("USR00000001"),
+            ("User", "USR00000002"): make_user("USR00000002"),
+        }
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        "app.services.notification_service.preference_repository.get_preference",
+        lambda _db, user_id, scope: make_preference(
+            user_id=user_id,
+            email_enabled=True,
+            email_frequency="OFF",
+            email_settings={"task_assigned": True},
+            app_settings={"task_assigned": True},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.notification_repository.create_notification",
+        lambda _db, **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.send_notification_email",
+        lambda email, **kwargs: sent.append((email, kwargs)),
+    )
+
+    notification = service.create_notification(
+        db,
+        user_id="USR00000001",
+        actor_id="USR00000002",
+        notification_type="task_assigned",
+        title="Task assigned",
+        message="A task was assigned.",
+    )
+
+    assert notification is not None
+    assert sent == []
+
+
+def test_notification_service_does_not_send_email_when_email_globally_disabled(monkeypatch):
+    service = NotificationService()
+    db = FakeDb(
+        {
+            ("User", "USR00000001"): make_user("USR00000001"),
+            ("User", "USR00000002"): make_user("USR00000002"),
+        }
+    )
+    sent = []
+
+    monkeypatch.setattr(
+        "app.services.notification_service.preference_repository.get_preference",
+        lambda _db, user_id, scope: make_preference(
+            user_id=user_id,
+            email_enabled=False,
+            email_frequency="INSTANT",
+            email_settings={"task_assigned": True},
+            app_settings={"task_assigned": True},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.notification_repository.create_notification",
+        lambda _db, **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.send_notification_email",
+        lambda email, **kwargs: sent.append((email, kwargs)),
+    )
+
+    notification = service.create_notification(
+        db,
+        user_id="USR00000001",
+        actor_id="USR00000002",
+        notification_type="task_assigned",
+        title="Task assigned",
+        message="A task was assigned.",
+    )
+
+    assert notification is not None
+    assert sent == []
+
+
+def test_notification_service_sends_email_when_app_notification_disabled(monkeypatch):
+    service = NotificationService()
+    db = FakeDb(
+        {
+            ("User", "USR00000001"): make_user("USR00000001"),
+            ("User", "USR00000002"): make_user("USR00000002"),
+        }
+    )
+    created = []
+    sent = []
+
+    monkeypatch.setattr(
+        "app.services.notification_service.preference_repository.get_preference",
+        lambda _db, user_id, scope: make_preference(
+            user_id=user_id,
+            email_enabled=True,
+            email_frequency="INSTANT",
+            email_settings={"task_assigned": True},
+            app_settings={"task_assigned": False},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.notification_repository.create_notification",
+        lambda _db, **kwargs: created.append(kwargs) or SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "app.services.notification_service.send_notification_email",
+        lambda email, **kwargs: sent.append((email, kwargs)),
+    )
+
+    notification = service.create_notification(
+        db,
+        user_id="USR00000001",
+        actor_id="USR00000002",
+        notification_type="task_assigned",
+        title="Task assigned",
+        message="A task was assigned.",
+    )
+
+    assert notification is None
+    assert created == []
+    assert sent == [
+        (
+            "usr00000001@example.com",
+            {"title": "Task assigned", "message": "A task was assigned."},
+        )
+    ]
 
 
 def test_owner_space_update_requires_recipient_to_own_space(monkeypatch):

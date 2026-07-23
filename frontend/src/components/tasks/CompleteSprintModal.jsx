@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 
-const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount, openTasksCount }) => {
+const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount, openTasksCount, onComplete }) => {
   if (!isOpen) return null;
 
   const hasOpenIssues = openTasksCount > 0;
@@ -76,9 +76,9 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
             Cancel
           </button>
           <button 
-            onClick={() => {
+            onClick={async () => {
               if (!hasOpenIssues) {
-                onClose();
+                await onComplete?.();
               }
             }}
             disabled={hasOpenIssues}

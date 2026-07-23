@@ -40,7 +40,7 @@ class NotificationService:
             return preference
         return self.preference_service.ensure_preference(db, user_id=user_id, scope=scope)
 
-    def _can_create_for_recipient(
+    def _can_notify_recipient(
         self,
         db: Session,
         *,
@@ -66,14 +66,15 @@ class NotificationService:
                     extra={"recipient_id": recipient.user_id, "space_id": space_id},
                 )
                 return False
+        return True
 
-        preference = self._get_or_create_preference(db, user_id=recipient.user_id, scope=scope)
+    def _app_enabled_for_notification(self, preference, *, notification_type: str, scope: str) -> bool:
         defaults = default_preference_values(scope)["app_settings"]
         app_settings = {**defaults, **(preference.app_settings or {})}
         if app_settings.get(notification_type, defaults.get(notification_type, True)) is False:
             logger.info(
                 "notification skipped by app preference",
-                extra={"notification_type": notification_type, "recipient_id": recipient.user_id},
+                extra={"notification_type": notification_type, "recipient_id": preference.user_id},
             )
             return False
         return True
@@ -156,7 +157,7 @@ class NotificationService:
         if notification_type in OWNER_LEVEL_TYPES and audience != NotificationAudience.OWNER.value:
             audience = NotificationAudience.OWNER.value
 
-        if not self._can_create_for_recipient(
+        if not self._can_notify_recipient(
             db,
             recipient=recipient,
             notification_type=notification_type,
@@ -165,31 +166,45 @@ class NotificationService:
             return None
         scope = preference_scope_for_type(notification_type)
         preference = self._get_or_create_preference(db, user_id=recipient.user_id, scope=scope)
+        app_enabled = self._app_enabled_for_notification(
+            preference,
+            notification_type=notification_type,
+            scope=scope,
+        )
+        email_enabled = self._email_enabled_for_notification(
+            preference,
+            notification_type=notification_type,
+            scope=scope,
+        )
+        if not app_enabled and not email_enabled:
+            return None
 
-        notification = notification_repository.create_notification(
-            db,
-            user_id=user_id,
-            actor_id=actor_id,
-            task_id=task_id,
-            space_id=space_id,
-            type=notification_type,
-            title=title,
-            message=message,
-            audience=audience,
-            metadata_=metadata,
-            is_read=False,
-            read_at=None,
-        )
-        logger.info(
-            "notification created",
-            extra={
-                "notification_type": notification_type,
-                "recipient_id": user_id,
-                "actor_id": actor_id,
-                "task_id": task_id,
-                "space_id": space_id,
-            },
-        )
+        notification = None
+        if app_enabled:
+            notification = notification_repository.create_notification(
+                db,
+                user_id=user_id,
+                actor_id=actor_id,
+                task_id=task_id,
+                space_id=space_id,
+                type=notification_type,
+                title=title,
+                message=message,
+                audience=audience,
+                metadata_=metadata,
+                is_read=False,
+                read_at=None,
+            )
+            logger.info(
+                "notification created",
+                extra={
+                    "notification_type": notification_type,
+                    "recipient_id": user_id,
+                    "actor_id": actor_id,
+                    "task_id": task_id,
+                    "space_id": space_id,
+                },
+            )
         self._send_email_if_enabled(
             recipient=recipient,
             preference=preference,
@@ -275,29 +290,37 @@ class NotificationService:
 
             preference = preferences.get(user_id)
             app_settings = {**defaults, **((preference.app_settings if preference else None) or {})}
-            if app_settings.get(notification_type, defaults.get(notification_type, True)) is False:
-                continue
-
-            notification = notification_repository.create_notification(
-                db,
-                user_id=user_id,
-                actor_id=actor_id,
-                task_id=task_id,
-                space_id=space_id,
-                type=notification_type,
-                title=title,
-                message=message,
-                audience=audience,
-                metadata_=metadata,
-                is_read=False,
-                read_at=None,
-            )
-            created.append(notification)
+            app_enabled = app_settings.get(notification_type, defaults.get(notification_type, True)) is True
             email_preference = preference or SimpleNamespace(
+                user_id=user_id,
                 email_enabled=default_preference_values(scope)["email_enabled"],
                 email_frequency=default_preference_values(scope)["email_frequency"],
                 email_settings=email_defaults,
             )
+            email_enabled = self._email_enabled_for_notification(
+                email_preference,
+                notification_type=notification_type,
+                scope=scope,
+            )
+            if not app_enabled and not email_enabled:
+                continue
+
+            if app_enabled:
+                notification = notification_repository.create_notification(
+                    db,
+                    user_id=user_id,
+                    actor_id=actor_id,
+                    task_id=task_id,
+                    space_id=space_id,
+                    type=notification_type,
+                    title=title,
+                    message=message,
+                    audience=audience,
+                    metadata_=metadata,
+                    is_read=False,
+                    read_at=None,
+                )
+                created.append(notification)
             self._send_email_if_enabled(
                 recipient=recipient,
                 preference=email_preference,

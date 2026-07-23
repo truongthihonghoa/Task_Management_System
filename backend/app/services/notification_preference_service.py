@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.notification_constants import (
+    NotificationEmailFrequency,
     NotificationPreferenceScope,
     SETTINGS_KEYS_BY_SCOPE,
     default_preference_values,
@@ -16,6 +17,11 @@ from app.schemas.notification_preference import (
 
 
 class NotificationPreferenceService:
+    supported_email_frequencies = {
+        NotificationEmailFrequency.INSTANT.value,
+        NotificationEmailFrequency.OFF.value,
+    }
+
     def allowed_scopes_for_user(self, user: User) -> list[str]:
         scopes = [NotificationPreferenceScope.USER_ACCOUNT.value]
         if user.role == "SUPER_ADMIN":
@@ -46,6 +52,17 @@ class NotificationPreferenceService:
             )
 
         return dict(settings)
+
+    def validate_email_frequency(self, frequency: NotificationEmailFrequency) -> NotificationEmailFrequency:
+        if frequency.value not in self.supported_email_frequencies:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Digest email delivery is not available yet. Use INSTANT or OFF.",
+                    "supported_values": sorted(self.supported_email_frequencies),
+                },
+            )
+        return frequency
 
     def ensure_preference(self, db: Session, *, user_id: str, scope: str) -> NotificationPreference:
         preference = preference_repository.get_preference(db, user_id=user_id, scope=scope)
@@ -84,12 +101,13 @@ class NotificationPreferenceService:
         self.ensure_scope_access(user, scope)
         email_settings = self.validate_settings(scope, dict(payload.email_settings))
         app_settings = self.validate_settings(scope, dict(payload.app_settings))
+        email_frequency = self.validate_email_frequency(payload.email_frequency)
         preference = self.ensure_preference(db, user_id=user.user_id, scope=scope)
         return preference_repository.update_preference(
             db,
             preference,
             email_enabled=payload.email_enabled,
-            email_frequency=payload.email_frequency.value,
+            email_frequency=email_frequency.value,
             email_settings=email_settings,
             app_settings=app_settings,
         )
@@ -130,6 +148,8 @@ class NotificationPreferenceService:
             }
 
         email_frequency = update_data.get("email_frequency")
+        if email_frequency is not None:
+            email_frequency = self.validate_email_frequency(email_frequency)
         return preference_repository.update_preference(
             db,
             preference,
