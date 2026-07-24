@@ -24,7 +24,6 @@ def test_assignment_routes_are_documented_under_task_management():
     assert task_management_operations == [
         ("post", "/api/v1/spaces/{space_id}/tasks", "Create Task"),
         ("get", "/api/v1/spaces/{space_id}/tasks", "List Tasks"),
-        ("post", "/api/v1/spaces/{space_id}/tasks/with-attachments", "Create Task With Attachments"),
         ("post", "/api/v1/tasks/{task_id}/assignees", "Assign Task Assignees"),
         ("get", "/api/v1/tasks/{task_id}/assignees", "Get Task Assignees"),
         ("put", "/api/v1/tasks/{task_id}/assignees", "Reassign Task Assignee"),
@@ -35,7 +34,6 @@ def test_assignment_routes_are_documented_under_task_management():
         ("get", "/api/v1/tasks/{task_id}", "Get Task Detail"),
         ("patch", "/api/v1/tasks/{task_id}", "Update Task"),
         ("delete", "/api/v1/tasks/{task_id}", "Delete Task"),
-        ("post", "/api/v1/tasks/{task_id}/restore", "Restore Task"),
     ]
 
 
@@ -269,6 +267,11 @@ def test_create_task_uploads_attachments_after_task_is_created(monkeypatch):
     )
     monkeypatch.setattr(task_management_service, "_get_task_or_404", lambda received_db, task_id: refreshed)
     monkeypatch.setattr(task_management_service, "_build_task_detail_response", lambda task: task)
+    monkeypatch.setattr(
+        task_management_service.sprint_service,
+        "apply_sprint_automation",
+        lambda received_db, space_id: calls.append(("automation", received_db, space_id)),
+    )
 
     response = task_management_service.create_task(
         db,
@@ -290,6 +293,7 @@ def test_create_task_uploads_attachments_after_task_is_created(monkeypatch):
             "TSK00000007",
             {"usage": "attachment", "file": upload, "current_user": user},
         ),
+        ("automation", db, "SPC00000002"),
     ]
 
 
