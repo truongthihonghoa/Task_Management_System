@@ -147,8 +147,6 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
         {"status": "Active"},
         {"status": "Inactive"},
         {"status": "Locked"},
-        {"role": "SUPER_ADMIN"},
-        {"role": "USER"},
         {"is_verified": True},
         {"is_verified": False},
         {"failed_login_attempts": 0},
@@ -157,7 +155,6 @@ def test_validate_pagination_rejects_invalid_values(page, page_size, message):
         {"locked_until": None},
         {
             "status": "Locked",
-            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
             "locked_until": vietnam_now(),
@@ -179,8 +176,10 @@ def test_validate_update_payload_accepts_allowed_fields(payload):
             {"email": "new@example.com", "full_name": "New Name"},
             "Read-only fields cannot be modified after registration: email, full_name",
         ),
-        ({"role": "OWNER"}, "Invalid role value"),
-        ({"role": "super_admin"}, "Invalid role value"),
+        ({"role": "SUPER_ADMIN"}, "Invalid update fields: role"),
+        ({"role": "USER"}, "Invalid update fields: role"),
+        ({"role": "OWNER"}, "Invalid update fields: role"),
+        ({"role": "super_admin"}, "Invalid update fields: role"),
         ({"avatar_url": "https://example.com/a.png"}, "Invalid update fields: avatar_url"),
         ({"status": "Deleted"}, "Invalid status value"),
         ({"status": "active"}, "Invalid status value"),
@@ -267,7 +266,6 @@ def test_update_user_updates_only_allowed_fields():
         user.user_id,
         {
             "status": "Locked",
-            "role": "SUPER_ADMIN",
             "is_verified": True,
             "failed_login_attempts": 5,
             "locked_until": locked_until,
@@ -275,7 +273,7 @@ def test_update_user_updates_only_allowed_fields():
     )
 
     assert response.status_user == "Locked"
-    assert response.role == "SUPER_ADMIN"
+    assert response.role == "USER"
     assert response.is_verified is True
     assert response.failed_login_attempts == 5
     assert response.locked_until == locked_until
@@ -326,15 +324,15 @@ def test_lock_user_sets_status_and_locked_until(monkeypatch):
     monkeypatch.setattr(user_service, "ACCOUNT_LOCK_MINUTES", 15)
     user = make_user(status_user="Active", locked_until=None)
     db = FakeDb(users=[user])
-    
-notifications = []
-monkeypatch.setattr(
-    user_service.notification_service,
-    "create_super_admin_notification",
-    lambda _db, **kwargs: notifications.append(kwargs),
-)
 
-before = vietnam_now()
+    notifications = []
+    monkeypatch.setattr(
+        user_service.notification_service,
+        "create_super_admin_notification",
+        lambda _db, **kwargs: notifications.append(kwargs),
+    )
+
+    before = vietnam_now()
 
     response = user_service.update_user_lock_status(db, user.user_id, True, actor_id="USR00000001")
 
