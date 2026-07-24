@@ -957,7 +957,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined " style={{ color: '#4C2B74', fontSize: '25px' }}>task_alt</span>
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              {task.id} / {task.sprint || 'Development'}
+              {task.displayId || task.id} / {task.sprint || 'Development'}
             </span>
           </div>
           <div className="flex items-center gap-1">
