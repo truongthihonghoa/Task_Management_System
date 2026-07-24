@@ -18,6 +18,20 @@ const formatDateValue = (year, month, day) => {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
+const isValidStoryPointsInput = (value) => {
+  if (value === '') return true;
+  const points = Number(value);
+  return Number.isFinite(points) && points >= 0;
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail || error?.response?.data?.message;
+  if (Array.isArray(detail)) {
+    return detail.map(item => item?.msg || String(item)).join(', ') || fallback;
+  }
+  return detail || error?.message || fallback;
+};
+
 const getInitialFormData = (spaceName = 'Task Management') => ({
   space: spaceName,
   status: 'New',
@@ -329,6 +343,11 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'storyPoints' && !isValidStoryPointsInput(value)) {
+      setErrors(prev => ({ ...prev, storyPoints: 'Story points must be 0 or greater.' }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
@@ -337,12 +356,24 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
     if (name === 'summary' && value.trim()) {
       setErrors(prev => ({ ...prev, summary: null }));
     }
+    if (name === 'storyPoints') {
+      setErrors(prev => ({ ...prev, storyPoints: null }));
+    }
   };
 
   const handleCreate = async () => {
     if (isSubmitting) return;
+    const storyPointsValue = formData.storyPoints === '' ? 0 : Number(formData.storyPoints);
+    const nextErrors = {};
+
     if (!formData.summary.trim()) {
-      setErrors({ summary: 'Summary is required' });
+      nextErrors.summary = 'Summary is required';
+    }
+    if (!Number.isFinite(storyPointsValue) || storyPointsValue < 0) {
+      nextErrors.storyPoints = 'Story points must be 0 or greater.';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
     setSubmitError('');
@@ -351,7 +382,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
       try {
         await onCreateTask(formData);
       } catch (error) {
-        setSubmitError(error?.message || 'Unable to create this task.');
+        setSubmitError(getApiErrorMessage(error, 'Unable to create this task.'));
         setIsSubmitting(false);
         return;
       }
@@ -380,9 +411,6 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
         <div className="modal-header">
           <h2>Create Task</h2>
           <div className="header-actions">
-            <button className="header-btn" title="Maximize">
-              <i data-lucide="maximize-2" className="w-4 h-4 text-gray-500"></i>
-            </button>
             <button className="header-btn" onClick={handleClose} title="Close">
               <i data-lucide="x" className="w-4 h-4 text-gray-500"></i>
             </button>
@@ -744,12 +772,30 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
             <input 
               type="number" 
               name="storyPoints" 
-              className="input-custom" 
+              className={`input-custom ${errors.storyPoints ? 'input-error' : ''}`}
               placeholder="0"
               min="0"
+              step="any"
               value={formData.storyPoints}
               onChange={handleInputChange}
+              onKeyDown={(event) => {
+                if (['-', '+', 'e', 'E'].includes(event.key)) {
+                  event.preventDefault();
+                }
+              }}
+              onPaste={(event) => {
+                const pastedValue = event.clipboardData.getData('text');
+                if (!isValidStoryPointsInput(pastedValue)) {
+                  event.preventDefault();
+                  setErrors(prev => ({ ...prev, storyPoints: 'Story points must be 0 or greater.' }));
+                }
+              }}
             />
+            {errors.storyPoints && (
+              <p className="error-message">
+                {errors.storyPoints}
+              </p>
+            )}
             <p className="text-[11px] text-gray-400 mt-1 ml-1 font-medium italic">Measurement of complexity and/or size of a requirement.</p>
           </div>
 

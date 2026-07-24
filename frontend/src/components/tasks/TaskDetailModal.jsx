@@ -4,6 +4,7 @@ import axiosClient, { API_BASE_URL } from '../../api/axiosClient';
 import RichTextEditor from './RichTextEditor';
 
 const getCompletedDateValue = (task = {}) => task.completed_at || task.completedAt || task.date;
+const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
 const formatCompletedDate = (value, fallback = 'Jun 26, 2026') => {
   if (!value) return fallback;
@@ -17,19 +18,16 @@ const formatCompletedDate = (value, fallback = 'Jun 26, 2026') => {
 const formatTimelineDateTime = (value, fallback = '2 mins ago') => {
   if (!value) return fallback;
 
-  const normalizedValue = typeof value === 'string' &&
-    value.includes('T') &&
-    !/(Z|[+-]\d{2}:?\d{2})$/.test(value)
-    ? `${value}Z`
-    : value;
-  const date = new Date(normalizedValue);
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
   return `${date.toLocaleDateString('en-US', {
+    timeZone: VIETNAM_TIME_ZONE,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   })} ${date.toLocaleTimeString('en-US', {
+    timeZone: VIETNAM_TIME_ZONE,
     hour: 'numeric',
     minute: '2-digit',
   })}`;
@@ -101,13 +99,6 @@ const resolveMediaUrl = (url) => {
 };
 
 const normalizeApiDateValue = (value) => {
-  if (
-    typeof value === 'string' &&
-    value.includes('T') &&
-    !/(Z|[+-]\d{2}:?\d{2})$/.test(value)
-  ) {
-    return `${value}Z`;
-  }
   return value;
 };
 
@@ -115,7 +106,12 @@ const formatApiDate = (value, fallback = '') => {
   if (!value) return fallback;
   const date = new Date(normalizeApiDateValue(value));
   if (Number.isNaN(date.getTime())) return fallback || value;
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString('en-US', {
+    timeZone: VIETNAM_TIME_ZONE,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 };
 
 const getApiErrorMessage = (error, fallback) => {
@@ -199,8 +195,19 @@ function formatFileSizeValue(bytes = 0) {
   return `${bytes} B`;
 }
 
-
-export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOptions = [], onUpdateTask, onAddAssignee, onRemoveAssignee, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
+export default function TaskDetailModal({
+  task,
+  onClose,
+  tasks = [],
+  assigneeOptions = [],
+  onUpdateTask,
+  onAddAssignee,
+  onRemoveAssignee,
+  currentRole = 'ADMIN',
+  currentSpaceRole = 'USER',
+  currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' },
+  readOnly = false,
+}) {
   const [activeTab, setActiveTab] = useState('comments');
   const [commentText, setCommentText] = useState('');
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -272,7 +279,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   const currentUserName = currentUser?.name || currentUser?.authorName || 'Unknown User';
   const isAdmin = currentRole === 'ADMIN';
   const isSpaceOwner = currentSpaceRole === 'OWNER';
-  const canModifyTask = !isAdmin;
+  const canModifyTask = !isAdmin && !readOnly;
   const currentUserNames = useMemo(() => [currentUser?.name, currentUser?.fullName, currentUser?.username].filter(Boolean), [currentUser]);
   const statusOptions = isSpaceOwner
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
@@ -345,6 +352,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const syncTask = (updates) => {
+    if (readOnly) return;
     setLocalTask(prev => {
       const next = { ...prev, ...updates };
       if (onUpdateTask) onUpdateTask(next);
@@ -405,6 +413,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const createComment = async (text, parentId = null) => {
+    if (!canModifyTask) return false;
     const taskId = getTaskId();
     if (!taskId || !text.trim()) return false;
 
@@ -424,6 +433,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const updateComment = async (commentId, text) => {
+    if (!canModifyTask) return false;
     if (!commentId || !text.trim()) return false;
 
     setCommentError('');
@@ -439,6 +449,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const removeComment = async (commentId) => {
+    if (!canModifyTask) return false;
     if (!commentId) return false;
 
     setCommentError('');
@@ -453,6 +464,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const uploadAttachmentFile = async (file, usage = 'attachment') => {
+    if (!canModifyTask) return null;
     const taskId = getTaskId();
     if (!taskId || !file) return null;
 
@@ -479,11 +491,13 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const triggerReplace = (id) => {
+    if (!canModifyTask) return;
     setReplaceTargetId(id);
     replaceInputRef.current?.click();
   };
 
   const handleReplaceFile = async (e) => {
+    if (!canModifyTask) return;
     const file = e.target.files?.[0];
     if (!file || replaceTargetId == null) return;
 
@@ -517,6 +531,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const deleteAttachment = async (id) => {
+    if (!canModifyTask) return;
     const currentAttachment = attachments.find(attachment => attachment.id === id);
     const attachmentId = currentAttachment?.attachmentId || currentAttachment?.attachment_id || currentAttachment?.id;
     if (!attachmentId) return;
@@ -553,6 +568,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const handleFileUpload = async (event) => {
+    if (!canModifyTask) return;
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
 
@@ -569,6 +585,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const handleFileUploadObject = async (file, usageOverride = null) => {
+    if (!canModifyTask) return null;
     if (!file) return null;
     const usage = usageOverride || (isDescriptionEditing ? 'description' : isCommentEditing ? 'comment' : 'attachment');
     setAttachmentError('');
@@ -589,6 +606,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const openUploadDialog = () => {
+    if (!canModifyTask) return;
     setIsUploadAreaOpen(true);
     uploadInputRef.current?.click();
   };
@@ -720,6 +738,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
             <span style={{ fontSize: '11px', color: '#6B778C' }}>{comment.date}</span>
           </div>
           <p style={{ fontSize: '13px', color: '#172B4D', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: comment.text }} />
+          {canEditTaskContent && (
           <div className="flex gap-4" style={{ marginTop: '6px' }}>
             <button
               style={{ fontSize: '11px', fontWeight: 500, color: '#6B778C', background: 'none', border: 'none', cursor: 'pointer' }}
@@ -756,9 +775,10 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
               </>
             )}
           </div>
+          )}
         </div>
       </div>
-      {replyToCommentId === comment.id && (
+      {canEditTaskContent && replyToCommentId === comment.id && (
         <div className="flex flex-col gap-3" style={{ paddingLeft: '36px' }}>
           <div style={{ fontSize: '12px', color: '#42526E' }}>Replying to {comment.author}</div>
           <RichTextEditor
@@ -799,7 +819,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
           </div>
         </div>
       )}
-      {editCommentId === comment.id && (
+      {canEditTaskContent && editCommentId === comment.id && (
         <div className="flex flex-col gap-3" style={{ paddingLeft: '36px' }}>
           <div style={{ fontSize: '12px', color: '#42526E' }}>Editing comment</div>
           <RichTextEditor
@@ -1002,6 +1022,7 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const handleAssigneeChange = async (selectedUser) => {
+    if (!canManageAdminFields) return;
     const newAssigneeId = selectedUser.user_id || selectedUser.id || '';
 
     if (!newAssigneeId) {
@@ -1163,9 +1184,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                   ) : (
                     <span style={{ fontSize: '14px', color: '#6B778C' }}>Add a description...</span>
                   )}
-                  <div className="hidden group-hover:block" style={{ marginTop: '8px', fontSize: '12px', color: '#6B778C', fontStyle: 'italic' }}>
-                    Click to edit...
-                  </div>
+                  {canEditTaskContent && (
+                    <div className="hidden group-hover:block" style={{ marginTop: '8px', fontSize: '12px', color: '#6B778C', fontStyle: 'italic' }}>
+                      Click to edit...
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -1823,10 +1846,14 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
+                    min="0"
+                    step="any"
                     value={localTask?.pts || 0}
                     onChange={(e) => {
                       if (!canManageAdminFields) return;
-                      const pts = parseInt(e.target.value) || 0;
+                      const rawValue = e.target.value;
+                      const pts = rawValue === '' ? 0 : Number(rawValue);
+                      if (!Number.isFinite(pts) || pts < 0) return;
                       setLocalTask(prev => ({ ...prev, pts }));
                       syncTask({ pts });
                     }}

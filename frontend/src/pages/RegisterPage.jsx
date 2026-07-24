@@ -266,7 +266,7 @@ export default function CompleteAccount() {
                         </button>
                       )}
                     </div>
-                    <p className="text-[12px] text-[#737686]">Optional. JPG, PNG, or WEBP up to 5 MB.</p>
+                    <p className="text-[12px] text-[#737686]">Optional. JPG, PNG up to 5 MB.</p>
                   </div>
                 </div>
               </div>
