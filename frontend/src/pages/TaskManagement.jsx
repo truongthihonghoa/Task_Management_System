@@ -428,6 +428,43 @@ const mapApiTask = (task) => {
   };
 };
 
+const formatScopedTaskId = (sequence) => `TSK${String(sequence).padStart(8, '0')}`;
+
+const getTaskSequenceTime = (task) => {
+  const timestamp = Date.parse(task.created_at || task.createdAt || task.date || '');
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const assignScopedTaskDisplayIds = (tasks) => {
+  const groups = new Map();
+
+  tasks.forEach((task, originalIndex) => {
+    const key = task.spaceId || 'default';
+    const groupTasks = groups.get(key) || [];
+    groupTasks.push({ task, originalIndex });
+    groups.set(key, groupTasks);
+  });
+
+  const displayIdsByIndex = new Map();
+  groups.forEach((groupTasks) => {
+    [...groupTasks]
+      .sort((a, b) => {
+        const createdDiff = getTaskSequenceTime(a.task) - getTaskSequenceTime(b.task);
+        if (createdDiff !== 0) return createdDiff;
+        return String(a.task.id || '').localeCompare(String(b.task.id || ''));
+      })
+      .forEach((entry, index) => {
+        displayIdsByIndex.set(entry.originalIndex, formatScopedTaskId(index + 1));
+      });
+  });
+
+  return tasks.map((task, index) => ({
+    ...task,
+    displayId: displayIdsByIndex.get(index) || task.displayId || task.id,
+    rawTaskId: task.rawTaskId || task.id,
+  }));
+};
+
 const getSprintNumber = (sprintName) => {
   const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
   return match ? Number(match[1]) : 0;
@@ -632,7 +669,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       const remainingSprints = firstSprint
         ? orderedSprints.slice(1)
         : [];
-      const nextTasks = (taskResponse.data?.items || []).map(mapApiTask);
+      const nextTasks = assignScopedTaskDisplayIds((taskResponse.data?.items || []).map(mapApiTask));
       const nextMembers = (memberResponse.data || [])
         .filter(member => member.status === 'Active')
         .map(mapApiSpaceMember);
@@ -659,6 +696,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           id: '',
           name: 'No sprint available',
           dateRange: 'Create a sprint before adding tasks',
+          status: 'Planned',
         }));
         setIsSprintExpanded(true);
       }
@@ -686,10 +724,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
     const updatedTask = mapApiTask(response.data);
-    setTasks(prev => prev.map(task => task.id === taskId ? updatedTask : task));
+    setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === taskId ? updatedTask : task)));
     setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
     return updatedTask;
   }, []);
+
+  useEffect(() => {
+    if (!selectedTaskDetail?.id) return;
+    const latestTask = tasks.find(task => task.id === selectedTaskDetail.id);
+    if (latestTask) {
+      setSelectedTaskDetail(prev => (prev?.id === latestTask.id ? { ...prev, ...latestTask } : prev));
+    }
+  }, [selectedTaskDetail?.id, tasks]);
 
   const applyTaskAssignees = useCallback((taskId, assigneeEntries = []) => {
     const updates = buildTaskAssigneeUpdates(assigneeEntries);
@@ -963,7 +1009,7 @@ if (storyPoints === null) {
         );
       }
     }
-    setTasks(prev => [createdTask, ...prev]);
+    setTasks(prev => assignScopedTaskDisplayIds([createdTask, ...prev]));
 
     return createdTask;
   }, [canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
@@ -1210,7 +1256,7 @@ if (storyPoints === null) {
     }
   };
 
-  const handleCreateSprint = async () => {
+  const handleCreateSprint = async ({ activate = false } = {}) => {
     if (!canModifyTasks || !spaceId) return;
 
     const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
@@ -1225,7 +1271,7 @@ if (storyPoints === null) {
         start_date: startDate.toISOString(),
         end_date: endDate.toISOString(),
         duration_weeks: 2,
-        status: 'Planned',
+        status: activate ? 'Active' : 'Planned',
         auto_start: false,
         auto_complete: false,
       });
@@ -1310,7 +1356,8 @@ if (storyPoints === null) {
   const filteredTasks = tasks.filter(task => {
     const normalizedSearch = taskSearchQuery.trim().toLowerCase();
     if (normalizedSearch) {
-      const matchesSearch = String(task.id || '').toLowerCase().includes(normalizedSearch) ||
+      const matchesSearch = String(task.displayId || '').toLowerCase().includes(normalizedSearch) ||
+        String(task.id || '').toLowerCase().includes(normalizedSearch) ||
         String(task.title || '').toLowerCase().includes(normalizedSearch);
       if (!matchesSearch) return false;
     }
@@ -1360,6 +1407,8 @@ if (storyPoints === null) {
     ? filteredTasks.filter(task => task.sprintId === sprint1Data.id)
     : filteredTasks;
   const displayedSprints = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+  const hasAvailableSprint = displayedSprints.length > 0;
+  const canCreateInitialSprint = canModifyTasks && Boolean(spaceId) && !hasAvailableSprint;
   const completedSprintIds = new Set(
     displayedSprints.filter(sprint => sprint.status === 'Completed').map(sprint => sprint.id)
   );
@@ -1375,9 +1424,7 @@ if (storyPoints === null) {
     sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
   );
   const isSprintCompleted = (sprint) => {
-    if (sprint?.status !== 'Completed') return false;
-    const sprintTasks = getTasksForSprint(sprint.id);
-    return sprintTasks.length === 0 || sprintTasks.every(task => task.status === 'Done');
+    return sprint?.status === 'Completed';
   };
   const arePreviousSprintsCompleted = (sprint) => {
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
@@ -1392,7 +1439,7 @@ if (storyPoints === null) {
   const shouldShowStartSprint = (sprint) => {
     if (!sprint?.id) return false;
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
-    return sprintIndex > 0 && sprint.status !== 'Completed';
+    return sprintIndex >= 0 && sprint.status === 'Planned';
   };
   const canStartSprint = (sprint) => {
     if (!shouldShowStartSprint(sprint)) return false;
@@ -1412,7 +1459,7 @@ if (storyPoints === null) {
     if (!sprint?.id || !canModifyTasks) return null;
     if (sprint.status === 'Completed') return null;
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
-    if (sprint.status === 'Active' && (sprintIndex === 0 || canStartSprint(sprint))) {
+    if (sprint.status === 'Active') {
       return {
         label: 'Complete sprint',
         onClick: () => openCompleteSprint(sprint),
@@ -1580,7 +1627,7 @@ if (storyPoints === null) {
 
     if (Object.keys(updates).length === 0) {
       if (assigneeChanged) return;
-      setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
+      setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === updatedTask.id ? updatedTask : task)));
       setSelectedTaskDetail(updatedTask);
       return;
     }
@@ -2062,6 +2109,15 @@ if (storyPoints === null) {
             {/* Sprint Actions */}
             {view === 'board' && (
               <div className="flex items-center gap-2">
+                {canCreateInitialSprint && (
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSprint({ activate: true })}
+                    className="px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors hover:bg-[#e6e1ff]"
+                  >
+                    Start sprint
+                  </button>
+                )}
                 {canModifyTasks && boardSprintAction && (
                   <button
                     onClick={boardSprintAction.onClick}
@@ -2206,7 +2262,7 @@ if (storyPoints === null) {
                   title={status}
                   tasks={boardTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
-                  onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
+                  onCreateTask={canModifyTasks && hasAvailableSprint && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
                   onOpenDetail={handleOpenTaskDetail}
                   onMoveTask={handleMoveTaskWithinStatus}
                   onPatchTask={updateTaskRequest}
@@ -2268,6 +2324,15 @@ if (storyPoints === null) {
                     {primarySprintTasks.filter(t => t.status === 'Done').length}
                   </span>
                 </div>
+                {canCreateInitialSprint && (
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSprint({ activate: true })}
+                    className="px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm hover:bg-[#e6e1ff]"
+                  >
+                    Start sprint
+                  </button>
+                )}
                 {canModifyTasks && (() => {
                   const sprintAction = getSprintAction(sprint1Data);
                   if (!sprintAction) return null;
@@ -2283,7 +2348,7 @@ if (storyPoints === null) {
                   );
                 })()}
                 {/* Sprint 1 ... dropdown menu */}
-                {canModifyTasks && sprint1Data.status !== 'Completed' && (
+                {canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
                 <div className="relative" data-sprint-menu>
                   <button
                     onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
@@ -2326,6 +2391,7 @@ if (storyPoints === null) {
                   <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
                     <tr className="text-[11px] text-outline uppercase tracking-wider">
                       <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                      <th className="px-3 py-3 font-bold text-center">Points</th>
                       <th className="px-6 py-3 font-bold">Title</th>
                       <th className="px-6 py-3 font-bold">Assignee</th>
                       <th className="px-6 py-3 font-bold text-center">Priority</th>
@@ -2357,7 +2423,7 @@ if (storyPoints === null) {
               </div>
             )}
             {/* + Create button below Sprint 1 table */}
-            {isSprintExpanded && canModifyTasks && sprint1Data.status !== 'Completed' && (
+            {isSprintExpanded && canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
                   onClick={() => {
@@ -2471,6 +2537,7 @@ if (storyPoints === null) {
                     <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
                       <tr className="text-[11px] text-outline uppercase tracking-wider">
                         <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                        <th className="px-3 py-3 font-bold text-center">Points</th>
                         <th className="px-6 py-3 font-bold">Title</th>
                         <th className="px-6 py-3 font-bold">Assignee</th>
                         <th className="px-6 py-3 font-bold text-center">Priority</th>
@@ -2534,11 +2601,11 @@ if (storyPoints === null) {
           {/* CREATE SPRINT BUTTON */}
           {canModifyTasks && <div className="mt-4 flex justify-end" id="backlog-section">
             <button
-              onClick={handleCreateSprint}
+              onClick={() => handleCreateSprint({ activate: !hasAvailableSprint })}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded-lg text-[12px] font-bold hover:bg-[#e6e1ff] hover:shadow-md transition-all shadow-sm"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
-              Create Sprint
+              {hasAvailableSprint ? 'Create Sprint' : 'Start sprint'}
             </button>
           </div>}
         </div>
@@ -2743,6 +2810,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
 
 function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, onRemoveAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
+  const visibleTaskId = task.displayId || id;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const [hasPreviewImageError, setHasPreviewImageError] = React.useState(false);
   const isOverdue = isTaskOverdue(task.completed_at || date, status);
@@ -3126,7 +3194,7 @@ const savePointsValue = React.useCallback(async (value) => {
           ) : null}
           <div className="flex justify-between items-center mt-auto">
             <div className="flex items-center gap-2">
-              <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{id}</span>
+              <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{visibleTaskId}</span>
               <div
                 ref={pointsEditorRef}
                 className="relative flex items-center"
@@ -3277,6 +3345,8 @@ const savePointsValue = React.useCallback(async (value) => {
   );
 }
 
+function TaskRow({ id, displayId, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+  const visibleTaskId = displayId || id;
 function TaskRow({ id, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
   const isOverdue = isTaskOverdue(completed_at || date, status);
   const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
@@ -3349,9 +3419,13 @@ function TaskRow({ id, title, assignee, assignees = [], assigneeId, pts, status,
               }}
             />
           )}
-          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{id}</span>
-          <span className="px-1 py-0.5 bg-surface-container rounded text-[9px] font-bold text-outline">{pts}</span>
+          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{visibleTaskId}</span>
         </div>
+      </td>
+      <td className="px-3 py-2 text-center">
+        <span className="inline-flex min-w-8 items-center justify-center rounded bg-surface-container px-2 py-0.5 text-[10px] font-bold text-outline">
+          {pts} pts
+        </span>
       </td>
       <td className={`px-4 py-2 font-semibold text-[11px] ${isSelected ? 'text-blue-700' : 'text-on-surface'}`}>{title}</td>
       <td className="px-4 py-2">
