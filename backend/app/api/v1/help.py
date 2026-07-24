@@ -2,11 +2,14 @@
 # All business logic is delegated to the Service layer.
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
+from app.db.session import get_db
 from app.models.user import User
-from app.schemas.help import GuideDetailResponse, GuideListResponse
+from app.schemas.help import AIChatRequest, AIChatResponse, GuideDetailResponse, GuideListResponse
 from app.services import help_service
+from app.services import help_ai_service
 
 router = APIRouter(prefix="/help", tags=["help"])
 
@@ -34,3 +37,17 @@ def get_guide(
     _current_user: User = Depends(get_current_user),
 ) -> GuideDetailResponse:
     return help_service.get_guide(slug)
+
+
+@router.post(
+    "/ai-chat",
+    response_model=AIChatResponse,
+    summary="Ask TaskFlow AI",
+    description="Returns a concise TaskFlow assistant response scoped to the authenticated user.",
+)
+def ask_taskflow_ai(
+    request: AIChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AIChatResponse:
+    return help_ai_service.answer_chat(db, request, current_user)

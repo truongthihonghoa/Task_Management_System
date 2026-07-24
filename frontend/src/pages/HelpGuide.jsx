@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { getHelpGuide } from '../api/helpApi';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '');
 
 function getSlugFromPathname(pathname) {
   if (pathname.replace(/\/+$/, '') === '/dashboard/help-guide') {
@@ -231,18 +230,7 @@ const HelpGuide = () => {
     setLoading(true);
     setError(null);
 
-    fetch(`${API_BASE_URL}/help/guides/${encodeURIComponent(slug)}`)
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error(
-              `The guide "${slug}" could not be found. It may have been moved or the URL is incorrect.`
-            );
-          }
-          throw new Error(`Failed to load guide (HTTP ${res.status}). Please try again later.`);
-        }
-        return res.json();
-      })
+    getHelpGuide(slug)
       .then((data) => {
         setGuide(data);
         if (data.table_of_contents && data.table_of_contents.length > 0) {
@@ -251,7 +239,11 @@ const HelpGuide = () => {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message);
+        if (err.response?.status === 404) {
+          setError(`The guide "${slug}" could not be found. It may have been moved or the URL is incorrect.`);
+        } else {
+          setError('Failed to load guide. Please try again later.');
+        }
         setLoading(false);
       });
   }, [slug]);

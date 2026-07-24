@@ -294,7 +294,7 @@ export default function UserManagement() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search by name or email..."
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded text-[11px] outline-none focus:ring-1 focus:ring-[#4C2B74] focus:border-[#4C2B74] transition-all"
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#4C2B74] focus:border-[#4C2B74] transition-all"
                 />
               </div>
 
@@ -387,13 +387,12 @@ export default function UserManagement() {
                 <th className="px-6 py-3.5">Status</th>
                 <th className="px-6 py-3.5">Last Login</th>
                 <th className="px-6 py-3.5">Created Date</th>
-                <th className="px-6 py-3.5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-600">
               {isLoading && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-gray-500 font-semibold">
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500 font-semibold">
                     Loading users...
                   </td>
                 </tr>
@@ -401,7 +400,7 @@ export default function UserManagement() {
 
               {!isLoading && filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-gray-500 font-semibold">
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500 font-semibold">
                     No users found.
                   </td>
                 </tr>
@@ -419,44 +418,34 @@ export default function UserManagement() {
                   >
                     <td className="px-6 py-3.5 flex items-center space-x-3">
                       {user.avatar ? (
-                        <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-gray-100" />
+                        <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
                       ) : (
-                        <div className="w-8 h-8 rounded-full border border-purple-100 bg-purple-50 text-[#4C2B74] flex items-center justify-center text-[11px] font-bold">
+                        <div className="w-12 h-12 rounded-full border border-purple-100 bg-purple-50 text-[#4C2B74] flex items-center justify-center text-xs font-bold">
                           {initialsForName(user.name)}
                         </div>
                       )}
                       <div>
-                        <p className="font-bold text-gray-900 leading-tight">{user.name}</p>
-                        <p className="text-gray-400 text-[11px] mt-0.5">{user.email}</p>
+                        <p className="font-bold text-gray-900 leading-tight text-[14px]">{user.name}</p>
+                        <p className="text-gray-400 text-[13px] mt-0.5">{user.email}</p>
                       </div>
                     </td>
                     <td className="px-6 py-3.5">
-                      <span className={`px-2 py-0.5 text-[11px] font-medium rounded border ${
+                      <span className={`inline-flex items-center justify-center w-30 px-4 py-1.5 rounded-[5px] text-sm font-semibold ${
                         isAdminRole
-                          ? 'bg-blue-50 text-blue-700 border-blue-100'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                          : 'bg-sky-50 text-sky-600 border border-sky-200'
                       }`}>
                         {user.role}
                       </span>
                     </td>
                     <td className="px-6 py-3.5">
-                      <span className={`inline-flex items-center space-x-1.5 font-bold ${tone.split(' ')[0]}`}>
+                      <span className={`inline-flex items-center space-x-1.5 font-bold text-[13px] ${tone.split(' ')[0]}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${tone.split(' ')[1]}`}></span>
                         <span>{user.status}</span>
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500 font-medium">{user.lastLogin}</td>
-                    <td className="px-6 py-3.5 text-gray-400 font-medium">{user.createdAt}</td>
-                    <td className="px-6 py-3.5 text-center">
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openEditModal(user); }}
-                        className="text-gray-400 hover:text-gray-600 p-1 transition-colors"
-                        aria-label="Edit user"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">more_vert</span>
-                      </button>
-                    </td>
+                    <td className="px-6 py-3.5 text-gray-500 font-medium text-[13px]">{user.lastLogin}</td>
+                    <td className="px-6 py-3.5 text-gray-400 font-medium text-[13px]">{user.createdAt}</td>
                   </tr>
                 );
               })}
