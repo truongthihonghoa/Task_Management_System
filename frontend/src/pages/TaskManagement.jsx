@@ -37,6 +37,12 @@ const getAccessToken = () => {
   );
 };
 
+const parseNonNegativeStoryPoints = (value) => {
+  if (value === '' || value === null || value === undefined) return 0;
+  const points = Number(value);
+  return Number.isFinite(points) && points >= 0 ? points : null;
+};
+
 const addPeopleRequest = async (spaceId, person) => {
   const token = getAccessToken();
   const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
@@ -374,8 +380,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const isBoardDraggingRef = useRef(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
+  const dateFilterRef = useRef(null);
 
   const getDaysInMonth = (year, month) => {
     const days = [];
@@ -515,6 +523,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           ...firstSprint,
           dateRange: firstSprint.dateRange || 'No dates set',
         });
+        setIsSprintExpanded(firstSprint.status !== 'Completed');
       } else {
         setSprint1Data(prev => ({
           ...prev,
@@ -522,12 +531,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           name: 'No sprint available',
           dateRange: 'Create a sprint before adding tasks',
         }));
+        setIsSprintExpanded(true);
       }
       setExtraSprints(remainingSprints.map(sprint => ({
         ...sprint,
         tasks: nextTasks.filter(task => task.sprintId === sprint.id),
       })));
-      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [sprint.id, true])));
+      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [
+        sprint.id,
+        sprint.status !== 'Completed',
+      ])));
     } catch (error) {
       setTasks([]);
       setApiSpace(null);
@@ -692,6 +705,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isAddPeopleOpen]);
 
+  useEffect(() => {
+    if (!isDateDropdownOpen) return;
+    const handleClickOutside = (event) => {
+      if (dateFilterRef.current && !dateFilterRef.current.contains(event.target)) {
+        setIsDateDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isDateDropdownOpen]);
+
   // Sync tasks with MainLayout context for the CreateTaskModal's RichTextEditor
   useEffect(() => {
     if (setTasksForModal) {
@@ -702,10 +727,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Sync sprints with MainLayout for CreateTaskModal
   useEffect(() => {
     if (setSprintsForModal) {
-      setSprintsForModal([
-        { id: sprint1Data.id, name: sprint1Data.name },
-        ...extraSprints.map(s => ({ id: s.id, name: s.name }))
-      ]);
+      setSprintsForModal([sprint1Data, ...extraSprints]
+        .filter(sprint => sprint.id && sprint.status !== 'Completed')
+        .map(sprint => ({ id: sprint.id, name: sprint.name })));
     }
   }, [sprint1Data, extraSprints, setSprintsForModal]);
 
@@ -723,9 +747,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setTasksError('');
 
     const sprintOptions = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
-    const selectedSprint = sprintOptions.find(sprint => sprint.name === taskData.sprint) || sprintOptions[0];
+    const createableSprintOptions = sprintOptions.filter(sprint => sprint.status !== 'Completed');
+    const defaultSprint = createableSprintOptions.find(sprint => sprint.status === 'Active')
+      || createableSprintOptions[0];
+    const selectedSprint = createableSprintOptions.find(sprint => sprint.name === taskData.sprint)
+      || defaultSprint;
     if (!selectedSprint?.id) {
-      throw new Error('This space does not have a sprint yet. Create a sprint before adding tasks.');
+      throw new Error('Start or create an available sprint before adding tasks.');
     }
 
     const selectedAssignee = projectAssigneeOptions.find(user =>
@@ -734,13 +762,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       (!taskData.assigneeId && user.name === taskData.assignee)
     );
     const selectedAssigneeId = selectedAssignee?.user_id || selectedAssignee?.id || '';
+    const storyPoints = parseNonNegativeStoryPoints(taskData.storyPoints);
+    if (storyPoints === null) {
+      throw new Error('Story points must be 0 or greater.');
+    }
 
     const formData = new FormData();
     formData.append('title', taskData.summary.trim());
     formData.append('sprint_id', selectedSprint.id);
     formData.append('priority', TASK_PRIORITY_TO_API[taskData.priority] || 'MEDIUM');
     formData.append('task_status', TASK_STATUS_TO_API[taskData.status] || 'new');
-    formData.append('story_points', String(Number(taskData.storyPoints) || 0));
+    formData.append('story_points', String(storyPoints));
     if (taskData.description) formData.append('description', taskData.description);
     if (taskData.completed_at) formData.append('completed_at', new Date(taskData.completed_at).toISOString());
     if (selectedAssigneeId) formData.append('assignee_ids', selectedAssigneeId);
@@ -830,10 +862,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const toggleAll = () => {
     if (!canSelectTasks) return;
-    if (selectedTasks.length === filteredTasks.length) {
+    if (selectableTaskIds.length === 0) return;
+    if (selectableTaskIds.every(taskId => selectedTasks.includes(taskId))) {
       setSelectedTasks([]);
     } else {
-      setSelectedTasks(filteredTasks.map(t => t.id));
+      setSelectedTasks(selectableTaskIds);
     }
   };
 
@@ -845,13 +878,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
     setTasksError('');
     try {
-      await Promise.all(selectedTasks.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
-      setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+      const deletableTaskIds = selectedTasks.filter(taskId => {
+        const task = tasks.find(item => item.id === taskId);
+        return task && !isTaskReadOnly(task);
+      });
+      if (deletableTaskIds.length === 0) return;
+      await Promise.all(deletableTaskIds.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
+      setTasks(prev => prev.filter(t => !deletableTaskIds.includes(t.id)));
       setExtraSprints(prev => prev.map(s => ({
         ...s,
-        tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
+        tasks: s.tasks.filter(t => !deletableTaskIds.includes(t.id))
       })));
-      if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
+      if (selectedTaskDetail && deletableTaskIds.includes(selectedTaskDetail.id)) {
         setSelectedTaskDetail(null);
       }
       setSelectedTasks([]);
@@ -870,7 +908,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     setTasksError('');
     try {
-      await Promise.all(selectedTasks.map(taskId => updateTaskRequest(taskId, {
+      const editableTaskIds = selectedTasks.filter(taskId => {
+        const task = tasks.find(item => item.id === taskId);
+        return task && !isTaskReadOnly(task);
+      });
+      if (editableTaskIds.length === 0) return;
+      await Promise.all(editableTaskIds.map(taskId => updateTaskRequest(taskId, {
         task_status: TASK_STATUS_TO_API[newStatus] || 'new',
       })));
       setShowToolbarStatusMenu(false);
@@ -882,6 +925,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const toggleTask = (id) => {
     if (!canSelectTasks) return;
+    const task = tasks.find(item => item.id === id);
+    if (!task || isTaskReadOnly(task)) return;
     setSelectedTasks(prev =>
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
     );
@@ -964,6 +1009,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const movingTask = tasks.find(task => task.id === draggableId);
+    if (!movingTask || isTaskReadOnly(movingTask)) return;
 
     const previousTasks = tasks;
     setTasks(prev => prev.map(task => (
@@ -984,6 +1031,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const handleDeleteTask = async (taskId) => {
+    const task = tasks.find(item => item.id === taskId);
+    if (!task || isTaskReadOnly(task)) return;
     setTasksError('');
     try {
       await axiosClient.delete(`/tasks/${taskId}`);
@@ -1147,6 +1196,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     ? filteredTasks.filter(task => task.sprintId === sprint1Data.id)
     : filteredTasks;
   const displayedSprints = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+  const completedSprintIds = new Set(
+    displayedSprints.filter(sprint => sprint.status === 'Completed').map(sprint => sprint.id)
+  );
+  const isTaskReadOnly = (task) => Boolean(task?.sprintId && completedSprintIds.has(task.sprintId));
+  const selectableTaskIds = filteredTasks
+    .filter(task => !isTaskReadOnly(task))
+    .map(task => task.id);
+  const activeBoardSprint = displayedSprints.find(sprint => sprint.status === 'Active') || null;
+  const boardTasks = activeBoardSprint
+    ? filteredTasks.filter(task => task.sprintId === activeBoardSprint.id)
+    : [];
   const getTasksForSprint = (sprintId) => (
     sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
   );
@@ -1186,8 +1246,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const getSprintAction = (sprint) => {
     if (!sprint?.id || !canModifyTasks) return null;
+    if (sprint.status === 'Completed') return null;
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
-    if (sprintIndex === 0 || (sprint.status === 'Active' && canStartSprint(sprint))) {
+    if (sprint.status === 'Active' && (sprintIndex === 0 || canStartSprint(sprint))) {
       return {
         label: 'Complete sprint',
         onClick: () => openCompleteSprint(sprint),
@@ -1206,6 +1267,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
     return null;
   };
+  const boardSprintActionTarget = activeBoardSprint
+    || displayedSprints.find(sprint => canStartSprint(sprint))
+    || null;
+  const boardSprintAction = boardSprintActionTarget
+    ? getSprintAction(boardSprintActionTarget)
+    : null;
+  const sprintInfoTasks = view === 'board' ? boardTasks : primarySprintTasks;
+  const selectedTaskDetailReadOnly = selectedTaskDetail ? isTaskReadOnly(selectedTaskDetail) : false;
 
   const handleCompleteSprint = async () => {
     if (!canModifyTasks || !completeSprintTarget?.id) return;
@@ -1239,6 +1308,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     setTasksError('');
     const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    if (!previousTask || isTaskReadOnly(previousTask)) return;
     const nextAssigneeId = user?.user_id || user?.id || '';
     const nextAssigneeName = nextAssigneeId ? user?.name || '' : '';
     const optimisticAssignee = nextAssigneeId
@@ -1290,6 +1360,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     const currentTask = tasks.find(task => task.id === updatedTask.id) || selectedTaskDetail;
     if (!currentTask) return;
+    if (isTaskReadOnly(currentTask)) return;
 
     const assigneeChanged = (updatedTask.assigneeId || '') !== (currentTask.assigneeId || '') || updatedTask.assignee !== currentTask.assignee;
     if (assigneeChanged) {
@@ -1305,7 +1376,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (updatedTask.description !== currentTask.description) updates.description = updatedTask.description || null;
     if (updatedTask.priority !== currentTask.priority) updates.priority = TASK_PRIORITY_TO_API[updatedTask.priority] || 'MEDIUM';
     if (updatedTask.status !== currentTask.status) updates.task_status = TASK_STATUS_TO_API[updatedTask.status] || 'new';
-    if (Number(updatedTask.pts) !== Number(currentTask.pts)) updates.story_points = Number(updatedTask.pts) || 0;
+    const nextStoryPoints = parseNonNegativeStoryPoints(updatedTask.pts);
+    if (nextStoryPoints !== null && Number(nextStoryPoints) !== Number(currentTask.pts)) {
+      updates.story_points = nextStoryPoints;
+    }
     const nextCompletedAt = updatedTask.completed_at || null;
     const currentCompletedAt = currentTask.completed_at || null;
     if (nextCompletedAt !== currentCompletedAt) {
@@ -1332,6 +1406,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     const movingTask = tasks.find(task => task.id === taskId);
     if (!movingTask) return;
+    if (isTaskReadOnly(movingTask)) return;
 
     const displayedColumnTaskIds = filteredTasks
       .filter(task => task.status === movingTask.status)
@@ -1775,20 +1850,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             {/* Sprint Actions */}
             {view === 'board' && (
               <div className="flex items-center gap-2">
-                {canModifyTasks && (() => {
-                  const sprintAction = getSprintAction(sprint1Data);
-                  if (!sprintAction) return null;
-                  return (
-                    <button
-                      onClick={sprintAction.onClick}
-                      disabled={sprintAction.disabled}
-                      title={sprintAction.title}
-                      className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                    >
-                      {sprintAction.label}
-                    </button>
-                  );
-                })()}
+                {canModifyTasks && boardSprintAction && (
+                  <button
+                    onClick={boardSprintAction.onClick}
+                    disabled={boardSprintAction.disabled}
+                    title={boardSprintAction.title}
+                    className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${boardSprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                  >
+                    {boardSprintAction.label}
+                  </button>
+                )}
                 <button
                   ref={sprintInfoAnchorRef}
                   onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
@@ -1800,8 +1871,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             )}
 
             {/* Date Filter */}
-            <div className="relative group">
-              <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
+            <div ref={dateFilterRef} className="relative">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsDateDropdownOpen(open => !open);
+                }}
+                aria-expanded={isDateDropdownOpen}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
+              >
                 <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
                 <span className="text-[11px] font-bold text-[#5e4db2]">
                   {selectedDate
@@ -1811,7 +1890,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </button>
 
               {/* Calendar Dropdown */}
-              <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
+              {isDateDropdownOpen && (
+              <div
+                className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
@@ -1878,6 +1961,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                             } else {
                               setSelectedDate(new Date(viewYear, viewMonth, day));
                             }
+                            setIsDateDropdownOpen(false);
                           }}
                           className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
                             ? 'bg-[#5e4db2] text-white font-bold'
@@ -1893,6 +1977,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -1907,7 +1992,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <KanbanColumn
                   key={status}
                   title={status}
-                  tasks={filteredTasks.filter(t => t.status === status)}
+                  tasks={boardTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
                   onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
                   onOpenDetail={handleOpenTaskDetail}
@@ -1932,11 +2017,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
             <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
               <div className="flex items-center gap-3">
-                {canSelectTasks && (
+                {canSelectTasks && sprint1Data.status !== 'Completed' && (
                   <input
                     type="checkbox"
                     className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
-                    checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
+                    checked={selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId))}
                     onChange={toggleAll}
                   />
                 )}
@@ -1985,7 +2070,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   );
                 })()}
                 {/* Sprint 1 ... dropdown menu */}
-                {canModifyTasks && (
+                {canModifyTasks && sprint1Data.status !== 'Completed' && (
                 <div className="relative" data-sprint-menu>
                   <button
                     onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
@@ -2033,7 +2118,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <th className="px-6 py-3 font-bold text-center">Priority</th>
                       <th className="px-6 py-3 font-bold">Status</th>
                       <th className="px-6 py-3 font-bold">Completed</th>
-                      {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                      {canManageTasks && sprint1Data.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
@@ -2041,9 +2126,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <TaskRow
                         key={task.id}
                         {...task}
-                        isAdmin={canManageTasks}
-                        canSelect={canSelectTasks}
-                        canModifyTasks={canModifyTasks}
+                        isAdmin={canManageTasks && sprint1Data.status !== 'Completed'}
+                        canSelect={canSelectTasks && sprint1Data.status !== 'Completed'}
+                        canModifyTasks={canModifyTasks && sprint1Data.status !== 'Completed'}
                         isSelected={selectedTasks.includes(task.id)}
                         isAnySelected={selectedTasks.length > 0}
                         onToggle={() => toggleTask(task.id)}
@@ -2058,7 +2143,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             )}
             {/* + Create button below Sprint 1 table */}
-            {isSprintExpanded && canModifyTasks && (
+            {isSprintExpanded && canModifyTasks && sprint1Data.status !== 'Completed' && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
                   onClick={() => {
@@ -2082,7 +2167,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               {/* Sprint Header */}
               <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
                 <div className="flex items-center gap-3">
-                  {canSelectTasks && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
+                  {canSelectTasks && sprint.status !== 'Completed' && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
                   <span
                     className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                     style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -2124,7 +2209,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     );
                   })()}
                   {/* Extra sprint ... dropdown menu */}
-                  {canModifyTasks && (
+                  {canModifyTasks && sprint.status !== 'Completed' && (
                   <div className="relative" data-sprint-menu>
                     <button
                       onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
@@ -2177,7 +2262,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <th className="px-6 py-3 font-bold text-center">Priority</th>
                         <th className="px-6 py-3 font-bold">Status</th>
                         <th className="px-6 py-3 font-bold">Completed</th>
-                        {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                        {canManageTasks && sprint.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant">
@@ -2185,9 +2270,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         <TaskRow
                           key={task.id}
                           {...task}
-                          isAdmin={canManageTasks}
-                          canSelect={canSelectTasks}
-                          canModifyTasks={canModifyTasks}
+                          isAdmin={canManageTasks && sprint.status !== 'Completed'}
+                          canSelect={canSelectTasks && sprint.status !== 'Completed'}
+                          canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
                           isSelected={selectedTasks.includes(task.id)}
                           isAnySelected={selectedTasks.length > 0}
                           onToggle={() => toggleTask(task.id)}
@@ -2213,7 +2298,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               )}
 
               {/* + Create button below sprint body */}
-              {expandedSprints[sprint.id] && canModifyTasks && (
+              {expandedSprints[sprint.id] && canModifyTasks && sprint.status !== 'Completed' && (
                 <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                   <button
                     onClick={() => {
@@ -2257,7 +2342,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   onClick={toggleAll}
                   className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
-                  {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
+                  {selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId)) ? 'Unselect all' : 'Select all'}
                 </button>
                 {canModifyTasks && (
                   <div className="relative">
@@ -2312,8 +2397,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         isOpen={isSprintInfoOpen}
         onClose={() => setIsSprintInfoOpen(false)}
         anchorRef={sprintInfoAnchorRef}
-        completedTasksCount={tasks.filter(t => t.status === 'Done').length}
-        openTasksCount={tasks.filter(t => t.status !== 'Done').length}
+        completedTasksCount={sprintInfoTasks.filter(t => t.status === 'Done').length}
+        openTasksCount={sprintInfoTasks.filter(t => t.status !== 'Done').length}
       />
 
       <CompleteSprintModal
@@ -2385,6 +2470,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         currentRole={currentRole}
         currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
+        readOnly={selectedTaskDetailReadOnly}
         onUpdateTask={handleUpdateTask}
       />
 
@@ -2455,8 +2541,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
     : isDueToday
       ? DUE_TODAY_BORDER_CLASS
       : '';
+  const normalizedPts = Number.isFinite(Number(pts)) ? Number(pts) : 0;
+  const [isTitleEditing, setIsTitleEditing] = React.useState(false);
+  const [tempTitle, setTempTitle] = React.useState(title || '');
   const [isEditing, setIsEditing] = React.useState(false);
-  const [tempPts, setTempPts] = React.useState(pts);
+  const [tempPts, setTempPts] = React.useState(normalizedPts);
   const [showMenu, setShowMenu] = React.useState(false);
   const [showAssigneeMenu, setShowAssigneeMenu] = React.useState(false);
   const [showMoveSubMenu, setShowMoveSubMenu] = React.useState(false);
@@ -2464,6 +2553,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   const [menuPos, setMenuPos] = React.useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+  const titleInputRef = useRef(null);
+  const pointsEditorRef = useRef(null);
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
 
@@ -2471,10 +2562,55 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
   const assigneeProfile = assigneeOptions.find(user => user.name === task.assignee || user.user_id === task.assigneeId) || getAssigneeProfile(task.assignee);
+  const savePointsValue = React.useCallback(async (value) => {
+    const nextPts = parseNonNegativeStoryPoints(value);
+    if (nextPts === null) {
+      setTempPts(normalizedPts);
+      setIsEditing(false);
+      return;
+    }
+    setTempPts(nextPts);
+    try {
+      if (nextPts !== normalizedPts) {
+        await onPatchTask?.(id, { story_points: nextPts });
+      }
+    } finally {
+      setIsEditing(false);
+    }
+  }, [id, normalizedPts, onPatchTask]);
 
   useEffect(() => {
     setHasPreviewImageError(false);
   }, [previewImage]);
+
+  useEffect(() => {
+    if (!isTitleEditing) {
+      setTempTitle(title || '');
+    }
+  }, [isTitleEditing, title]);
+
+  useEffect(() => {
+    if (!isTitleEditing) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isTitleEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setTempPts(normalizedPts);
+    }
+  }, [isEditing, normalizedPts]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const handleClickOutside = (e) => {
+      if (pointsEditorRef.current && !pointsEditorRef.current.contains(e.target)) {
+        void savePointsValue(tempPts);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isEditing, savePointsValue, tempPts]);
 
   // Đóng menu khi click ra ngoài
   useEffect(() => {
@@ -2527,6 +2663,65 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
     setShowMoveSubMenu(false);
   };
 
+  const handleOpenTitleEditor = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    setShowMenu(false);
+    setShowAssigneeMenu(false);
+    setTempTitle(title || '');
+    setIsTitleEditing(true);
+  };
+
+  const handleCancelTitleEdit = (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setTempTitle(title || '');
+    setIsTitleEditing(false);
+  };
+
+  const handleSaveTitleEdit = async (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const nextTitle = tempTitle.trim();
+    if (!nextTitle) {
+      setTempTitle(title || '');
+      setIsTitleEditing(false);
+      return;
+    }
+
+    try {
+      if (nextTitle !== title) {
+        await onPatchTask?.(id, { title: nextTitle });
+      }
+    } finally {
+      setIsTitleEditing(false);
+    }
+  };
+
+  const handleOpenPointsEditor = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    setShowMenu(false);
+    setShowAssigneeMenu(false);
+    setTempPts(normalizedPts);
+    setIsEditing(true);
+  };
+
+  const handleCancelPointsEdit = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTempPts(normalizedPts);
+    setIsEditing(false);
+  };
+
+  const handleSavePointsEdit = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await savePointsValue(tempPts);
+  };
+
   return (
     <Draggable draggableId={id} index={index} isDragDisabled={!canModifyTasks}>
       {(provided, snapshot) => (
@@ -2537,15 +2732,48 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           style={{ ...provided.draggableProps.style }}
           className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${taskCardStateClass} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
           onClick={(e) => {
-            if (e.defaultPrevented) return;
+            if (e.defaultPrevented || isTitleEditing || isEditing) return;
             onOpenDetail && onOpenDetail(task);
           }}
         >
           <div className="flex justify-between items-start mb-2 gap-2">
-            <div className={`text-[11px] leading-snug flex items-center gap-1.5 flex-wrap ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
-              {title}
-              {canModifyTasks && (
-                <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+            <div className={`min-w-0 flex-1 text-[11px] leading-snug flex items-center gap-1.5 ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
+              {isTitleEditing ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={tempTitle}
+                  onChange={(event) => setTempTitle(event.target.value)}
+                  onBlur={handleSaveTitleEdit}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      handleSaveTitleEdit(event);
+                    }
+                    if (event.key === 'Escape') {
+                      handleCancelTitleEdit(event);
+                    }
+                  }}
+                  className="h-7 min-w-0 flex-1 rounded border border-primary bg-white px-2 text-[11px] font-semibold text-[#003d9b] outline-none shadow-sm"
+                />
+              ) : (
+                <>
+                  <span className="min-w-0 break-words">{title}</span>
+                  {canModifyTasks && (
+                    <button
+                      type="button"
+                      onClick={handleOpenTitleEditor}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-outline opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+                      aria-label={`Edit title for ${id}`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">edit</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
             {canModifyTasks && <div>
@@ -2678,42 +2906,52 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           <div className="flex justify-between items-center mt-auto">
             <div className="flex items-center gap-2">
               <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{id}</span>
-              {!isEditing ? (
-                <span
-                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : ''}`}
-                  onClick={() => { if (canModifyTasks) setIsEditing(true); }}
+              <div
+                ref={pointsEditorRef}
+                className="relative flex items-center"
+                onMouseDown={(event) => {
+                  if (canModifyTasks) event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  if (canModifyTasks) event.stopPropagation();
+                }}
+              >
+                <button
+                  type="button"
+                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline leading-none ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : 'cursor-default'}`}
+                  onClick={handleOpenPointsEditor}
+                  aria-label={`Edit story points for ${id}`}
+                  disabled={!canModifyTasks}
                 >
-                  {pts} pts
-                </span>
-              ) : (
-                <div className="flex flex-col gap-1 bg-white border border-primary rounded p-1 shadow-lg absolute z-20 -translate-y-2 translate-x-12">
+                  {normalizedPts} pts
+                </button>
+                {isEditing && (
+                <div
+                  className="absolute left-0 top-full z-30 mt-2 flex w-[56px] flex-col rounded-md border border-primary bg-white p-1 shadow-xl"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <input
                     type="number"
-                    className="w-12 h-6 text-[11px] border border-outline-variant rounded px-1 outline-none focus:border-primary"
+                    min="0"
+                    step="any"
+                    className="h-7 w-full rounded border border-outline-variant px-1.5 text-[11px] outline-none focus:border-primary"
                     value={tempPts}
-                    onChange={(e) => setTempPts(parseInt(e.target.value))}
+                    onChange={(e) => setTempPts(e.target.value)}
+                    onFocus={(event) => event.target.select()}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        handleSavePointsEdit(event);
+                      }
+                      if (event.key === 'Escape') {
+                        handleCancelPointsEdit(event);
+                      }
+                    }}
                     autoFocus
                   />
-                  <div className="flex justify-between border-t border-outline-variant pt-1 mt-1">
-                    <button
-                      className="hover:bg-green-100 rounded p-0.5"
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        try {
-                          await onPatchTask?.(id, { story_points: Number(tempPts) || 0 });
-                        } finally {
-                          setIsEditing(false);
-                        }
-                      }}
-                    >
-                      <span className="material-symbols-outlined text-[14px] text-green-600">done</span>
-                    </button>
-                    <button className="hover:bg-red-100 rounded p-0.5" onClick={(event) => { event.stopPropagation(); setIsEditing(false); setTempPts(pts); }}>
-                      <span className="material-symbols-outlined text-[14px] text-red-600">close</span>
-                    </button>
-                  </div>
                 </div>
-              )}
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 relative">
               {priority === 'High' ? (

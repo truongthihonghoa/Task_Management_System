@@ -127,6 +127,10 @@ def _validate_file(usage: str, file: UploadFile) -> str:
     return safe_name
 
 
+def validate_task_media_upload(usage: str, file: UploadFile) -> str:
+    return _validate_file(usage, file)
+
+
 def _public_media_url(usage: str, task_id: str, stored_name: str) -> str:
     return f"/media/{MEDIA_FOLDERS[usage]}/{task_id}/{stored_name}"
 
