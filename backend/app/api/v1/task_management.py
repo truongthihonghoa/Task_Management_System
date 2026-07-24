@@ -26,7 +26,8 @@ from app.services import task_management_service
 from app.services.task_assignment_service import TaskAssignmentService
 
 
-router = APIRouter(tags=["task management"])
+router = APIRouter(tags=["task-management"])
+task_assignment_service = TaskAssignmentService()
 
 
 @router.post(

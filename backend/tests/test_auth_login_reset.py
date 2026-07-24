@@ -175,7 +175,7 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
 
 def test_register_notifies_super_admins(monkeypatch):
     db = FakeDb()
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = make_token(
         email="new.user@example.com",
         token_type=auth_service.EMAIL_VERIFICATION,
