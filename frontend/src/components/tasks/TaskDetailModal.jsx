@@ -35,6 +35,20 @@ const formatTimelineDateTime = (value, fallback = '2 mins ago') => {
   })}`;
 };
 
+const normalizeAvatarUrl = (avatarUrl) => {
+  if (!avatarUrl) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${path}`;
+    } catch {
+      return avatarUrl;
+    }
+  }
+  return path;
+};
+
 const isCompletedDateOverdue = (value, status, apiOverdue = undefined) => {
   if (!value) return false;
 
@@ -186,7 +200,7 @@ function formatFileSizeValue(bytes = 0) {
 }
 
 
-export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOptions = [], onUpdateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
+export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOptions = [], onUpdateTask, onAddAssignee, onRemoveAssignee, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' } }) {
   const [activeTab, setActiveTab] = useState('comments');
   const [commentText, setCommentText] = useState('');
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -224,6 +238,23 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
     { user_id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' }
   ];
   const availableAssignees = assigneeOptions.length > 0 ? assigneeOptions : fallbackAssignees;
+  const localAssignedUsers = useMemo(() => {
+    const users = (localTask.assignees || [])
+      .map(entry => entry.user)
+      .filter(user => user?.user_id || user?.id || user?.name);
+    if (users.length > 0) return users;
+    if (localTask.assignee || localTask.assigneeId) {
+      return [{
+        id: localTask.assigneeId || '',
+        user_id: localTask.assigneeId || '',
+        name: localTask.assignee || '',
+        initials: (localTask.assignee || 'Unassigned').split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'UN',
+        color: '#9CA3AF',
+        textColor: '#FFFFFF',
+      }];
+    }
+    return [];
+  }, [localTask]);
 
   const [completedMonth, setCompletedMonth] = useState(5);
   const [completedYear, setCompletedYear] = useState(2026);
@@ -254,11 +285,13 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
       localTask.creatorId === currentUserId ||
       localTask.reporterId === currentUserId ||
       localTask.assigneeId === currentUserId ||
+      localAssignedUsers.some(user => (user.user_id || user.id) === currentUserId) ||
       currentUserNames.includes(localTask.creator) ||
       currentUserNames.includes(localTask.reporter) ||
-      currentUserNames.includes(localTask.assignee)
+      currentUserNames.includes(localTask.assignee) ||
+      localAssignedUsers.some(user => currentUserNames.includes(user.name))
     );
-  }, [canModifyTask, currentRole, currentUserId, currentUserNames, localTask]);
+  }, [canModifyTask, currentRole, currentUserId, currentUserNames, localAssignedUsers, localTask]);
   const canManageAdminFields = canModifyTask;
 
   const isCommentOwner = (comment) => {
@@ -660,8 +693,11 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
 
   // Get initials from name
   const getInitials = (name) => {
-    if (!name) return 'UN';
-    const parts = name.split(' ');
+    const displayName = typeof name === 'string'
+      ? name
+      : name?.full_name || name?.name || name?.email || '';
+    if (!displayName) return 'UN';
+    const parts = displayName.split(' ').filter(Boolean);
     if (parts.length === 0) return 'UN';
     return parts.map(n => n ? n[0] : '').join('').toUpperCase().substring(0, 2);
   };
@@ -848,12 +884,84 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
     };
   };
 
+  const getUserDisplayName = (user, fallback = 'Unassigned') => {
+    if (!user) return fallback;
+    if (typeof user === 'string') return user || fallback;
+    return user.full_name || user.name || user.email || fallback;
+  };
+
+  const getHistoryUser = (entry, field) => {
+    return entry[field] || (entry[`${field}_name`] ? { name: entry[`${field}_name`] } : null);
+  };
+
   const getHistoryName = (entry, field) => {
-    return entry[`${field}_name`] || entry[field] || 'Unassigned';
+    return getUserDisplayName(getHistoryUser(entry, field), 'Unassigned');
   };
 
   const getChangedByName = (entry) => {
-    return entry.changed_by_name || entry.changed_by || 'Unknown user';
+    return getUserDisplayName(entry.changed_by_user || entry.changed_by_name || entry.changed_by, 'Unknown user');
+  };
+
+  const getHistoryProfile = (user, fallbackName = 'Unassigned') => {
+    const userId = typeof user === 'object' && user ? (user.user_id || user.id || '') : '';
+    const displayName = getUserDisplayName(user, fallbackName);
+    const matchedUser = availableAssignees.find(option => {
+      const optionId = option.user_id || option.id || '';
+      return (userId && optionId === userId) || option.name === displayName || option.email === user?.email;
+    });
+    const fallbackProfile = getAssigneeProfile(displayName);
+    const avatarUrl = normalizeAvatarUrl(
+      (typeof user === 'object' && user ? (user.avatar_url || user.avatarUrl || user.avatar || '') : '') ||
+      matchedUser?.avatarUrl ||
+      matchedUser?.avatar_url ||
+      ''
+    );
+
+    return {
+      name: displayName,
+      initials: matchedUser?.initials || fallbackProfile.initials || getInitials(displayName),
+      color: matchedUser?.color || fallbackProfile.color,
+      textColor: matchedUser?.textColor || fallbackProfile.textColor || '#FFFFFF',
+      avatarUrl,
+    };
+  };
+
+  const renderHistoryAvatar = (profile, size = 28, fontSize = 10) => (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '50%',
+        backgroundColor: profile.color,
+        color: profile.textColor || '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: `${fontSize}px`,
+        fontWeight: 700,
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}
+    >
+      {profile.avatarUrl ? (
+        <img src={profile.avatarUrl} alt={profile.name} className="h-full w-full object-cover" />
+      ) : (
+        profile.initials
+      )}
+    </div>
+  );
+
+  const getHistoryChangeType = (entry) => {
+    const previousUser = getHistoryUser(entry, 'previous_assignee');
+    const newUser = getHistoryUser(entry, 'new_assignee');
+    const previousName = getUserDisplayName(previousUser, '');
+    const newName = getUserDisplayName(newUser, '');
+    const hasPreviousAssignee = Boolean(entry.previous_assignee_id || (previousUser && previousName !== 'Unassigned'));
+    const hasNewAssignee = Boolean(entry.new_assignee_id || (newUser && newName !== 'Unassigned'));
+    if (!hasPreviousAssignee && hasNewAssignee) return 'assigned';
+    if (hasPreviousAssignee && !hasNewAssignee) return 'removed';
+    if (hasPreviousAssignee && hasNewAssignee) return 'reassigned';
+    return 'updated';
   };
 
   const formatHistoryTime = (value) => {
@@ -894,30 +1002,42 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
   };
 
   const handleAssigneeChange = async (selectedUser) => {
-    const newAssignee = selectedUser.name === 'Unassigned' ? '' : selectedUser.name;
     const newAssigneeId = selectedUser.user_id || selectedUser.id || '';
-    const previousAssignee = localTask.assignee || '';
 
-    if (previousAssignee === newAssignee && (localTask.assigneeId || '') === newAssigneeId) {
+    if (!newAssigneeId) {
+      try {
+        await Promise.all(localAssignedUsers.map(user =>
+          onRemoveAssignee?.(localTask.id, user.user_id || user.id)
+        ));
+      } catch {
+        return;
+      }
       setIsAssigneeOpen(false);
       return;
     }
 
-    const updatedTask = { ...localTask, assignee: newAssignee, assigneeId: newAssigneeId };
-
-    try {
-      if (onUpdateTask) await onUpdateTask(updatedTask);
-    } catch (err) {
+    const alreadyAssigned = localAssignedUsers.some(user => (user.user_id || user.id) === newAssigneeId);
+    if (alreadyAssigned) {
+      setIsAssigneeOpen(false);
       return;
     }
 
-    const entry = buildAssignHistoryRecord(localTask, updatedTask);
-    const nextHistory = sortAssignHistory([entry, ...assignHistory]);
-    const taskWithHistory = { ...updatedTask, assignmentHistory: nextHistory };
+    try {
+      await onAddAssignee?.(localTask.id, selectedUser);
+    } catch {
+      return;
+    }
 
-    setAssignHistory(nextHistory);
-    setLocalTask(taskWithHistory);
     setIsAssigneeOpen(false);
+  };
+
+  const handleRemoveAssignee = async (assigneeUserId) => {
+    if (!assigneeUserId) return;
+    try {
+      await onRemoveAssignee?.(localTask.id, assigneeUserId);
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -1411,41 +1531,53 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                         const previousName = getHistoryName(entry, 'previous_assignee');
                         const nextName = getHistoryName(entry, 'new_assignee');
                         const changedByName = getChangedByName(entry);
-                        const prevProfile = getAssigneeProfile(previousName);
-                        const nextProfile = getAssigneeProfile(nextName);
+                        const changeType = getHistoryChangeType(entry);
+                        const targetName = changeType === 'removed' ? previousName : nextName;
+                        const actionText = changeType === 'assigned'
+                          ? 'assigned'
+                          : changeType === 'removed'
+                            ? 'removed'
+                            : 'changed';
+                        const actionStyle = changeType === 'assigned'
+                          ? { color: '#006D3A', backgroundColor: '#E6FFF0' }
+                          : changeType === 'removed'
+                            ? { color: '#BA1A1A', backgroundColor: '#FFF0F0' }
+                            : { color: '#5E35B1', backgroundColor: '#F0EDFF' };
+                        const changedByProfile = getHistoryProfile(entry.changed_by_user || entry.changed_by_name || entry.changed_by, changedByName);
+                        const targetProfile = getHistoryProfile(
+                          changeType === 'removed' ? getHistoryUser(entry, 'previous_assignee') : getHistoryUser(entry, 'new_assignee'),
+                          targetName
+                        );
                         return (
                           <div key={entry.assignment_history_id || entry.id} style={{ padding: '8px 0', borderBottom: '1px solid #F4F5F7' }}>
                             <div className="flex items-start gap-3">
-                              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#009b72', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: '#FFFFFF', flexShrink: 0 }}>
-                                {getInitials(changedByName)}
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#172B4D' }}>{changedByName}</span>
-                                  <span style={{ fontSize: '12px', color: '#6B778C' }}>changed the Assignee</span>
+                              {renderHistoryAvatar(changedByProfile, 32, 11)}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', minWidth: 0, fontSize: '13px', color: '#172B4D' }}>
+                                    <span style={{ fontWeight: 700 }}>{changedByName}</span>
+                                    <span style={{ ...actionStyle, display: 'inline-flex', alignItems: 'center', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 700 }}>{actionText}</span>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#172B4D' }}>
+                                      {renderHistoryAvatar(targetProfile, 20, 8)}
+                                      {targetName}
+                                    </span>
+                                    {changeType === 'reassigned' && (
+                                      <>
+                                        <span style={{ color: '#6B778C' }}>from</span>
+                                        <span style={{ fontWeight: 600 }}>{previousName}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <span style={{ flexShrink: 0, fontSize: '11px', color: '#6B778C' }}>{formatHistoryTime(entry.changed_at)}</span>
                                 </div>
-                                <div style={{ fontSize: '11px', color: '#6B778C', marginTop: '2px' }}>{formatHistoryTime(entry.changed_at)}</div>
-                                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: prevProfile.color, color: prevProfile.textColor || '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700 }}>{prevProfile.initials}</div>
-                                    <div style={{ fontSize: '13px', color: previousName === 'Unassigned' ? '#6B778C' : '#172B4D' }}>{previousName}</div>
-                                  </div>
-                                  <div style={{ fontSize: '14px', color: '#9AA6B2' }}>→</div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: nextProfile.color, color: nextProfile.textColor || '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700 }}>{nextProfile.initials}</div>
-                                    <div style={{ fontSize: '13px', color: nextName === 'Unassigned' ? '#6B778C' : '#172B4D' }}>{nextName}</div>
-                                  </div>
+                                <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontSize: '11px', color: '#6B778C' }}>
+                                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.reason || 'Assignment updated'}</span>
+                                  {entry.change_status && (
+                                    <span style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', padding: '2px 7px', borderRadius: '4px', backgroundColor: '#F2F4F7', color: '#475467', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                                      {entry.change_status}
+                                    </span>
+                                  )}
                                 </div>
-                                {entry.reason && (
-                                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#42526E', lineHeight: 1.5 }}>
-                                    {entry.reason}
-                                  </div>
-                                )}
-                                {entry.change_status && (
-                                  <div style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '3px', backgroundColor: '#F2F4F7', color: '#475467', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
-                                    {entry.change_status}
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </div>
@@ -1488,18 +1620,62 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                     return (
                       <>
                         <div
-                          className={`flex items-center gap-3 w-full rounded-none bg-white px-3 py-2 text-left transition-colors ${canManageAdminFields ? 'hover:bg-[#F4F5F7]' : ''}`}
+                          className={`flex min-h-[44px] items-center gap-2 w-full rounded-none bg-white px-3 py-2 text-left transition-colors ${canManageAdminFields ? 'hover:bg-[#F4F5F7]' : ''}`}
                         >
-                          <div
-                            className="shrink-0 flex items-center justify-center"
-                            style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: profile.color, color: profile.textColor || '#FFFFFF', fontSize: '10px', fontWeight: 700 }}
-                          >
-                            {profile.initials}
-                          </div>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{localTask.assignee || 'Unassigned'}</span>
+                          {localAssignedUsers.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              {localAssignedUsers.map(user => {
+                                const userId = user.user_id || user.id;
+                                return (
+                                  <span
+                                    key={userId || user.name}
+                                    className="group/avatar inline-flex items-center gap-1 rounded-full bg-[#F4F5F7] py-0.5 pl-0.5 pr-2"
+                                  >
+                                    <span
+                                      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold"
+                                      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                                    >
+                                      {(user.avatarUrl || user.avatar_url) ? (
+                                        <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                                      ) : (
+                                        user.initials || getInitials(user.name)
+                                      )}
+                                    </span>
+                                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{user.name}</span>
+                                    {canManageAdminFields && userId && (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleRemoveAssignee(userId);
+                                        }}
+                                        className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[10px] font-bold leading-none text-slate-500 shadow-sm hover:bg-slate-200 group-hover/avatar:inline-flex"
+                                        aria-label={`Remove ${user.name}`}
+                                      >
+                                        x
+                                      </button>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <>
+                              <div
+                                className="shrink-0 flex items-center justify-center"
+                                style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: profile.color, color: profile.textColor || '#FFFFFF', fontSize: '10px', fontWeight: 700 }}
+                              >
+                                {profile.initials}
+                              </div>
+                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>Unassigned</span>
+                            </>
+                          )}
                         </div>
                         <div className={`absolute left-0 top-full z-50 mt-2 w-full rounded-none border border-outline-variant bg-white shadow-2xl transition-all duration-150 overflow-hidden ${isAssigneeOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                          {availableAssignees.map(user => (
+                          {availableAssignees.map(user => {
+                            const userId = user.user_id || user.id || '';
+                            const isAssigned = userId && localAssignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
+                            return (
                             <button
                               key={user.name}
                               type="button"
@@ -1507,17 +1683,24 @@ export default function TaskDetailModal({ task, onClose, tasks = [], assigneeOpt
                                 e.stopPropagation();
                                 if (canManageAdminFields) handleAssigneeChange(user);
                               }}
-                              className={`w-full flex items-center gap-3 px-3 py-2 text-left text-[12px] ${canManageAdminFields ? 'hover:bg-[#EBF0FF]' : ''} transition-colors`}
+                              disabled={Boolean(isAssigned)}
+                              className={`w-full flex items-center gap-3 px-3 py-2 text-left text-[12px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : canManageAdminFields ? 'hover:bg-[#EBF0FF]' : ''}`}
                             >
                               <div
-                                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                className="w-7 h-7 rounded-full flex items-center justify-center overflow-hidden text-[10px] font-bold"
                                 style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
                               >
-                                {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
+                                {(user.avatarUrl || user.avatar_url) ? (
+                                  <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  user.initials || <span className="material-symbols-outlined">{user.icon}</span>
+                                )}
                               </div>
                               <span>{user.name}</span>
+                              {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
                             </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       </>
                     );

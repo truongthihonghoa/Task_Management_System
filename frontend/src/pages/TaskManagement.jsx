@@ -37,6 +37,20 @@ const getAccessToken = () => {
   );
 };
 
+const normalizeAvatarUrl = (avatarUrl) => {
+  if (!avatarUrl) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${path}`;
+    } catch {
+      return avatarUrl;
+    }
+  }
+  return path;
+};
+
 const addPeopleRequest = async (spaceId, person) => {
   const token = getAccessToken();
   const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
@@ -87,6 +101,24 @@ const getAssigneeProfile = (assignee) => {
     color: '#9CA3AF',
     textColor: '#FFFFFF'
   };
+};
+
+const AssigneeAvatar = ({ user = {}, sizeClass = 'w-6 h-6', textClass = 'text-[10px]', className = '' }) => {
+  const avatarUrl = user.avatarUrl || user.avatar_url || '';
+  const name = user.name || user.full_name || 'Unassigned';
+  return (
+    <span
+      className={`${sizeClass} ${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
+      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+      title={name}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        user.initials || getInitials(name)
+      )}
+    </span>
+  );
 };
 
 const getInitialProjectPeople = (space) => {
@@ -229,14 +261,18 @@ const mapApiSprint = (sprint) => ({
 
 const mapApiUserSummary = (user, index = 0) => {
   const name = user?.full_name || user?.name || user?.email || 'Unknown User';
+  const avatarUrl = normalizeAvatarUrl(user?.avatar_url || user?.avatarUrl || user?.avatar || '');
   return {
     id: user?.user_id || user?.id || '',
     user_id: user?.user_id || user?.id || '',
     name,
     email: user?.email || '',
-    initials: getInitials(name),
-    color: ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
-    textColor: '#FFFFFF',
+    initials: user?.initials || getInitials(name),
+    color: user?.color || ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
+    textColor: user?.textColor || '#FFFFFF',
+    avatar_url: avatarUrl,
+    avatarUrl,
+    icon: user?.icon,
   };
 };
 
@@ -247,17 +283,85 @@ const mapApiSpaceMember = (member, index = 0) => ({
   spaceMemberId: member.space_member_id,
 });
 
-const mapApiTaskAssignee = (entry, index = 0) => ({
-  entryId: entry.assignee_entry_id,
-  assignee_entry_id: entry.assignee_entry_id,
-  taskId: entry.task_id,
-  assigneeId: entry.assignee_id,
-  assignee_id: entry.assignee_id,
-  assignedAt: entry.assignee_at,
-  assignee_at: entry.assignee_at,
-  user: mapApiUserSummary(entry.assignee || { user_id: entry.assignee_id }, index),
-  raw: entry,
-});
+const mapApiTaskAssignee = (entry, index = 0) => {
+  const assigneeId = entry.assignee_id || entry.assigneeId || '';
+  return {
+    entryId: entry.assignee_entry_id || entry.entryId,
+    assignee_entry_id: entry.assignee_entry_id || entry.entryId,
+    taskId: entry.task_id || entry.taskId,
+    assigneeId,
+    assignee_id: assigneeId,
+    assignedAt: entry.assignee_at || entry.assignedAt,
+    assignee_at: entry.assignee_at || entry.assignedAt,
+    user: mapApiUserSummary(entry.assignee || entry.user || { user_id: assigneeId }, index),
+    raw: entry.raw || entry,
+  };
+};
+
+const buildTaskAssigneeUpdates = (assigneeEntries = []) => {
+  const assignees = assigneeEntries.map(mapApiTaskAssignee);
+  const primaryAssignee = assignees[0] || null;
+  const assigneeNames = assignees
+    .map(entry => entry.user?.name)
+    .filter(Boolean);
+
+  return {
+    assignees,
+    assignee: assigneeNames.join(', '),
+    assigneeId: primaryAssignee?.assigneeId || '',
+  };
+};
+
+const getTaskAssigneeUsers = (task = {}) => {
+  const users = (task.assignees || [])
+    .map(entry => entry.user)
+    .filter(user => user?.user_id || user?.id || user?.name);
+
+  if (users.length > 0) return users;
+  if (task.assignee || task.assigneeId) {
+    return [{
+      id: task.assigneeId || '',
+      user_id: task.assigneeId || '',
+      name: task.assignee || '',
+      initials: getInitials(task.assignee),
+      ...getAssigneeProfile(task.assignee),
+    }];
+  }
+  return [];
+};
+
+const getCompactAssigneeName = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'Unassigned';
+  return parts[parts.length - 1];
+};
+
+const formatAssigneeSummary = (users = [], visibleCount = 2) => {
+  if (!users.length) {
+    return {
+      shortText: 'Unassigned',
+      fullText: 'Unassigned',
+    };
+  }
+
+  const names = users.map(user => user.name).filter(Boolean);
+  if (names.length <= 1) {
+    return {
+      shortText: names[0] || 'Unassigned',
+      fullText: names[0] || 'Unassigned',
+    };
+  }
+
+  const shownNames = names.slice(0, visibleCount).map(getCompactAssigneeName);
+  const remainingCount = Math.max(names.length - visibleCount, 0);
+  return {
+    shortText: `${shownNames.join(', ')}${remainingCount > 0 ? ` +${remainingCount}` : ''}`,
+    fullText: names.join(', '),
+  };
+};
+
+const taskHasAssigneeName = (task, assigneeName) =>
+  getTaskAssigneeUsers(task).some(user => user.name === assigneeName);
 
 const resolveMediaUrl = (url) => {
   if (!url) return '';
@@ -282,10 +386,11 @@ const mapApiAttachment = (attachment) => ({
 });
 
 const mapApiTask = (task) => {
-  const assignees = (task.assignees || []).map(mapApiTaskAssignee);
-  const primaryAssignee = task.primary_assignee
-    ? mapApiTaskAssignee(task.primary_assignee)
-    : assignees[0] || null;
+  const assigneeUpdates = buildTaskAssigneeUpdates(
+    task.primary_assignee && !(task.assignees || []).length
+      ? [task.primary_assignee]
+      : (task.assignees || [])
+  );
 
   return {
     id: task.task_id,
@@ -294,9 +399,9 @@ const mapApiTask = (task) => {
     sprintId: task.sprint_id,
     sprint: task.sprint?.name || task.sprint_name || '',
     title: task.title || 'Untitled task',
-    assignee: primaryAssignee?.user?.name || '',
-    assigneeId: primaryAssignee?.assigneeId || '',
-    assignees,
+    assignee: assigneeUpdates.assignee,
+    assigneeId: assigneeUpdates.assigneeId,
+    assignees: assigneeUpdates.assignees,
     pts: Number(task.story_points) || 0,
     status: TASK_STATUS_FROM_API[task.task_status] || task.task_status || 'New',
     priority: TASK_PRIORITY_FROM_API[task.priority] || task.priority || 'Medium',
@@ -428,6 +533,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
+  const [openAssigneeFilterMenu, setOpenAssigneeFilterMenu] = useState(null);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
@@ -439,6 +545,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [peopleSearch, setPeopleSearch] = useState('');
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
+  const summaryAssigneeFilterRef = useRef(null);
+  const toolbarAssigneeFilterRef = useRef(null);
   const isSpaceOwner = currentSpaceRole === 'OWNER';
   const isSpaceMember = currentSpaceRole === 'USER';
   const canModifyTasks = !isAdmin;
@@ -455,8 +563,29 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       initials: person.initials || getInitials(person.name),
       color: person.color || '#5E4DB2',
       textColor: person.textColor || '#FFFFFF',
+      avatar_url: person.avatar_url || person.avatarUrl || '',
+      avatarUrl: person.avatarUrl || person.avatar_url || '',
     })),
   ], [projectPeople]);
+
+  useEffect(() => {
+    if (!openAssigneeFilterMenu) return;
+
+    const handleClickOutside = (event) => {
+      const clickedSummaryFilter = summaryAssigneeFilterRef.current?.contains(event.target);
+      const clickedToolbarFilter = toolbarAssigneeFilterRef.current?.contains(event.target);
+      if (clickedSummaryFilter || clickedToolbarFilter) return;
+      setOpenAssigneeFilterMenu(null);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openAssigneeFilterMenu]);
+
+  const handleSelectAssigneeFilter = (filterValue) => {
+    setSelectedAssigneeFilter(filterValue);
+    setOpenAssigneeFilterMenu(null);
+  };
 
   useEffect(() => {
     if (setCurrentSpaceNameForModal) {
@@ -550,13 +679,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   }, []);
 
   const applyTaskAssignees = useCallback((taskId, assigneeEntries = []) => {
-    const assignees = assigneeEntries.map(mapApiTaskAssignee);
-    const primaryAssignee = assignees[0] || null;
-    const updates = {
-      assignees,
-      assignee: primaryAssignee?.user?.name || '',
-      assigneeId: primaryAssignee?.assigneeId || '',
-    };
+    const updates = buildTaskAssigneeUpdates(assigneeEntries);
 
     setTasks(prev => prev.map(task => (
       task.id === taskId ? { ...task, ...updates } : task
@@ -566,6 +689,22 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     ));
     return updates;
   }, []);
+
+  const refreshTaskAssignmentState = useCallback(async (taskId) => {
+    const [assigneeResponse, historyResponse] = await Promise.all([
+      axiosClient.get(`/tasks/${taskId}/assignees`),
+      axiosClient.get(`/tasks/${taskId}/assignment-history`),
+    ]);
+    const assigneeUpdates = applyTaskAssignees(taskId, assigneeResponse.data?.assignees || []);
+    const assignmentHistory = historyResponse.data?.history || [];
+    setTasks(prev => prev.map(task => (
+      task.id === taskId ? { ...task, ...assigneeUpdates, assignmentHistory } : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId ? { ...prev, ...assigneeUpdates, assignmentHistory } : prev
+    ));
+    return { ...assigneeUpdates, assignmentHistory };
+  }, [applyTaskAssignees]);
 
   const syncTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
     const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
@@ -602,6 +741,27 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     return applyTaskAssignees(taskId, response.data?.assignees || []);
   }, [applyTaskAssignees, selectedTaskDetail, tasks]);
+
+  const addTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    if (!assigneeUserId) return refreshTaskAssignmentState(taskId);
+    const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const alreadyAssigned = (currentTask?.assignees || []).some(entry => entry.assigneeId === assigneeUserId);
+    if (alreadyAssigned) return refreshTaskAssignmentState(taskId);
+
+    await axiosClient.post(`/tasks/${taskId}/assignees`, {
+      assignee_ids: [assigneeUserId],
+      reason: 'Assigned from task board',
+    });
+    return refreshTaskAssignmentState(taskId);
+  }, [refreshTaskAssignmentState, selectedTaskDetail, tasks]);
+
+  const removeTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    if (!assigneeUserId) return;
+    await axiosClient.delete(`/tasks/${taskId}/assignees/${assigneeUserId}`, {
+      data: { reason: 'Removed from task board' },
+    });
+    return refreshTaskAssignmentState(taskId);
+  }, [refreshTaskAssignmentState]);
 
   const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
     const normalizedSearch = peopleSearch.trim().toLowerCase();
@@ -728,12 +888,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       throw new Error('This space does not have a sprint yet. Create a sprint before adding tasks.');
     }
 
-    const selectedAssignee = projectAssigneeOptions.find(user =>
-      user.user_id === taskData.assigneeId ||
-      user.id === taskData.assigneeId ||
-      (!taskData.assigneeId && user.name === taskData.assignee)
-    );
-    const selectedAssigneeId = selectedAssignee?.user_id || selectedAssignee?.id || '';
+    const selectedAssigneeIds = Array.from(new Set(
+      (taskData.assigneeIds || [])
+        .concat(taskData.assigneeId ? [taskData.assigneeId] : [])
+        .map(String)
+        .map(id => id.trim())
+        .filter(Boolean)
+    ));
 
     const formData = new FormData();
     formData.append('title', taskData.summary.trim());
@@ -743,7 +904,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     formData.append('story_points', String(Number(taskData.storyPoints) || 0));
     if (taskData.description) formData.append('description', taskData.description);
     if (taskData.completed_at) formData.append('completed_at', new Date(taskData.completed_at).toISOString());
-    if (selectedAssigneeId) formData.append('assignee_ids', selectedAssigneeId);
+    selectedAssigneeIds.forEach(assigneeId => {
+      formData.append('assignee_ids', assigneeId);
+    });
     (taskData.attachments || []).forEach((attachment) => {
       if (attachment.file instanceof File) {
         formData.append('attachments', attachment.file);
@@ -752,22 +915,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     const response = await axiosClient.post(`/spaces/${spaceId}/tasks`, formData);
     let createdTask = mapApiTask(response.data);
-    if (selectedAssigneeId && createdTask.assignees.length === 0) {
+    if (selectedAssigneeIds.length > 0 && createdTask.assignees.length === 0) {
       try {
         const assigneeResponse = await axiosClient.post(`/tasks/${createdTask.id}/assignees`, {
-          assignee_ids: [selectedAssigneeId],
+          assignee_ids: selectedAssigneeIds,
           reason: 'Assigned while creating task',
         });
-        const assignees = assigneeResponse.data?.assignees || [];
-        const assigneeUpdates = {
-          assignees: assignees.map(mapApiTaskAssignee),
-        };
-        const primaryAssignee = assigneeUpdates.assignees[0] || null;
         createdTask = {
           ...createdTask,
-          ...assigneeUpdates,
-          assignee: primaryAssignee?.user?.name || '',
-          assigneeId: primaryAssignee?.assigneeId || '',
+          ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || []),
         };
       } catch (error) {
         setTasksError(
@@ -792,8 +948,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSelectedTaskDetail(task);
     setTasksError('');
     try {
-      const response = await axiosClient.get(`/tasks/${task.id}`);
-      const detailedTask = mapApiTask(response.data);
+      const [response, assigneeResponse, historyResponse] = await Promise.all([
+        axiosClient.get(`/tasks/${task.id}`),
+        axiosClient.get(`/tasks/${task.id}/assignees`),
+        axiosClient.get(`/tasks/${task.id}/assignment-history`),
+      ]);
+      const detailedTask = {
+        ...mapApiTask(response.data),
+        ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || response.data?.assignees || []),
+        assignmentHistory: historyResponse.data?.history || response.data?.assignment_history || [],
+      };
       setSelectedTaskDetail(detailedTask);
       setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
     } catch (error) {
@@ -1104,8 +1268,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     if (selectedAssigneeFilter && selectedAssigneeFilter !== 'All') {
       if (selectedAssigneeFilter === 'Unassigned') {
-        if (task.assignee) return false;
-      } else if (task.assignee !== selectedAssigneeFilter) {
+        if (getTaskAssigneeUsers(task).length > 0) return false;
+      } else if (!taskHasAssigneeName(task, selectedAssigneeFilter)) {
         return false;
       }
     }
@@ -1240,9 +1404,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setTasksError('');
     const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
     const nextAssigneeId = user?.user_id || user?.id || '';
-    const nextAssigneeName = nextAssigneeId ? user?.name || '' : '';
+    const currentAssignees = previousTask?.assignees || [];
+    if (nextAssigneeId && currentAssignees.some(entry => entry.assigneeId === nextAssigneeId)) {
+      return;
+    }
     const optimisticAssignee = nextAssigneeId
-      ? [{
+      ? [
+        ...currentAssignees,
+        {
         entryId: `optimistic-${taskId}-${nextAssigneeId}`,
         assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
         taskId,
@@ -1253,14 +1422,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         user: mapApiUserSummary(user),
       }]
       : [];
+    const optimisticUpdates = buildTaskAssigneeUpdates(optimisticAssignee);
 
     setTasks(prev => prev.map(task => (
       task.id === taskId
         ? {
           ...task,
-          assignees: optimisticAssignee,
-          assignee: nextAssigneeName,
-          assigneeId: nextAssigneeId,
+          ...optimisticUpdates,
         }
         : task
     )));
@@ -1268,16 +1436,40 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       prev?.id === taskId
         ? {
           ...prev,
-          assignees: optimisticAssignee,
-          assignee: nextAssigneeName,
-          assigneeId: nextAssigneeId,
+          ...optimisticUpdates,
         }
         : prev
     ));
     try {
-      await syncTaskAssigneeRequest(taskId, nextAssigneeId);
+      if (!nextAssigneeId) {
+        await syncTaskAssigneeRequest(taskId, '');
+      } else {
+        await addTaskAssigneeRequest(taskId, nextAssigneeId);
+      }
     } catch (error) {
       setTasksError(getErrorMessage(error, 'Unable to update task assignee.'));
+      if (previousTask) {
+        setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
+        setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
+      }
+      loadTaskData();
+    }
+  };
+
+  const handleRemoveTaskAssignee = async (taskId, assigneeUserId) => {
+    if (!canModifyTasks || !assigneeUserId) return;
+    setTasksError('');
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const optimisticAssignees = (previousTask?.assignees || []).filter(entry => entry.assigneeId !== assigneeUserId);
+    const optimisticUpdates = buildTaskAssigneeUpdates(optimisticAssignees);
+
+    setTasks(prev => prev.map(task => task.id === taskId ? { ...task, ...optimisticUpdates } : task));
+    setSelectedTaskDetail(prev => prev?.id === taskId ? { ...prev, ...optimisticUpdates } : prev);
+
+    try {
+      await removeTaskAssigneeRequest(taskId, assigneeUserId);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to remove task assignee.'));
       if (previousTask) {
         setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
         setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
@@ -1375,53 +1567,69 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
-  const spaceMemberCount = new Set(tasks.map(task => task.assignee).filter(Boolean)).size;
+  const spaceMemberCount = new Set(
+    tasks.flatMap(task => getTaskAssigneeUsers(task).map(user => user.user_id || user.id || user.name)).filter(Boolean)
+  ).size;
+  const assigneeFilterMembers = projectAssigneeOptions.slice(1);
+  const selectedAssigneeFilterMembers = selectedAssigneeFilter === 'All'
+    ? assigneeFilterMembers
+    : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter);
+  const assigneeFilterAvatarClass = (user) => {
+    const isActive = selectedAssigneeFilter === 'All' || user.name === selectedAssigneeFilter;
+    return isActive
+      ? 'relative z-10 border-2 border-[#A78BFA] ring-2 ring-[#EDE9FE] shadow-sm'
+      : 'border-2 border-white opacity-70';
+  };
   const viewTabClass = (targetView) =>
     `flex items-center gap-2 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === targetView ? 'bg-[#cdddff] text-[#003d9b] shadow-sm' : 'text-gray-500 hover:bg-[#EBF0FF]'}`;
   const summaryMemberFilter = (
-    <div className="relative group">
+    <div ref={summaryAssigneeFilterRef} className="relative">
       <button
         type="button"
+        onClick={() => setOpenAssigneeFilterMenu(prev => prev === 'summary' ? null : 'summary')}
         className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
       >
         <div className="flex -space-x-1">
-          {(selectedAssigneeFilter === 'All' ? projectAssigneeOptions.slice(1, 4) : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter)).map(user => (
-            <div
-              key={user.name}
-              className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-[9px] font-bold"
-              style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-            >
-              {user.initials || <span className="material-symbols-outlined text-[12px]">{user.icon}</span>}
-            </div>
+          {selectedAssigneeFilterMembers.slice(0, 3).map(user => (
+            <AssigneeAvatar
+              key={user.user_id || user.id || user.name}
+              user={user}
+              sizeClass="w-5 h-5"
+              textClass="text-[9px]"
+              className={assigneeFilterAvatarClass(user)}
+            />
           ))}
+          {selectedAssigneeFilter === 'All' && selectedAssigneeFilterMembers.length > 3 && (
+            <span className="w-5 h-5 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[8px] font-bold text-gray-700">
+              +{selectedAssigneeFilterMembers.length - 3}
+            </span>
+          )}
         </div>
         <span className="text-[11px] font-bold text-[#5e4db2]">
           {selectedAssigneeFilter === 'All' ? 'All members' : selectedAssigneeFilter}
         </span>
         <span className="material-symbols-outlined text-[#5e4db2] text-[13px]">expand_more</span>
       </button>
-      <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+      <div className={`absolute top-full right-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden transition-all duration-150 ${openAssigneeFilterMenu === 'summary' ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         <div className="py-1">
           <button
             type="button"
-            onClick={() => setSelectedAssigneeFilter('All')}
-            className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+            onClick={() => handleSelectAssigneeFilter('All')}
+            className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
           >
-            All members
+            <span className="material-symbols-outlined flex h-6 w-6 items-center justify-center rounded-full bg-[#F3E8FF] text-[16px] text-[#7E22CE]">
+              groups
+            </span>
+            <span>All members</span>
           </button>
           {projectAssigneeOptions.slice(1).map(user => (
             <button
-              key={user.name}
+              key={user.user_id || user.id || user.name}
               type="button"
-              onClick={() => setSelectedAssigneeFilter(user.name)}
+              onClick={() => handleSelectAssigneeFilter(user.name)}
               className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
             >
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-              >
-                {user.initials}
-              </div>
+              <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[9px]" />
               <span>{user.name}</span>
             </button>
           ))}
@@ -1673,45 +1881,49 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             </div>
             {/* Assignee Filter */}
-            <div className="relative group">
+            <div ref={toolbarAssigneeFilterRef} className="relative">
               <button
                 type="button"
+                onClick={() => setOpenAssigneeFilterMenu(prev => prev === 'toolbar' ? null : 'toolbar')}
                 className="flex items-center ml-1 hover:opacity-70 transition-opacity"
               >
                 <div className="flex -space-x-1">
-                  {projectAssigneeOptions.slice(1).map(user => (
-                    <div
-                      key={user.name}
-                      className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
-                      style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
-                    >
-                      {user.initials}
-                    </div>
+                  {assigneeFilterMembers.slice(0, 4).map(user => (
+                    <AssigneeAvatar
+                      key={user.user_id || user.id || user.name}
+                      user={user}
+                      sizeClass="w-7 h-7"
+                      textClass="text-[11px]"
+                      className={assigneeFilterAvatarClass(user)}
+                    />
                   ))}
+                  {assigneeFilterMembers.length > 4 && (
+                    <span className="w-7 h-7 rounded-full border-2 border-gray bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-700">
+                      +{assigneeFilterMembers.length - 4}
+                    </span>
+                  )}
                 </div>
               </button>
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+              <div className={`absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden transition-all duration-150 ${openAssigneeFilterMenu === 'toolbar' ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                 <div className="py-1">
                   <button
                     type="button"
-                    onClick={() => setSelectedAssigneeFilter('All')}
-                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                    onClick={() => handleSelectAssigneeFilter('All')}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
                   >
-                    All assignees
+                    <span className="material-symbols-outlined flex h-6 w-6 items-center justify-center rounded-full bg-[#F3E8FF] text-[16px] text-[#7E22CE]">
+                      groups
+                    </span>
+                    <span>All assignees</span>
                   </button>
                   {projectAssigneeOptions.map(user => (
                     <button
-                      key={user.name}
+                      key={user.user_id || user.id || user.name}
                       type="button"
-                      onClick={() => setSelectedAssigneeFilter(user.name)}
+                      onClick={() => handleSelectAssigneeFilter(user.name)}
                       className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
                     >
-                      <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                      >
-                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                      </div>
+                      <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[9px]" />
                       <span>{user.name}</span>
                     </button>
                   ))}
@@ -1914,6 +2126,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   onMoveTask={handleMoveTaskWithinStatus}
                   onPatchTask={updateTaskRequest}
                   onUpdateAssignee={handleUpdateAssignee}
+                  onRemoveAssignee={handleRemoveTaskAssignee}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
                   canModifyTasks={canModifyTasks}
@@ -2051,6 +2264,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         onDelete={() => setTaskToDelete(task)}
                         assigneeOptions={projectAssigneeOptions}
                         onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                        onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
                       />
                     ))}
                   </tbody>
@@ -2197,6 +2411,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           }}
                           assigneeOptions={projectAssigneeOptions}
                           onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                          onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
                         />
                       ))}
                     </tbody>
@@ -2386,6 +2601,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
         onUpdateTask={handleUpdateTask}
+        onAddAssignee={(taskId, user) => handleUpdateAssignee(taskId, user)}
+        onRemoveAssignee={handleRemoveTaskAssignee}
       />
 
       <DeleteTaskModal
@@ -2398,7 +2615,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, onRemoveAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -2419,7 +2636,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} onRemoveAssignee={onRemoveAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
@@ -2438,7 +2655,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, onRemoveAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const [hasPreviewImageError, setHasPreviewImageError] = React.useState(false);
@@ -2470,7 +2687,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
-  const assigneeProfile = assigneeOptions.find(user => user.name === task.assignee || user.user_id === task.assigneeId) || getAssigneeProfile(task.assignee);
+  const assignedUsers = getTaskAssigneeUsers(task);
+  const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
+  const unassignedProfile = getAssigneeProfile('');
 
   useEffect(() => {
     setHasPreviewImageError(false);
@@ -2723,26 +2942,74 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
               ) : (
                 <span className="material-symbols-outlined text-[#4C2B74] text-[20px] font-bold">keyboard_arrow_down</span>
               )}
-              <button
-                ref={assigneeBtnRef}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!canModifyTasks) return;
-                  setShowAssigneeMenu(prev => !prev);
-                }}
-                className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                style={{ backgroundColor: assigneeProfile.color, color: assigneeProfile.textColor || '#111' }}
-              >
-                {assigneeProfile.initials || <span className="material-symbols-outlined">person</span>}
-              </button>
+              <div className="relative flex -space-x-1">
+                {assignedUsers.length > 0 ? assignedUsers.slice(0, 2).map(user => {
+                  const userId = user.user_id || user.id;
+                  return (
+                    <div key={userId || user.name} className="relative group/avatar">
+                      <button
+                        ref={assignedUsers[0] === user ? assigneeBtnRef : undefined}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canModifyTasks) return;
+                          setShowAssigneeMenu(prev => !prev);
+                        }}
+                        className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                        style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                      >
+                        {(user.avatarUrl || user.avatar_url) ? (
+                          <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                        ) : (
+                          user.initials || getInitials(user.name)
+                        )}
+                      </button>
+                      {canModifyTasks && userId && (
+                        <button
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            await onRemoveAssignee?.(id, userId);
+                          }}
+                          className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[10px] font-bold leading-none text-slate-500 shadow-sm hover:bg-slate-200 group-hover/avatar:flex"
+                          aria-label={`Remove ${user.name}`}
+                        >
+                          x
+                        </button>
+                      )}
+                    </div>
+                  );
+                }) : (
+                  <button
+                    ref={assigneeBtnRef}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canModifyTasks) return;
+                      setShowAssigneeMenu(prev => !prev);
+                    }}
+                    className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                    style={{ backgroundColor: unassignedProfile.color, color: unassignedProfile.textColor || '#111' }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">person</span>
+                  </button>
+                )}
+                {assignedUsers.length > 2 && (
+                  <div className="w-6 h-6 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-700">
+                    +{assignedUsers.length - 2}
+                  </div>
+                )}
+              </div>
               {showAssigneeMenu && (
                 <div
                   ref={assigneeMenuRef}
                   className="absolute right-0 top-full mt-2 w-40 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {assigneeOptions.map(user => (
+                  {assigneeOptions.map(user => {
+                    const userId = user.user_id || user.id || '';
+                    const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
+                    return (
                     <button
                       key={user.name}
                       type="button"
@@ -2751,17 +3018,15 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                         setShowAssigneeMenu(false);
                         await onUpdateAssignee?.(id, user);
                       }}
-                      className="w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left hover:bg-[#EBF0FF] transition-colors"
+                      disabled={Boolean(isAssigned)}
+                      className={`w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
                     >
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                      >
-                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                      </div>
+                      <AssigneeAvatar user={user} sizeClass="w-7 h-7" textClass="text-[10px]" />
                       <span>{user.name}</span>
+                      {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2772,7 +3037,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
   const isOverdue = isTaskOverdue(completed_at || date, status);
   const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;
@@ -2789,6 +3054,8 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
   const [assigneeMenuPos, setAssigneeMenuPos] = useState({ top: 0, left: 0 });
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
+  const assignedUsers = getTaskAssigneeUsers({ assignee, assignees, assigneeId });
+  const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
 
   const toggleAssigneeMenu = (event) => {
     event.stopPropagation();
@@ -2850,7 +3117,7 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
       <td className="px-4 py-2">
         <div className="relative inline-flex items-center">
           {(() => {
-            const profile = assigneeOptions.find(user => user.name === assignee) || getAssigneeProfile(assignee);
+            const profile = getAssigneeProfile('');
             return (
               <div className="relative">
                 <button
@@ -2859,13 +3126,46 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                   onClick={toggleAssigneeMenu}
                   className={`flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] transition-colors ${canModifyTasks ? 'hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                 >
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                    style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
-                  >
-                    {profile.initials}
-                  </div>
-                  <span>{assignee || 'Unassigned'}</span>
+                  {assignedUsers.length > 0 ? (
+                    <>
+                      <div className="flex -space-x-1">
+                        {assignedUsers.slice(0, 4).map(user => {
+                          const userId = user.user_id || user.id;
+                          return (
+                            <span
+                              key={userId || user.name}
+                              className="relative group/avatar inline-flex h-5 w-5 items-center justify-center overflow-visible"
+                              title={user.name}
+                            >
+                              <span
+                                className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
+                                style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                              >
+                                {(user.avatarUrl || user.avatar_url) ? (
+                                  <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  user.initials || getInitials(user.name)
+                                )}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <span className="inline-flex max-w-[180px]">
+                        <span className="truncate">{assigneeSummary.shortText}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
+                      >
+                        {profile.initials}
+                      </div>
+                      <span>Unassigned</span>
+                    </>
+                  )}
                 </button>
                 {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
@@ -2874,7 +3174,10 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                     className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {assigneeOptions.map(user => (
+                    {assigneeOptions.map(user => {
+                      const userId = user.user_id || user.id || '';
+                      const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
+                      return (
                       <button
                         key={user.name}
                       type="button"
@@ -2883,17 +3186,15 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                           setShowAssigneeMenu(false);
                           await onUpdateAssignee?.(user);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                        disabled={Boolean(isAssigned)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
                       >
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                        >
-                          {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                        </div>
+                        <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[10px]" />
                         <span>{user.name}</span>
+                        {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>,
                   document.body
                 )}

@@ -25,6 +25,7 @@ const getInitialFormData = (spaceName = 'Task Management') => ({
   description: '',
   assignee: 'Unassigned',
   assigneeId: '',
+  assigneeIds: [],
   priority: 'Medium',
   createdAt: formatDateValue(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()),
   completed_at: '',
@@ -35,6 +36,21 @@ const getInitialFormData = (spaceName = 'Task Management') => ({
   attachments: [],
   createAnother: false
 });
+
+const getCompactAssigneeName = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'Unassigned';
+  return parts[parts.length - 1];
+};
+
+const formatAssigneeSummary = (users = [], visibleCount = 2) => {
+  if (!users.length) return 'Unassigned';
+  const names = users.map(user => user.name).filter(Boolean);
+  if (names.length <= 1) return names[0] || 'Unassigned';
+  const shownNames = names.slice(0, visibleCount).map(getCompactAssigneeName);
+  const remainingCount = Math.max(names.length - visibleCount, 0);
+  return `${shownNames.join(', ')}${remainingCount > 0 ? ` +${remainingCount}` : ''}`;
+};
 
 function CalendarDropdown({ value, onSelect, onClose }) {
   const initialDate = parseDateValue(value);
@@ -271,6 +287,25 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
     { name: 'Unassigned', initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF', icon: 'person' }
   ];
   const availableAssignees = assignees.length > 0 ? assignees : fallbackAssignees;
+  const selectedAssigneeIds = formData.assigneeIds || [];
+  const selectedAssignees = availableAssignees.filter(user => {
+    const userId = user.user_id || user.id || '';
+    return userId && selectedAssigneeIds.includes(userId);
+  });
+  const selectedAssigneeSummary = formatAssigneeSummary(selectedAssignees, 2);
+  const selectedAssigneeFullText = selectedAssignees.map(user => user.name).join(', ');
+  const updateSelectedAssignees = (nextIds) => {
+    const nextSelected = availableAssignees.filter(user => {
+      const userId = user.user_id || user.id || '';
+      return userId && nextIds.includes(userId);
+    });
+    setFormData(prev => ({
+      ...prev,
+      assigneeIds: nextIds,
+      assigneeId: nextIds[0] || '',
+      assignee: nextSelected.map(user => user.name).join(', ') || 'Unassigned',
+    }));
+  };
 
   useEffect(() => {
     if (isOpen && window.lucide) {
@@ -461,7 +496,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
 
           {/* Assignee */}
           <div className="form-group">
-            <label>Assignee</label>
+            <label>Assignees</label>
             <div className="relative">
               <button
                 ref={assigneeBtnRef}
@@ -472,23 +507,39 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                 }}
                 className="select-custom flex items-center gap-3 w-full bg-white text-left"
               >
-                {(() => {
-                  const selectedProfile =
-                    availableAssignees.find(user => (user.user_id || user.id || '') === formData.assigneeId) ||
-                    availableAssignees.find(user => user.name === formData.assignee) ||
-                    availableAssignees[0];
-                  return (
-                    <>
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
-                        style={{ backgroundColor: selectedProfile.color, color: selectedProfile.textColor || '#111' }}
-                      >
-                        {selectedProfile.initials || <span className="material-symbols-outlined">{selectedProfile.icon}</span>}
-                      </div>
-                      <span className="text-sm text-[#172B4D]">{formData.assignee}</span>
-                    </>
-                  );
-                })()}
+                {selectedAssignees.length > 0 ? (
+                  <>
+                    <div className="flex -space-x-1">
+                      {selectedAssignees.slice(0, 4).map(user => (
+                        <div
+                          key={user.user_id || user.id || user.name}
+                          className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold border-2 border-white"
+                          style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                          title={user.name}
+                        >
+                          {(user.avatarUrl || user.avatar_url) ? (
+                            <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                          ) : (
+                            user.initials || <span className="material-symbols-outlined">{user.icon}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-sm text-[#172B4D] truncate" title={selectedAssigneeFullText}>
+                      {selectedAssigneeSummary}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+                      style={{ backgroundColor: availableAssignees[0].color, color: availableAssignees[0].textColor || '#111' }}
+                    >
+                      {availableAssignees[0].initials || <span className="material-symbols-outlined">{availableAssignees[0].icon}</span>}
+                    </div>
+                    <span className="text-sm text-[#172B4D]">Unassigned</span>
+                  </>
+                )}
               </button>
               {isAssigneeOpen && (
                 <div
@@ -502,22 +553,34 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFormData(prev => ({
-                          ...prev,
-                          assignee: user.name,
-                          assigneeId: user.user_id || user.id || ''
-                        }));
-                        setIsAssigneeOpen(false);
+                        const userId = user.user_id || user.id || '';
+                        if (!userId) {
+                          updateSelectedAssignees([]);
+                          setIsAssigneeOpen(false);
+                          return;
+                        }
+                        updateSelectedAssignees(
+                          selectedAssigneeIds.includes(userId)
+                            ? selectedAssigneeIds.filter(id => id !== userId)
+                            : [...selectedAssigneeIds, userId]
+                        );
                       }}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
                     >
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+                        className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold"
                         style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
                       >
-                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
+                        {(user.avatarUrl || user.avatar_url) ? (
+                          <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                        ) : (
+                          user.initials || <span className="material-symbols-outlined">{user.icon}</span>
+                        )}
                       </div>
                       <span>{user.name}</span>
+                      {(user.user_id || user.id) && selectedAssigneeIds.includes(user.user_id || user.id) && (
+                        <span className="material-symbols-outlined ml-auto text-[16px] text-[#5e4db2]">check</span>
+                      )}
                     </button>
                   ))}
                 </div>

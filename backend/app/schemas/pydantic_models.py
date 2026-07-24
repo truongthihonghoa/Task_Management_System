@@ -35,6 +35,7 @@ class UserSummaryResponse(BaseModel):
     full_name: str
     email: str
     status_user: str
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
