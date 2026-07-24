@@ -78,6 +78,29 @@ def _ensure_space_owner(space: Space, user: User) -> None:
         )
 
 
+def _validate_task_assignees_for_space(db: Session, space_id: str, assignee_ids: Iterable[str]) -> None:
+    for assignee_id in assignee_ids:
+        user = db.get(User, assignee_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found: {assignee_id}")
+        if user.status_user != "Active":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is inactive: {assignee_id}")
+        if user.locked_until is not None and user.locked_until > vietnam_now():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is locked: {assignee_id}")
+        if task_repository.get_active_space_member(db, space_id, assignee_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User is not an active member of the task space: {assignee_id}",
+            )
+
+
+def _create_task_record_for_flow(db: Session, task: Task) -> Task:
+    try:
+        return task_repository.create_task_record(db, task, commit=False)
+    except TypeError:
+        return task_repository.create_task_record(db, task)
+
+
 def _get_sprint_for_space_or_404(db: Session, space_id: str, sprint_id: str) -> Sprint:
     sprint = task_repository.get_sprint(db, sprint_id)
     if not sprint:
@@ -229,6 +252,17 @@ def create_task(
     _ensure_space_active(space)
     _ensure_can_modify_space_tasks(db, space, current_user)
     _get_sprint_for_space_or_404(db, space_id, payload.sprint_id)
+    normalized_assignee_ids = list(
+        dict.fromkeys(
+            assignee_id.strip()
+            for assignee_id in assignee_ids or []
+            if assignee_id and assignee_id.strip()
+        )
+    )
+    _validate_task_assignees_for_space(db, space_id, normalized_assignee_ids)
+    valid_attachments = [attachment for attachment in attachments or [] if attachment.filename]
+    for attachment in valid_attachments:
+        media_service.validate_task_media_upload("attachment", attachment)
 
     now = vietnam_now()
     task = Task(
@@ -244,38 +278,36 @@ def create_task(
         created_at=now,
         updated_at=now,
     )
-    task_repository.create_task_record(db, task)
-    for attachment in attachments or []:
-        if not attachment.filename:
-            continue
-        media_service.upload_task_media(
-            db,
-            task.task_id,
-            usage="attachment",
-            file=attachment,
-            current_user=current_user,
-        )
-    normalized_assignee_ids = list(
-        dict.fromkeys(
-            assignee_id.strip()
-            for assignee_id in assignee_ids or []
-            if assignee_id and assignee_id.strip()
-        )
-    )
-    if normalized_assignee_ids:
-        from app.services.task_assignment_service import TaskAssignmentService
+    try:
+        _create_task_record_for_flow(db, task)
+        for attachment in valid_attachments:
+            media_service.upload_task_media(
+                db,
+                task.task_id,
+                usage="attachment",
+                file=attachment,
+                current_user=current_user,
+            )
+        if normalized_assignee_ids:
+            from app.services.task_assignment_service import TaskAssignmentService
 
-        TaskAssignmentService().assign_task_assignees(
-            db,
-            task.task_id,
-            AssignTaskAssigneesRequest(
-                assignee_ids=normalized_assignee_ids,
-                reason="Assigned while creating task",
-            ),
-            current_user,
-        )
-    sprint_service.apply_sprint_automation(db, space_id)
-    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
+            TaskAssignmentService().assign_task_assignees(
+                db,
+                task.task_id,
+                AssignTaskAssigneesRequest(
+                    assignee_ids=normalized_assignee_ids,
+                    reason="Assigned while creating task",
+                ),
+                current_user,
+            )
+        sprint_service.apply_sprint_automation(db, space_id)
+        if hasattr(db, "commit"):
+            db.commit()
+        return _build_task_detail_response(_get_task_or_404(db, task.task_id))
+    except Exception:
+        if hasattr(db, "rollback"):
+            db.rollback()
+        raise
 
 
 def list_tasks(

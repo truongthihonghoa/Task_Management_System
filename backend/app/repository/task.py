@@ -207,9 +207,12 @@ def list_board_task_records(db: Session, space_id: str, *, active_sprint_only: b
     )
 
 
-def create_task_record(db: Session, task: Task) -> Task:
+def create_task_record(db: Session, task: Task, *, commit: bool = True) -> Task:
     db.add(task)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(task)
     return task
 
