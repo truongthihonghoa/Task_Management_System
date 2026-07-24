@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GuideListItem(BaseModel):
@@ -48,3 +48,18 @@ class GuideDetailResponse(BaseModel):
     sections: List[GuideSection]
     tips: List[str]
     related_guides: List[RelatedGuide]
+
+
+class AIChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
+class AIChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    current_space_id: Optional[str] = Field(default=None, max_length=15)
+    history: List[AIChatMessage] = Field(default_factory=list, max_items=10)
+
+
+class AIChatResponse(BaseModel):
+    reply: str

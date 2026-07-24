@@ -19,26 +19,26 @@ export async function listManagedUsers({
   if (trimmedSearch) params.search = trimmedSearch;
   if (status) params.status = status;
 
-  const response = await axiosClient.get('/users', { params });
+  const response = await axiosClient.get('/superadmin/users', { params });
   return response.data;
 }
 
 export async function getManagedUser(userId) {
-  const response = await axiosClient.get(`/users/${userId}`);
+  const response = await axiosClient.get(`/superadmin/users/${userId}`);
   return response.data;
 }
 
 export async function updateManagedUser(userId, payload) {
-  const response = await axiosClient.patch(`/users/${userId}`, payload);
+  const response = await axiosClient.patch(`/superadmin/users/${userId}`, payload);
   return response.data;
 }
 
 export async function updateManagedUserStatus(userId, status) {
-  const response = await axiosClient.patch(`/users/${userId}/status`, { status });
+  const response = await axiosClient.patch(`/superadmin/users/${userId}/status`, { status });
   return response.data;
 }
 
 export async function updateManagedUserLockStatus(userId, locked) {
-  const response = await axiosClient.patch(`/users/${userId}/lock-status`, { locked });
+  const response = await axiosClient.patch(`/superadmin/users/${userId}/lock-status`, { locked });
   return response.data;
 }
