@@ -15,14 +15,23 @@ function getErrorMessage(error) {
 }
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const inviteEmail = queryParams.get('email') || '';
+  const inviteSpaceId = queryParams.get('spaceId') || '';
+  const inviteMessage = queryParams.get('message') || '';
+  const invitation = location.state?.invitation || (
+    inviteEmail && inviteSpaceId
+      ? { email: inviteEmail, spaceId: inviteSpaceId, message: inviteMessage }
+      : null
+  );
+  const flow = location.state?.flow || (invitation ? 'register' : 'forgot');
+  const isRegisterFlow = flow === 'register';
+  const [email, setEmail] = useState(invitation?.email || '');
   const [sentEmail, setSentEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const navigate = useNavigate();
-  const location = useLocation();
-  const flow = location.state?.flow || 'forgot';
-  const isRegisterFlow = flow === 'register';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,7 +43,13 @@ export default function ForgotPassword() {
     try {
       if (isRegisterFlow) {
         await checkEmail(normalizedEmail);
-        navigate('/verify-email', { state: { email: normalizedEmail, flow } });
+        navigate('/verify-email', {
+          state: {
+            email: normalizedEmail,
+            flow,
+            invitation: invitation ? { ...invitation, email: normalizedEmail } : null,
+          },
+        });
       } else {
         await forgotPassword(normalizedEmail);
         setSentEmail(normalizedEmail);
@@ -82,7 +97,9 @@ export default function ForgotPassword() {
                     {isRegisterFlow ? 'Create Your Account' : 'Forgot Password?'}
                   </h1>
                   <p className="text-sm text-slate-500 mb-5 leading-relaxed">
-                    {isRegisterFlow
+                    {invitation
+                      ? 'Create an account with this email to finish joining the invited space.'
+                      : isRegisterFlow
                       ? 'Enter your email address to receive a verification code.'
                       : 'Enter your registered email address and we will send you a password reset link.'}
                   </p>

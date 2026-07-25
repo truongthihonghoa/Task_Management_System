@@ -26,6 +26,7 @@ export default function CompleteAccount() {
   const avatarInputRef = useRef(null);
   const verifiedEmail = location.state?.email || '';
   const isVerified = Boolean(location.state?.verified);
+  const invitation = location.state?.invitation || null;
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -42,9 +43,9 @@ export default function CompleteAccount() {
 
   useEffect(() => {
     if (!verifiedEmail || !isVerified) {
-      navigate('/create-account', { replace: true, state: { flow: 'register' } });
+      navigate('/create-account', { replace: true, state: { flow: 'register', invitation } });
     }
-  }, [isVerified, navigate, verifiedEmail]);
+  }, [invitation, isVerified, navigate, verifiedEmail]);
 
   useEffect(() => {
     const clearAutofill = window.setTimeout(() => {
@@ -168,6 +169,11 @@ export default function CompleteAccount() {
 
       setIsSuccess(true);
       setTimeout(() => {
+        const invitationSpaceId = invitation?.spaceId;
+        if (invitationSpaceId && response.user?.role !== 'SUPER_ADMIN') {
+          navigate(`/dashboard/tasks/${invitationSpaceId}?invite=accepted`, { replace: true });
+          return;
+        }
         navigate(response.user?.role === 'SUPER_ADMIN' ? '/dashboard' : '/dashboard/spaces', { replace: true });
       }, 1200);
     } catch (error) {
@@ -214,7 +220,9 @@ export default function CompleteAccount() {
               <div className="space-y-1">
                 <h1 className="text-[24px] font-semibold text-[#191b23] tracking-tight">Complete Your Account</h1>
                 <p className="text-[14px] text-[#434655] px-4">
-                  Your email has been successfully verified. Complete your profile to start using TaskFlow.
+                  {invitation
+                    ? 'Your invitation is ready. Complete your profile to join the space.'
+                    : 'Your email has been successfully verified. Complete your profile to start using TaskFlow.'}
                 </p>
               </div>
               <div className="inline-flex items-center gap-2 px-4 py-1 bg-[#ededf9] rounded-full border border-[#c3c6d7]/30">
