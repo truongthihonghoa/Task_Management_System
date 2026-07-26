@@ -43,6 +43,10 @@ export function setRefreshToken(token, options = {}) {
   setStorageValue(REFRESH_TOKEN_KEY, token, options);
 }
 
+export function isRefreshTokenPersisted() {
+  return Boolean(window.localStorage.getItem(REFRESH_TOKEN_KEY));
+}
+
 export function getCurrentUser() {
   const value = getStorageValue(USER_KEY) || getStorageValue(LEGACY_USER_KEY);
   if (!value) return null;

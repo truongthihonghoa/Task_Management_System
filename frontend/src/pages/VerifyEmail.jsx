@@ -25,6 +25,7 @@ export default function VerifyEmail() {
   const navigate = useNavigate();
   const email = location.state?.email || '';
   const flow = location.state?.flow || 'register';
+  const invitation = location.state?.invitation || null;
   const isRegisterFlow = flow === 'register';
 
   useEffect(() => {
@@ -37,9 +38,9 @@ export default function VerifyEmail() {
       return;
     }
     if (!email) {
-      navigate('/create-account', { replace: true, state: { flow } });
+      navigate('/create-account', { replace: true, state: { flow, invitation } });
     }
-  }, [email, flow, isRegisterFlow, navigate]);
+  }, [email, flow, invitation, isRegisterFlow, navigate]);
 
   const handleChange = (element, index) => {
     const value = element.value.replace(/[^0-9]/g, '');
@@ -86,7 +87,7 @@ export default function VerifyEmail() {
 
     try {
       await verifyEmail({ email, otpCode });
-      navigate('/register', { state: { email, verified: true }, replace: true });
+      navigate('/register', { state: { email, verified: true, invitation }, replace: true });
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {

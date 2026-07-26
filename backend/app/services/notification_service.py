@@ -98,6 +98,7 @@ class NotificationService:
         scope: str,
         title: str,
         message: str,
+        action_url: str | None = None,
     ) -> None:
         if not self._email_enabled_for_notification(
             preference,
@@ -106,7 +107,13 @@ class NotificationService:
         ):
             return
         try:
-            send_notification_email(recipient.email, title=title, message=message)
+            email_kwargs = {"title": title, "message": message}
+            if action_url:
+                email_kwargs["action_url"] = action_url
+            send_notification_email(
+                recipient.email,
+                **email_kwargs,
+            )
         except Exception:
             logger.exception(
                 "notification email delivery failed",
@@ -212,6 +219,7 @@ class NotificationService:
             scope=scope,
             title=title,
             message=message,
+            action_url=(metadata or {}).get("action_url"),
         )
         return notification
 
@@ -328,6 +336,7 @@ class NotificationService:
                 scope=scope,
                 title=title,
                 message=message,
+                action_url=(metadata or {}).get("action_url"),
             )
         logger.info("bulk notification count", extra={"created_count": len(created)})
         return created
