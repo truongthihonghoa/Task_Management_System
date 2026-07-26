@@ -26,17 +26,6 @@ const projectPeopleDirectory = [
   { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
 
-const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
-const getAccessToken = () => {
-  if (typeof window === 'undefined') return null;
-  return (
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('accessToken') ||
-    localStorage.getItem('token')
-  );
-};
-
 const normalizeAvatarUrl = (avatarUrl) => {
   if (!avatarUrl) return '';
   if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
@@ -58,31 +47,17 @@ const parseNonNegativeStoryPoints = (value) => {
 };
 
 const addPeopleRequest = async (spaceId, person) => {
-  const token = getAccessToken();
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      email: person.email,
-      name: person.name,
-    }),
+  const response = await axiosClient.post(`/spaces/${spaceId}/people`, {
+    email: person.email,
+    name: person.name,
+    ...(person.user_id || person.id?.startsWith?.('USR') ? { user_id: person.user_id || person.id } : {}),
   });
+  return response.data;
+};
 
-  if (!response.ok) {
-    let message = 'Unable to add this person.';
-    try {
-      const body = await response.json();
-      message = body.message || body.detail || message;
-    } catch {
-      // Keep fallback for non-JSON errors.
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
+const listPendingInvitationsRequest = async (spaceId) => {
+  const response = await axiosClient.get(`/spaces/${spaceId}/member-requests`);
+  return response.data || [];
 };
 
 const assigneeProfiles = {
@@ -288,6 +263,25 @@ const mapApiSpaceMember = (member, index = 0) => ({
   memberStatus: member.status,
   spaceMemberId: member.space_member_id,
 });
+
+const mapPendingInvitation = (request, index = 0) => ({
+  id: request.space_member_request_id,
+  email: request.requested_email || '',
+  name: request.requested_user?.full_name || request.requested_name || request.requested_email || 'Pending invitee',
+  initials: getInitials(request.requested_user?.full_name || request.requested_name || request.requested_email),
+  color: '#6B4A91',
+  textColor: '#FFFFFF',
+  status: request.status,
+  requesterName: request.requester?.full_name || request.requester?.email || 'Requester',
+  requestedAt: request.requested_at,
+  user_id: request.requested_user_id || '',
+  raw: request,
+  sortIndex: index,
+});
+
+const getPendingInvitationLabel = (status) => (
+  status === 'PENDING_OWNER' ? 'Waiting for owner approval' : 'Waiting for invitee acceptance'
+);
 
 const mapApiTaskAssignee = (entry, index = 0) => {
   const assigneeId = entry.assignee_id || entry.assigneeId || '';
@@ -503,7 +497,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const isAdmin = currentRole === 'ADMIN';
   const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
   const [apiSpace, setApiSpace] = useState(null);
-  const projectOwnerId = selectedSpace?.ownerId;
+  const projectOwnerId = apiSpace?.ownerId || selectedSpace?.ownerId;
   const pageTitle = apiSpace?.title || selectedSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
@@ -583,6 +577,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
   const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [pendingInvitations, setPendingInvitations] = useState([]);
   const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
   const [addPeopleFeedback, setAddPeopleFeedback] = useState('');
   const [addingPeopleEmail, setAddingPeopleEmail] = useState('');
@@ -596,7 +591,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const isSpaceMember = currentSpaceRole === 'USER';
   const canModifyTasks = !isAdmin;
   const canManageTasks = isSpaceOwner;
-  const canManagePeople = isSpaceOwner || isSpaceMember;
+  const canManagePeople = !isAdmin && (isSpaceOwner || isSpaceMember);
   const canSelectTasks = canModifyTasks || canManageTasks;
   const canDirectAddPeople = isSpaceOwner;
   const projectAssigneeOptions = React.useMemo(() => [
@@ -721,6 +716,37 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     loadTaskData();
   }, [loadTaskData]);
 
+  const refreshSpaceMembers = useCallback(async () => {
+    if (!spaceId || !String(spaceId).startsWith('SPC')) return;
+
+    try {
+      const [memberResponse, pendingResponse] = await Promise.all([
+        axiosClient.get(`/spaces/${spaceId}/members`),
+        listPendingInvitationsRequest(spaceId),
+      ]);
+      const nextMembers = (memberResponse.data || [])
+        .filter(member => member.status === 'Active')
+        .map(mapApiSpaceMember);
+      const nextPending = (pendingResponse || []).map(mapPendingInvitation);
+      setProjectPeople(nextMembers);
+      setPendingInvitations(nextPending);
+      setPendingPeopleEmails(nextPending.map(item => item.email.toLowerCase()).filter(Boolean));
+    } catch (error) {
+      setAddPeopleFeedback(getErrorMessage(error, 'Unable to refresh space members.'));
+    }
+  }, [spaceId]);
+
+  const handleToggleAddPeople = useCallback(() => {
+    setIsAddPeopleOpen(prev => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        setAddPeopleFeedback('');
+        void refreshSpaceMembers();
+      }
+      return nextOpen;
+    });
+  }, [refreshSpaceMembers]);
+
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
     const updatedTask = mapApiTask(response.data);
@@ -822,14 +848,52 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     return refreshTaskAssignmentState(taskId);
   }, [refreshTaskAssignmentState]);
 
-  const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
-    const normalizedSearch = peopleSearch.trim().toLowerCase();
-    if (!normalizedSearch) return true;
-    return person.name.toLowerCase().includes(normalizedSearch) ||
-      person.email.toLowerCase().includes(normalizedSearch);
-  });
   const trimmedPeopleSearch = peopleSearch.trim();
   const canAddEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedPeopleSearch);
+  const addPeopleCandidates = React.useMemo(() => {
+    if (!canAddEmail) return [];
+
+    const email = trimmedPeopleSearch.toLowerCase();
+    const existingMember = projectPeople.find(member => member.email?.toLowerCase() === email);
+    if (existingMember) return [existingMember];
+
+    const nameFromEmail = email.split('@')[0]
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ') || email;
+
+    return [{
+      id: `email-${email.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
+      name: nameFromEmail,
+      email,
+      initials: getInitials(nameFromEmail),
+      color: '#5E4DB2',
+      textColor: '#FFFFFF',
+    }];
+  }, [canAddEmail, projectPeople, trimmedPeopleSearch]);
+  const visibleSpacePeople = React.useMemo(() => {
+    if (canAddEmail) return [];
+
+    const query = trimmedPeopleSearch.toLowerCase();
+    if (!query) return projectPeople;
+
+    return projectPeople.filter(person =>
+      person.name?.toLowerCase().includes(query) ||
+      person.email?.toLowerCase().includes(query)
+    );
+  }, [canAddEmail, projectPeople, trimmedPeopleSearch]);
+  const pendingInvitationRows = React.useMemo(() => {
+    const query = trimmedPeopleSearch.toLowerCase();
+    if (!query) return pendingInvitations;
+
+    return pendingInvitations.filter(invitation =>
+      invitation.name?.toLowerCase().includes(query) ||
+      invitation.email?.toLowerCase().includes(query) ||
+      invitation.requesterName?.toLowerCase().includes(query)
+    );
+  }, [pendingInvitations, trimmedPeopleSearch]);
+  const peoplePanelRows = canAddEmail ? addPeopleCandidates : visibleSpacePeople;
 
   const handleAddProjectPerson = async (person) => {
     if (!person?.email || addingPeopleEmail) return;
@@ -842,25 +906,43 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       if (spaceId && String(spaceId).startsWith('SPC')) {
         const result = await addPeopleRequest(spaceId, person);
         if (result.status === 'APPROVED') {
+          const approvedMember = result.member
+            ? mapApiSpaceMember(result.member, projectPeople.length)
+            : person;
           setProjectPeople(prev => {
-            if (prev.some(member => member.email?.toLowerCase() === normalizedEmail || member.id === person.id)) return prev;
-            return [...prev, person];
+            if (prev.some(member =>
+              member.email?.toLowerCase() === normalizedEmail ||
+              member.id === approvedMember.id ||
+              member.user_id === approvedMember.user_id
+            )) {
+              return prev;
+            }
+            return [...prev, approvedMember];
           });
+          setPendingPeopleEmails(prev => prev.filter(email => email !== normalizedEmail));
+          await loadTaskData();
         } else {
-          setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+          const pendingEmail = result.request?.requested_email?.toLowerCase() || normalizedEmail;
+          setPendingPeopleEmails(prev => prev.includes(pendingEmail) ? prev : [...prev, pendingEmail]);
+          if (result.request) {
+            setPendingInvitations(prev => {
+              if (prev.some(item => item.id === result.request.space_member_request_id)) return prev;
+              return [mapPendingInvitation(result.request), ...prev];
+            });
+          }
         }
         setAddPeopleFeedback(result.message || 'Request created.');
       } else {
         setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
         setAddPeopleFeedback(
           canDirectAddPeople
-            ? `Invitation email sent to ${person.email}. Waiting for them to accept.`
+            ? `Invitation sent to ${person.email}. Waiting for them to accept.`
             : `Approval request sent to the owner for ${person.email}.`
         );
       }
       setPeopleSearch('');
     } catch (error) {
-      setAddPeopleFeedback(error.message || 'Unable to add this person.');
+      setAddPeopleFeedback(getErrorMessage(error, 'Unable to add this person.'));
     } finally {
       setAddingPeopleEmail('');
     }
@@ -889,6 +971,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   useEffect(() => {
     setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setPendingInvitations([]);
     setPendingPeopleEmails([]);
     setAddPeopleFeedback('');
     setSelectedAssigneeFilter('All');
@@ -1777,7 +1860,7 @@ if (storyPoints === null) {
                 <button
                   ref={addPeopleButtonRef}
                   type="button"
-                  onClick={() => setIsAddPeopleOpen(prev => !prev)}
+                  onClick={handleToggleAddPeople}
                   className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
                 >
                   <span className="material-symbols-outlined text-[18px]">person_add</span>
@@ -1795,7 +1878,7 @@ if (storyPoints === null) {
                         type="text"
                         value={peopleSearch}
                         onChange={(event) => setPeopleSearch(event.target.value)}
-                        placeholder="Search name or email..."
+                        placeholder="Enter an email address..."
                         className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
                       />
                     </div>
@@ -1806,21 +1889,52 @@ if (storyPoints === null) {
                     )}
                   </div>
                   <div className="max-h-64 overflow-y-auto py-1">
-                    {filteredPeopleDirectory.map(person => {
-                      const isAdded = projectPeople.some(member => member.id === person.id);
+                    {pendingInvitationRows.length > 0 && (
+                      <div className="border-b border-outline-variant pb-1">
+                        <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6E5A8A]">
+                          Pending invitations
+                        </div>
+                        {pendingInvitationRows.map(invitation => (
+                          <div key={invitation.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-[#FAF8FF]">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <AssigneeAvatar
+                                user={invitation}
+                                sizeClass="w-8 h-8"
+                                textClass="text-[11px]"
+                              />
+                              <div className="min-w-0">
+                                <div className="truncate text-[12px] font-semibold text-[#172B4D]">{invitation.name}</div>
+                                <div className="truncate text-[10px] text-outline">{invitation.email}</div>
+                                <div className="truncate text-[10px] text-[#6E5A8A]">
+                                  Requested by {invitation.requesterName}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="max-w-[112px] rounded bg-[#EEF2FF] px-2 py-1 text-right text-[10px] font-bold leading-tight text-[#003d9b]">
+                              {getPendingInvitationLabel(invitation.status)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {peoplePanelRows.map(person => {
                       const normalizedEmail = person.email.toLowerCase();
+                      const personUserId = person.user_id || person.id || '';
+                      const isAdded = projectPeople.some(member =>
+                        member.email?.toLowerCase() === normalizedEmail ||
+                        (personUserId && (member.user_id === personUserId || member.id === personUserId))
+                      );
                       const isPending = pendingPeopleEmails.includes(normalizedEmail);
                       const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
-                      const isOwner = projectOwnerId === person.id;
+                      const isOwner = projectOwnerId && (projectOwnerId === personUserId);
                       return (
                         <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                              style={{ backgroundColor: person.color, color: person.textColor || '#111' }}
-                            >
-                              {person.initials}
-                            </div>
+                            <AssigneeAvatar
+                              user={person}
+                              sizeClass="w-8 h-8"
+                              textClass="text-[11px]"
+                            />
                             <div className="min-w-0">
                               <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
                               <div className="text-[10px] text-outline truncate">{person.email}</div>
@@ -1842,18 +1956,22 @@ if (storyPoints === null) {
                                     : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 }`}
                             >
-                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : 'Invite'}
+                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : canDirectAddPeople ? 'Invite' : 'Request'}
                             </button>
                           )}
                         </div>
                       );
                     })}
-                    {filteredPeopleDirectory.length === 0 && trimmedPeopleSearch && (
+                    {peoplePanelRows.length === 0 && trimmedPeopleSearch && (
                       <div className="px-3 py-3">
                         <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
                           <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
                           <div className="text-[10px] text-outline">
-                            {canAddEmail ? 'Send an invitation to this email' : 'Enter a valid email address'}
+                            {canAddEmail
+                              ? canDirectAddPeople
+                                ? 'Send an invitation to this email'
+                                : 'Send an approval request to the owner'
+                              : 'Enter a valid email address'}
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
@@ -1873,13 +1991,13 @@ if (storyPoints === null) {
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                               }`}
                           >
-                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : 'Invite'}
+                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : canDirectAddPeople ? 'Invite' : 'Request'}
                           </button>
                         </div>
                       </div>
                     )}
-                    {filteredPeopleDirectory.length === 0 && !trimmedPeopleSearch && (
-                      <div className="px-4 py-5 text-center text-[12px] text-outline">Start typing a name or email</div>
+                    {peoplePanelRows.length === 0 && !trimmedPeopleSearch && (
+                      <div className="px-4 py-5 text-center text-[12px] text-outline">No members in this space yet</div>
                     )}
                   </div>
                 </div>
@@ -3345,9 +3463,8 @@ const savePointsValue = React.useCallback(async (value) => {
   );
 }
 
-function TaskRow({ id, displayId, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
   const visibleTaskId = displayId || id;
-function TaskRow({ id, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
   const isOverdue = isTaskOverdue(completed_at || date, status);
   const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;

@@ -122,6 +122,14 @@ def _ensure_can_view_space(db: Session, space: Space, current_user: User) -> Non
         )
 
 
+def _ensure_can_request_space_people(current_user: User) -> None:
+    if current_user.role in {"ADMIN", "SUPER_ADMIN"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ADMIN and SUPER_ADMIN cannot add people to spaces",
+        )
+
+
 def _ensure_space_owner(space: Space, current_user: User) -> None:
     if space.owner_id != current_user.user_id:
         raise HTTPException(
@@ -321,6 +329,11 @@ def _api_public_base_url() -> str:
         or os.getenv("BACKEND_URL")
         or "http://localhost:8000"
     ).rstrip("/")
+
+
+def _frontend_space_tasks_url(space_id: str) -> str:
+    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    return f"{frontend_url}/dashboard/tasks/{space_id}"
 
 
 def _send_member_request_email(
@@ -528,6 +541,7 @@ def _notify_inviter_invitation_accepted(
                 "space_name": space.name_space,
                 "invitee_email": request.requested_email,
                 "event": "space_invitation_accepted",
+                "action_url": _frontend_space_tasks_url(space.space_id),
             },
             allow_self_notification=True,
         )
@@ -983,6 +997,36 @@ def list_space_members(db: Session, space_id: str, current_user: User | None = N
     return [_space_member_response(member) for member in members]
 
 
+def list_pending_space_member_requests(
+    db: Session,
+    space_id: str,
+    current_user: User,
+) -> List[SpaceMemberRequestResponse]:
+    space = get_space_or_404(db, space_id)
+    _ensure_space_active(space)
+    _ensure_can_request_space_people(current_user)
+    _ensure_can_view_space(db, space, current_user)
+
+    query = (
+        db.query(SpaceMemberRequest)
+        .filter(
+            SpaceMemberRequest.space_id == space_id,
+            SpaceMemberRequest.status.in_(["PENDING_OWNER", "PENDING_INVITEE"]),
+        )
+    )
+
+    if space.owner_id != current_user.user_id:
+        query = query.filter(
+            or_(
+                SpaceMemberRequest.requester_id == current_user.user_id,
+                SpaceMemberRequest.requested_user_id == current_user.user_id,
+            )
+        )
+
+    requests = query.order_by(SpaceMemberRequest.requested_at.desc()).all()
+    return [_space_member_request_response(request) for request in requests]
+
+
 def add_people_to_space(
     db: Session,
     space_id: str,
@@ -991,6 +1035,7 @@ def add_people_to_space(
 ) -> SpaceAddPeopleResponse:
     space = get_space_or_404(db, space_id)
     _ensure_space_active(space)
+    _ensure_can_request_space_people(current_user)
     _ensure_can_view_space(db, space, current_user)
 
     requested_user = _resolve_requested_user(db, payload)
@@ -1011,11 +1056,10 @@ def add_people_to_space(
             detail="Email is required when the user account cannot be resolved",
         )
 
-    owner = db.query(User).filter(User.user_id == space.owner_id).first()
-    if owner is None:
+    if requested_user and requested_user.user_id == space.owner_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Owner user not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User is already the space owner",
         )
 
     if requested_user and _get_space_member(db, space.space_id, requested_user.user_id):
@@ -1037,7 +1081,14 @@ def add_people_to_space(
             detail="A pending approval request already exists for this person",
         )
 
-    is_owner_invite = current_user.role == "SUPER_ADMIN" or space.owner_id == current_user.user_id
+    is_owner_invite = space.owner_id == current_user.user_id
+    owner = db.query(User).filter(User.user_id == space.owner_id).first()
+    if owner is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner user not found",
+        )
+
     request_status = "PENDING_INVITEE" if is_owner_invite else "PENDING_OWNER"
     requested_name = (
         requested_user.full_name

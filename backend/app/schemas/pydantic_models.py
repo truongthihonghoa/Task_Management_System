@@ -87,8 +87,8 @@ class SpaceAddPeopleRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifier(self) -> "SpaceAddPeopleRequest":
-        if not self.user_id and not self.email and not self.name:
-            raise ValueError("Provide user_id, email, or name.")
+        if not self.user_id and not self.email:
+            raise ValueError("Provide user_id or email.")
         return self
 
 
