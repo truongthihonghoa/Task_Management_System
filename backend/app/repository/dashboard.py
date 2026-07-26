@@ -233,7 +233,7 @@ def get_space_member_status_counts(db: Session, space_id: str) -> dict[str, int]
     return counts
 
 
-def list_activity_spaces(db: Session) -> list[tuple[Space, int, int, int]]:
+def list_activity_spaces(db: Session) -> list[tuple[Space, User | None, int, int, int]]:
     member_counts = (
         db.query(
             SpaceMember.space_id.label("space_id"),
@@ -260,10 +260,12 @@ def list_activity_spaces(db: Session) -> list[tuple[Space, int, int, int]]:
     return (
         db.query(
             Space,
+            User,
             func.coalesce(member_counts.c.member_count, 0).label("member_count"),
             func.coalesce(task_counts.c.task_count, 0).label("task_count"),
             func.coalesce(assignment_counts.c.history_count, 0).label("history_count"),
         )
+        .outerjoin(User, Space.owner_id == User.user_id)
         .outerjoin(member_counts, member_counts.c.space_id == Space.space_id)
         .outerjoin(task_counts, task_counts.c.space_id == Space.space_id)
         .outerjoin(assignment_counts, assignment_counts.c.space_id == Space.space_id)
@@ -456,9 +458,51 @@ def list_audit_logs(
         )
 
     if event_type and event_type not in {"All Events", "all"}:
-        query = query.filter(AuditLog.action == event_type)
+        query = query.filter(func.lower(AuditLog.action) == event_type.lower())
     if label_title and label_title not in {"All Labels", "all"}:
-        query = query.filter(AuditLog.label_title == label_title)
+        normalized_label = label_title.strip().lower()
+        label_value = func.lower(AuditLog.label_title)
+        action_value = func.lower(AuditLog.action)
+
+        def audit_text_contains(term: str):
+            pattern = f"%{term}%"
+            return or_(label_value.like(pattern), action_value.like(pattern))
+
+        if normalized_label == "task":
+            query = query.filter(audit_text_contains("task"))
+        elif normalized_label == "space":
+            query = query.filter(audit_text_contains("space"))
+        elif normalized_label == "comment":
+            query = query.filter(audit_text_contains("comment"))
+        elif normalized_label == "attachment":
+            query = query.filter(or_(audit_text_contains("attachment"), audit_text_contains("file")))
+        elif normalized_label == "session":
+            query = query.filter(audit_text_contains("session"))
+        elif normalized_label == "token":
+            query = query.filter(audit_text_contains("token"))
+        elif normalized_label == "user":
+            user_label_filter = or_(
+                audit_text_contains("user"),
+                audit_text_contains("avatar"),
+                audit_text_contains("email"),
+                audit_text_contains("verification"),
+                audit_text_contains("register"),
+                audit_text_contains("logout"),
+                audit_text_contains("profile"),
+                audit_text_contains("password"),
+            )
+            non_user_label_filter = or_(
+                audit_text_contains("task"),
+                audit_text_contains("space"),
+                audit_text_contains("comment"),
+                audit_text_contains("attachment"),
+                audit_text_contains("file"),
+                audit_text_contains("session"),
+                audit_text_contains("token"),
+            )
+            query = query.filter(user_label_filter).filter(~non_user_label_filter)
+        else:
+            query = query.filter(func.lower(AuditLog.label_title) == normalized_label)
     if date_from:
         query = query.filter(AuditLog.created_at >= date_from)
     if date_to:

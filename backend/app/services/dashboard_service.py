@@ -72,6 +72,9 @@ AUDIT_DATE_RANGE_OPTIONS = [
     ("today", "Today"),
     ("yesterday", "Yesterday"),
     ("last_7_days", "Last 7 days"),
+    ("last_30_days", "Last 30 days"),
+    ("last_90_days", "Last 90 days"),
+    ("last_6_months", "Last 6 months"),
 ]
 AUDIT_SORT_OPTIONS = [
     ("desc", "Newest First"),
@@ -191,6 +194,7 @@ def _user_summary(user: User | None) -> DashboardUserSummaryResponse | None:
         email=user.email,
         role=user.role,
         initials=initials_for_name(user.full_name),
+        avatar_url=getattr(user, "avatar_url", None),
     )
 
 
@@ -379,9 +383,15 @@ def _date_range_bounds(date_range: str | None) -> tuple[datetime | None, datetim
         return yesterday_start, today_start
     if normalized in {"last_7_days", "last_7"}:
         return now - timedelta(days=7), now
+    if normalized in {"last_30_days", "last_30"}:
+        return now - timedelta(days=30), now
+    if normalized in {"last_90_days", "last_90"}:
+        return now - timedelta(days=90), now
+    if normalized in {"last_6_months", "last_6_month", "last_180_days", "last_180"}:
+        return now - timedelta(days=183), now
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail="Unsupported date_range. Use all_time, today, yesterday, or last_7_days.",
+        detail="Unsupported date_range. Use all_time, today, yesterday, last_7_days, last_30_days, last_90_days, or last_6_months.",
     )
 
 
@@ -495,11 +505,13 @@ def get_activity_spaces(db: Session, user: User) -> list[DashboardActivitySpaceR
             space_id=space.space_id,
             name_space=space.name_space,
             status_space=space.status_space,
+            owner_id=getattr(space, "owner_id", None),
+            owner=_user_summary(owner),
             active_member_count=int(member_count or 0),
             task_count=int(task_count or 0),
             assignment_history_count=int(history_count or 0),
         )
-        for space, member_count, task_count, history_count in dashboard_repository.list_activity_spaces(db)
+        for space, owner, member_count, task_count, history_count in dashboard_repository.list_activity_spaces(db)
     ]
 
 

@@ -625,7 +625,20 @@ def test_super_admin_dashboard_aggregates_system_metrics(monkeypatch):
     monkeypatch.setattr(
         dashboard_service.dashboard_repository,
         "list_activity_spaces",
-        lambda _db: [(SimpleNamespace(space_id="SPC00000001", name_space="User Management", status_space="Active"), 8, 10, 3)],
+        lambda _db: [
+            (
+                SimpleNamespace(
+                    space_id="SPC00000001",
+                    name_space="User Management",
+                    status_space="Active",
+                    owner_id="USR00000010",
+                ),
+                make_user("USR00000010", full_name="Space Owner"),
+                8,
+                10,
+                3,
+            )
+        ],
     )
     monkeypatch.setattr(
         dashboard_service.dashboard_repository,
@@ -742,7 +755,9 @@ def test_audit_log_filter_options_are_built_from_database(monkeypatch):
     assert response.label_titles[2].value == "user"
     assert response.date_ranges[0].value == "all_time"
     assert response.date_ranges[0].label == "All time"
-    assert "last_30_days" not in {item.value for item in response.date_ranges}
+    assert "last_30_days" in {item.value for item in response.date_ranges}
+    assert "last_90_days" in {item.value for item in response.date_ranges}
+    assert "last_6_months" in {item.value for item in response.date_ranges}
     assert response.sort_orders[0].value == "desc"
 
 
@@ -809,16 +824,25 @@ def test_assignment_history_response_serializes_task_space_and_users(monkeypatch
 
 
 def test_activity_spaces_returns_all_super_admin_space_filters(monkeypatch):
-    space = SimpleNamespace(space_id="SPC00000001", name_space="User Management", status_space="Active")
+    owner = make_user("USR00000010", full_name="Space Owner")
+    space = SimpleNamespace(
+        space_id="SPC00000001",
+        name_space="User Management",
+        status_space="Active",
+        owner_id=owner.user_id,
+        owner=owner,
+    )
     monkeypatch.setattr(
         dashboard_service.dashboard_repository,
         "list_activity_spaces",
-        lambda _db: [(space, 156, 12, 3)],
+        lambda _db: [(space, owner, 156, 12, 3)],
     )
 
     response = dashboard_service.get_activity_spaces(FakeDb(), make_user())
 
     assert response[0].space_id == "SPC00000001"
+    assert response[0].owner_id == owner.user_id
+    assert response[0].owner.full_name == "Space Owner"
     assert response[0].active_member_count == 156
     assert response[0].task_count == 12
     assert response[0].assignment_history_count == 3
@@ -867,7 +891,7 @@ def test_dashboard_rejects_unsupported_date_range(monkeypatch):
     monkeypatch.setattr(dashboard_service.dashboard_repository, "list_assignment_history", lambda _db, **kwargs: ([], 0))
 
     with pytest.raises(HTTPException) as exc_info:
-        dashboard_service.get_recent_activities(FakeDb(), make_user(), date_range="last_30_days")
+        dashboard_service.get_recent_activities(FakeDb(), make_user(), date_range="last_365_days")
 
     assert exc_info.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 

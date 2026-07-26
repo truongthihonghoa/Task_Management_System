@@ -205,7 +205,7 @@ export default function TaskDetailModal({
   onRemoveAssignee,
   currentRole = 'ADMIN',
   currentSpaceRole = 'USER',
-  currentUser = { id: 'admin-demo-user', name: 'Alex Morgan', role: 'ADMIN' },
+  currentUser = null,
   readOnly = false,
 }) {
   const [activeTab, setActiveTab] = useState('comments');
@@ -238,13 +238,7 @@ export default function TaskDetailModal({
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [assignHistory, setAssignHistory] = useState([]);
 
-  const fallbackAssignees = [
-    { user_id: null, name: 'Unassigned', initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF', icon: 'person' },
-    { user_id: 'c2ed9d7f-f0ea-4d1a-bbe9-042d94a6de8b', name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-    { user_id: '9e7291f0-8f6e-41c4-8ec5-5a86d0ecb02d', name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-    { user_id: '8ce04f65-ea2c-4279-8350-7c1f0e81c9f5', name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' }
-  ];
-  const availableAssignees = assigneeOptions.length > 0 ? assigneeOptions : fallbackAssignees;
+  const availableAssignees = assigneeOptions;
   const localAssignedUsers = useMemo(() => {
     const users = (localTask.assignees || [])
       .map(entry => entry.user)
@@ -864,44 +858,17 @@ export default function TaskDetailModal({
     </div>
   );
 
-  const assigneeProfiles = {
-    'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-    'Hoang Hoa': { initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-    'Trong Nghia': { initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-    'Unassigned': { initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF' }
-  };
-
   const getAssigneeProfile = (assignee) => {
-    if (!assignee) return assigneeProfiles['Unassigned'];
-    return assigneeProfiles[assignee] || {
-      initials: getInitials(assignee),
-      color: '#9CA3AF',
-      textColor: '#FFFFFF'
+    const displayName = assignee || 'Unassigned';
+    return {
+      initials: getInitials(displayName),
+      color: displayName === 'Unassigned' ? '#8e8f90' : '#9CA3AF',
+      textColor: '#FFFFFF',
     };
   };
 
   const sortAssignHistory = (history) => {
     return [...history].sort((a, b) => new Date(b.changed_at || 0) - new Date(a.changed_at || 0));
-  };
-
-  const makeUuid = () => {
-    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
-
-  const getAssigneeRecord = (assigneeName) => {
-    const displayName = assigneeName || 'Unassigned';
-    return availableAssignees.find(user => user.name === displayName) || {
-      user_id: null,
-      name: displayName,
-      initials: getInitials(displayName),
-      color: '#9CA3AF',
-      textColor: '#FFFFFF'
-    };
   };
 
   const getUserDisplayName = (user, fallback = 'Unassigned') => {
@@ -1000,25 +967,6 @@ export default function TaskDetailModal({
     if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 
     return date.toLocaleString();
-  };
-
-  const buildAssignHistoryRecord = (previousTask, updatedTask) => {
-    const previousAssignee = getAssigneeRecord(previousTask.assignee);
-    const newAssignee = getAssigneeRecord(updatedTask.assignee);
-
-    return {
-      assignment_history_id: makeUuid(),
-      task_id: updatedTask.task_id || updatedTask.id,
-      previous_assignee_id: previousAssignee.user_id,
-      new_assignee_id: newAssignee.user_id,
-      changed_by: currentUserId,
-      reason: '',
-      change_status: updatedTask.status || '',
-      changed_at: new Date().toISOString(),
-      previous_assignee_name: previousAssignee.name,
-      new_assignee_name: newAssignee.name,
-      changed_by_name: currentUserName
-    };
   };
 
   const handleAssigneeChange = async (selectedUser) => {

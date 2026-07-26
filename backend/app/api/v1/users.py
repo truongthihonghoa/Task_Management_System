@@ -71,22 +71,6 @@ def get_users(
         sort_by=sort_by,
         sort_order=sort_order.lower(),
     )
-    user_repo.create_user_audit_log(
-        db,
-        actor_user_id=current_user.user_id,
-        action="VIEW_USERS",
-        entity_id=None,
-        payload={
-            "page": page,
-            "page_size": page_size,
-            "search": search,
-            "status": status_filter,
-            "sort_by": sort_by,
-            "sort_order": sort_order,
-        },
-        ip_address=_get_client_ip(request),
-    )
-    db.commit()
     return UserManagementListResponse(total=total, page=page, page_size=page_size, items=items)
 
 
@@ -96,17 +80,7 @@ def get_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserProfileResponse:
-    profile = user_service.get_user_profile(db, current_user.user_id)
-    user_repo.create_user_audit_log(
-        db,
-        actor_user_id=current_user.user_id,
-        action="VIEW_PROFILE",
-        entity_id=current_user.user_id,
-        payload=None,
-        ip_address=_get_client_ip(request),
-    )
-    db.commit()
-    return profile
+    return user_service.get_user_profile(db, current_user.user_id)
 
 
 @router.put("/profile", response_model=UserProfileResponse)
@@ -189,17 +163,7 @@ def get_user(
     current_user: User = Depends(get_current_user),
 ) -> UserManagementResponse:
     _ensure_super_admin(current_user)
-    user = user_service.get_user_details(db, user_id)
-    user_repo.create_user_audit_log(
-        db,
-        actor_user_id=current_user.user_id,
-        action="VIEW_USER",
-        entity_id=user_id,
-        payload={"user_id": user_id},
-        ip_address=_get_client_ip(request),
-    )
-    db.commit()
-    return user
+    return user_service.get_user_details(db, user_id)
 
 
 @superadmin_router.patch("/{user_id}", response_model=UserManagementResponse)
