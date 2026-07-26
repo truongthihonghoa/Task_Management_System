@@ -18,11 +18,13 @@ export async function login({ email, password, remember = true }) {
     refresh_token: refreshToken,
     user,
   } = response.data;
-  setAccessToken(accessToken, { persist: remember });
+  setAccessToken(accessToken, { persist: true });
+
   if (refreshToken) {
-    setRefreshToken(refreshToken, { persist: remember });
+    setRefreshToken(refreshToken, { persist: true });
   }
-  setCurrentUser(user, { persist: remember });
+
+  setCurrentUser(user, { persist: true });
   return response.data;
 }
 
@@ -37,9 +39,10 @@ export async function refreshAccessToken() {
     access_token: accessToken,
     refresh_token: refreshToken,
   } = response.data;
-  setAccessToken(accessToken);
+  setAccessToken(accessToken, { persist: true });
+
   if (refreshToken) {
-    setRefreshToken(refreshToken);
+    setRefreshToken(refreshToken, { persist: true });
   }
   return response.data;
 }
@@ -128,9 +131,10 @@ export async function register({ email, fullName, password, confirmPassword, rem
     user: responseUser,
   } = response.data;
 
-  setAccessToken(accessToken, { persist: remember });
+  setAccessToken(accessToken, { persist: true });
+
   if (refreshToken) {
-    setRefreshToken(refreshToken, { persist: remember });
+    setRefreshToken(refreshToken, { persist: true });
   }
 
   const user = responseUser || {
@@ -138,7 +142,7 @@ export async function register({ email, fullName, password, confirmPassword, rem
     email: response.data.email,
     role: response.data.role,
   };
-  setCurrentUser(user, { persist: remember });
+  setCurrentUser(user, { persist: true });
 
   return { ...response.data, user };
 }
