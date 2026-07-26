@@ -11,12 +11,35 @@ import {
   setCurrentUser,
 } from '../services/tokenStorage';
 import { getProfile } from "../api/profileApi";
+import { useEffect } from "react";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getCurrentUser());
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function restoreSession() {
+      if (!getAccessToken()) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await getProfile();
+        setCurrentUser(profile, { persist: true });
+        setUser(profile);
+      } catch (err) {
+        clearAuth();
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    restoreSession();
+  }, []);
 
   const login = useCallback(async ({ email, password, remember }) => {
   setIsLoading(true);
@@ -37,7 +60,7 @@ export function AuthProvider({ children }) {
     };
 
     // Đồng bộ Context + Storage
-    setCurrentUser(mergedProfile);
+    setCurrentUser(mergedProfile, { persist: true });
     setUser(mergedProfile);
 
     return response;
@@ -56,6 +79,7 @@ export function AuthProvider({ children }) {
         confirmPassword,
         remember,
       });
+      setCurrentUser(response.user, { persist: true });
       setUser(response.user);
       return response;
     } finally {

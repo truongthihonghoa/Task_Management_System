@@ -3546,4 +3546,4 @@ function TaskRow({ id, title, assignee, assignees = [], assigneeId, pts, status,
     </tr>
   );
 }
-
+}
