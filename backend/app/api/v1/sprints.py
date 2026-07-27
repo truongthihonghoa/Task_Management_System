@@ -40,15 +40,6 @@ def create_sprint(
     return sprint_service.create_sprint(db, space_id, payload, current_user)
 
 
-@router.get("/sprints/{sprint_id}", response_model=SprintResponse)
-def get_sprint(
-    sprint_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> SprintResponse:
-    return sprint_service.get_sprint(db, sprint_id, current_user)
-
-
 @router.patch("/sprints/{sprint_id}", response_model=SprintResponse)
 def update_sprint(
     sprint_id: str,

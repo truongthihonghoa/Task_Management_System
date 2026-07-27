@@ -77,7 +77,7 @@ def test_sprint_create_defaults_to_planned():
     assert payload.status == "Planned"
 
 
-def test_sprint_detail_update_delete_activate_and_complete_delegate_to_service(monkeypatch):
+def test_sprint_update_delete_activate_and_complete_delegate_to_service(monkeypatch):
     db = object()
     user = SimpleNamespace(user_id="USR00000003")
     update_payload = SprintUpdate(
@@ -88,11 +88,6 @@ def test_sprint_detail_update_delete_activate_and_complete_delegate_to_service(m
     )
     calls = []
 
-    monkeypatch.setattr(
-        sprints.sprint_service,
-        "get_sprint",
-        lambda received_db, sprint_id, current_user: calls.append(("get", received_db, sprint_id, current_user)) or "get",
-    )
     monkeypatch.setattr(
         sprints.sprint_service,
         "update_sprint",
@@ -120,13 +115,11 @@ def test_sprint_detail_update_delete_activate_and_complete_delegate_to_service(m
         or "complete",
     )
 
-    assert sprints.get_sprint("SPR00000003", db, user) == "get"
     assert sprints.update_sprint("SPR00000003", update_payload, db, user) == "update"
     assert sprints.delete_sprint("SPR00000003", db, user) == "delete"
     assert sprints.activate_sprint("SPR00000003", db, user) == "activate"
     assert sprints.complete_sprint("SPR00000003", db, user) == "complete"
     assert calls == [
-        ("get", db, "SPR00000003", user),
         ("update", db, "SPR00000003", update_payload, user),
         ("delete", db, "SPR00000003", user),
         ("activate", db, "SPR00000003", user),
@@ -158,3 +151,40 @@ def test_complete_sprint_requires_all_tasks_done(monkeypatch):
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Sprint can only be completed when all tasks are done"
+
+
+def test_activate_sprint_requires_previous_sprints_completed(monkeypatch):
+    db = object()
+    user = SimpleNamespace(user_id="USR00000003", role="USER")
+    space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=user.user_id,
+        status_space="Active",
+        deleted_at=None,
+    )
+    first_sprint = SimpleNamespace(
+        sprint_id="SPR00000001",
+        space_id=space.space_id,
+        status="Planned",
+        space=space,
+    )
+    second_sprint = SimpleNamespace(
+        sprint_id="SPR00000002",
+        space_id=space.space_id,
+        status="Planned",
+        space=space,
+    )
+
+    monkeypatch.setattr(sprint_service, "_get_sprint_or_404", lambda received_db, sprint_id: second_sprint)
+    monkeypatch.setattr(sprint_service.sprint_repository, "get_active_sprint_by_space", lambda *_args: None)
+    monkeypatch.setattr(
+        sprint_service.sprint_repository,
+        "list_sprint_records",
+        lambda *_args, **_kwargs: [first_sprint, second_sprint],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        sprint_service.activate_sprint(db, second_sprint.sprint_id, user)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Complete the previous sprint before starting this sprint."

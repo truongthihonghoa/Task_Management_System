@@ -15,7 +15,6 @@ from app.models.task import Task
 from app.models.user import User
 from app.schemas.pydantic_models import (
     AssignTaskAssigneesRequest,
-    TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
     TaskListItemResponse,
@@ -112,7 +111,14 @@ def _get_sprint_for_space_or_404(db: Session, space_id: str, sprint_id: str) -> 
         )
     if sprint.status == "Deleted":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is deleted")
+    if sprint.status == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint is read-only")
     return sprint
+
+
+def _ensure_task_sprint_mutable(task: Task) -> None:
+    if getattr(getattr(task, "sprint", None), "status", None) == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint is read-only")
 
 
 def _get_task_or_404(db: Session, task_id: str) -> Task:
@@ -343,48 +349,6 @@ def list_tasks(
     return _build_task_list_response(tasks, total, page=page, page_size=page_size)
 
 
-def list_deleted_tasks(
-    db: Session,
-    space_id: str,
-    current_user: User,
-    *,
-    page: int,
-    page_size: int,
-    search: str | None,
-    task_status: str | None,
-    priority: str | None,
-    sort: str,
-) -> TaskListResponse:
-    space = _get_space_or_404(db, space_id)
-    _ensure_space_not_deleted(space)
-    _ensure_space_owner(space, current_user)
-
-    tasks, total = task_repository.list_task_records(
-        db,
-        space_id=space_id,
-        deleted=True,
-        page=page,
-        page_size=page_size,
-        search=search,
-        task_status=task_status,
-        priority=priority,
-        sort=sort,
-    )
-    return _build_task_list_response(tasks, total, page=page, page_size=page_size)
-
-
-def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardResponse:
-    space = _get_space_or_404(db, space_id)
-    _ensure_space_not_deleted(space)
-    _ensure_can_view_space_tasks(db, space, current_user)
-    sprint_service.apply_sprint_automation(db, space_id)
-
-    grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
-    for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
-        grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
-    return TaskBoardResponse(**grouped)
-
-
 def get_task_detail(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
     task = _get_task_or_404(db, task_id)
     space = task.space or _get_space_or_404(db, task.space_id)
@@ -403,6 +367,7 @@ def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: Us
     task = _get_task_or_404(db, task_id)
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    _ensure_task_sprint_mutable(task)
 
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_active(space)
@@ -473,6 +438,7 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     task = _get_task_or_404(db, task_id)
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is already deleted")
+    _ensure_task_sprint_mutable(task)
 
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_active(space)

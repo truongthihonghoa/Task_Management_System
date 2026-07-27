@@ -69,6 +69,27 @@ def _ensure_no_other_active_sprint(db: Session, sprint: Sprint) -> None:
         )
 
 
+def _ensure_previous_sprints_completed(db: Session, sprint: Sprint) -> None:
+    sprints = sprint_repository.list_sprint_records(
+        db,
+        space_id=sprint.space_id,
+        include_deleted=False,
+    )
+    previous_sprints = []
+    for existing_sprint in sprints:
+        if existing_sprint.sprint_id == sprint.sprint_id:
+            break
+        previous_sprints.append(existing_sprint)
+    else:
+        previous_sprints = sprints
+
+    if any(previous.status != "Completed" for previous in previous_sprints):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complete the previous sprint before starting this sprint.",
+        )
+
+
 def _serialize_sprints(sprints: Iterable[Sprint]) -> list[SprintResponse]:
     return [SprintResponse.model_validate(sprint) for sprint in sprints]
 
@@ -150,15 +171,6 @@ def list_sprints(
     return _serialize_sprints(sprints)
 
 
-def get_sprint(db: Session, sprint_id: str, current_user: User) -> SprintResponse:
-    sprint = _get_sprint_or_404(db, sprint_id)
-    space = sprint.space or _get_space_or_404(db, sprint.space_id)
-    _ensure_can_view_space_sprints(db, space, current_user)
-    apply_sprint_automation(db, sprint.space_id)
-    sprint = _get_sprint_or_404(db, sprint_id)
-    return SprintResponse.model_validate(sprint)
-
-
 def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_user: User) -> SprintResponse:
     space = _get_space_or_404(db, space_id)
     _ensure_space_active(space)
@@ -180,6 +192,7 @@ def create_sprint(db: Session, space_id: str, payload: SprintCreate, current_use
     )
     if sprint.status == "Active":
         _ensure_no_other_active_sprint(db, sprint)
+        _ensure_previous_sprints_completed(db, sprint)
     sprint_repository.create_sprint_record(db, sprint)
     apply_sprint_automation(db, space_id)
     sprint = _get_sprint_or_404(db, sprint.sprint_id)
@@ -208,6 +221,7 @@ def update_sprint(db: Session, sprint_id: str, payload: SprintUpdate, current_us
         )
     if update_data.get("status") == "Active":
         _ensure_no_other_active_sprint(db, sprint)
+        _ensure_previous_sprints_completed(db, sprint)
 
     for field, value in update_data.items():
         setattr(sprint, field, value)
@@ -250,6 +264,7 @@ def activate_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
     _ensure_space_active(space)
     _ensure_can_modify_space_sprints(db, space, current_user)
     _ensure_no_other_active_sprint(db, sprint)
+    _ensure_previous_sprints_completed(db, sprint)
 
     if sprint.status != "Active":
         sprint.status = "Active"

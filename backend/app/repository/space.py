@@ -182,13 +182,38 @@ def _ensure_space_name_available(
         )
 
 
-def _space_response(space: Space) -> SpaceResponse:
+def _active_task_counts_for_spaces(db: Session, space_ids: list[str]) -> dict[str, int]:
+    if not space_ids:
+        return {}
+
+    query = getattr(db, "query", None)
+    if query is None:
+        return {}
+
+    try:
+        rows = (
+            query(Task.space_id, func.count(Task.task_id))
+            .filter(Task.space_id.in_(space_ids), Task.deleted_at.is_(None))
+            .group_by(Task.space_id)
+            .all()
+        )
+    except TypeError:
+        return {}
+    return {space_id: int(task_count or 0) for space_id, task_count in rows}
+
+
+def _active_task_count_for_space(db: Session, space_id: str) -> int:
+    return _active_task_counts_for_spaces(db, [space_id]).get(space_id, 0)
+
+
+def _space_response(space: Space, *, task_count: int = 0) -> SpaceResponse:
     return SpaceResponse(
         space_id=space.space_id,
         name_space=space.name_space,
         description=space.description,
         owner_id=space.owner_id,
         status_space=space.status_space,
+        task_count=task_count,
         created_at=space.created_at,
         updated_at=space.updated_at,
         archived_at=getattr(space, "archived_at", None),
@@ -622,7 +647,9 @@ def list_spaces(db: Session, include_deleted: bool = False, current_user: User |
             .filter((Space.owner_id == current_user.user_id) | (SpaceMember.space_member_id.isnot(None)))
             .distinct()
         )
-    return [_space_response(space) for space in query.all()]
+    spaces = query.all()
+    task_counts = _active_task_counts_for_spaces(db, [space.space_id for space in spaces])
+    return [_space_response(space, task_count=task_counts.get(space.space_id, 0)) for space in spaces]
 
 
 def list_owner_trash(db: Session, owner_id: str, current_user: User | None = None) -> List[SpaceResponse]:
@@ -651,14 +678,15 @@ def list_owner_trash(db: Session, owner_id: str, current_user: User | None = Non
         .order_by(Space.deleted_at.desc())
         .all()
     )
-    return [_space_response(space) for space in spaces]
+    task_counts = _active_task_counts_for_spaces(db, [space.space_id for space in spaces])
+    return [_space_response(space, task_count=task_counts.get(space.space_id, 0)) for space in spaces]
 
 
 def get_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
     space = get_space_or_404(db, space_id)
     if current_user is not None:
         _ensure_can_view_space(db, space, current_user)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def update_space(db: Session, space_id: str, payload: SpaceUpdate, current_user: User | None = None) -> SpaceResponse:
@@ -698,7 +726,7 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate, current_user:
     )
     db.commit()
     db.refresh(space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def archive_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
@@ -734,7 +762,7 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
     )
     db.commit()
     db.refresh(space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def unarchive_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
@@ -793,7 +821,7 @@ def unarchive_space(db: Session, space_id: str, current_user: User | None = None
     )
     db.commit()
     db.refresh(space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def restore_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
@@ -842,7 +870,7 @@ def restore_space(db: Session, space_id: str, current_user: User | None = None) 
     )
     db.commit()
     db.refresh(space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def delete_space(db: Session, space_id: str, current_user: User | None = None) -> SpaceResponse:
@@ -868,7 +896,7 @@ def delete_space(db: Session, space_id: str, current_user: User | None = None) -
     )
     db.commit()
     db.refresh(space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def list_expired_deleted_space_records(db: Session, *, now: datetime | None = None) -> list[Space]:

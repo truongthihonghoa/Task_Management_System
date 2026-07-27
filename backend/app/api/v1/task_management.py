@@ -13,7 +13,6 @@ from app.schemas.pydantic_models import (
     ReassignTaskAssigneeRequest,
     RemoveTaskAssigneeRequest,
     TaskAssigneesResponse,
-    TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
     TaskListResponse,
@@ -161,40 +160,6 @@ def list_tasks(
         sort=sort,
         active_sprint_only=active_sprint_only,
     )
-
-
-@router.get("/spaces/{space_id}/tasks/deleted", response_model=TaskListResponse)
-def list_deleted_tasks(
-    space_id: str,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    search: str | None = Query(default=None),
-    task_status: TaskStatus | None = Query(default=None),
-    priority: TaskPriority | None = Query(default=None),
-    sort: TaskSort = Query(default="newest"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskListResponse:
-    return task_management_service.list_deleted_tasks(
-        db,
-        space_id,
-        current_user,
-        page=page,
-        page_size=page_size,
-        search=search,
-        task_status=task_status,
-        priority=priority,
-        sort=sort,
-    )
-
-
-@router.get("/spaces/{space_id}/tasks/board", response_model=TaskBoardResponse)
-def get_task_board(
-    space_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskBoardResponse:
-    return task_management_service.get_task_board(db, space_id, current_user)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetailResponse)
