@@ -56,6 +56,7 @@ class DashboardUserSummaryResponse(BaseModel):
     email: str | None = None
     role: str | None = None
     initials: str | None = None
+    avatar_url: str | None = None
 
 
 class DashboardAuditLogItemResponse(BaseModel):
@@ -118,6 +119,8 @@ class DashboardActivitySpaceResponse(BaseModel):
     space_id: str
     name_space: str
     status_space: str
+    owner_id: str | None = None
+    owner: DashboardUserSummaryResponse | None = None
     active_member_count: int = 0
     task_count: int = 0
     assignment_history_count: int = 0

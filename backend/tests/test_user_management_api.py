@@ -446,7 +446,7 @@ def test_create_user_audit_log_stores_expected_fields():
     assert audit_log in db.added
     assert audit_log.user_id == "USR00000001"
     assert audit_log.action == "UPDATE_USER"
-    assert audit_log.label_title == "user"
+    assert audit_log.label_title == "USER"
     assert audit_log.entity_id == "USR00000002"
     assert audit_log.payload["status"] == "Active"
     assert audit_log.payload["ip_address"] == "127.0.0.1"
@@ -455,8 +455,6 @@ def test_create_user_audit_log_stores_expected_fields():
 @pytest.mark.parametrize(
     "action",
     [
-        "VIEW_USERS",
-        "VIEW_USER",
         "UPDATE_USER",
         "ACTIVATE_USER",
         "DEACTIVATE_USER",

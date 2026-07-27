@@ -38,7 +38,7 @@ def create_user_audit_log(
     audit_log = AuditLog(
         user_id=actor_user_id,
         action=action,
-        label_title="user",
+        label_title="USER",
         entity_id=entity_id,
         payload=audit_payload or None,
     )
