@@ -1044,8 +1044,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   const maxPriorityValue = Math.max(...yAxisTicks, 1);
 
   const taskTabs = (isAdmin || isPrivilegedSpaceSummary)
-    ? ['Worked on', 'Viewed', 'Assign History']
-    : ['Worked on', 'Viewed', 'Assigned to me'];
+    ? ['Worked on', 'Recently viewed', 'Assign History']
+    : ['Worked on', 'Recently viewed', 'Assigned to me'];
 
   const [activeTaskTab, setActiveTaskTab] = useState(taskTabs[0]);
 
@@ -2033,7 +2033,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
 
 
-        <div className="glass-card rounded-2xl overflow-hidden flex flex-col w-full min-h-[600px]">
+        <div className="glass-card rounded-2xl overflow-hidden flex flex-col w-full">
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {isAdmin ? (
               <div className="p-8 pb-4 border-b border-gray-100 bg-white sticky top-0 z-20">
@@ -2200,7 +2200,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   {tab}
                   {(() => {
                     const assignedToMeCount = activityCounts.assigned_to_me ?? spaceSummary?.assigned_to_me?.total ?? currentAssignedTasks.length;
-                    const tabCount = tab === 'Viewed' ? viewedCount : tab === 'Assign History' ? assignHistoryCount : tab === 'Assigned to me' ? assignedToMeCount : 0;
+                    const tabCount = tab === 'Recently viewed' ? viewedCount : tab === 'Assign History' ? assignHistoryCount : tab === 'Assigned to me' ? assignedToMeCount : 0;
                     return tabCount > 0 ? (
                       <span className="ml-1.5 bg-gray-100/80 text-gray-400 text-[10px] px-1.5 py-0.5 rounded-full font-black">
                         {tabCount}
@@ -2215,7 +2215,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
             </div>
 
             {/* Tab Content Body */}
-            <div className="min-h-[500px]">
+            <div className="min-h-[140px]">
               {/* 1. Worked On Tab */}
               {activeTaskTab === 'Worked on' && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
@@ -2272,12 +2272,12 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                 </div>
               )}
 
-              {/* 2. Viewed Tab */}
-              {activeTaskTab === 'Viewed' && (
+              {/* 2. Recently viewed Tab */}
+              {activeTaskTab === 'Recently viewed' && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                   {filteredViewed.length === 0 && (
                     <div className="px-8 py-10 text-sm font-semibold text-[#5e636e]">
-                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view viewed activities.' : dashboardLoading ? 'Loading viewed activities...' : 'No viewed activities found.'}
+                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view recently viewed items.' : dashboardLoading ? 'Loading recently viewed items...' : 'No recently viewed items found.'}
                     </div>
                   )}
                   {["Today", "Yesterday", "In the last week"].map(group => {
