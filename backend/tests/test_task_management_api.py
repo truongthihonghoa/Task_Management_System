@@ -153,6 +153,43 @@ def test_task_detail_update_delete_delegate_to_service(monkeypatch):
     ]
 
 
+def test_get_task_detail_records_recent_view(monkeypatch):
+    db = object()
+    user = SimpleNamespace(user_id="USR00000003", role="USER")
+    space = SimpleNamespace(
+        space_id="SPC00000002",
+        owner_id=user.user_id,
+        status_space="Active",
+        deleted_at=None,
+    )
+    task = SimpleNamespace(
+        task_id="TSK00000007",
+        space_id=space.space_id,
+        space=space,
+    )
+    recent_views = []
+
+    monkeypatch.setattr(task_management_service, "_get_task_or_404", lambda received_db, task_id: task)
+    monkeypatch.setattr(task_management_service, "_build_task_detail_response", lambda received_task: "detail")
+    monkeypatch.setattr(
+        task_management_service.recent_view_repository,
+        "record_recent_view",
+        lambda received_db, **kwargs: recent_views.append((received_db, kwargs)),
+    )
+
+    assert task_management_service.get_task_detail(db, task.task_id, user) == "detail"
+    assert recent_views == [
+        (
+            db,
+            {
+                "user_id": user.user_id,
+                "entity_type": "task",
+                "entity_id": task.task_id,
+            },
+        )
+    ]
+
+
 def test_delete_task_requires_space_owner(monkeypatch):
     db = object()
     member_user = SimpleNamespace(user_id="USR00000004", role="USER")
