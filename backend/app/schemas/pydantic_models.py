@@ -22,6 +22,7 @@ class SpaceResponse(BaseModel):
     description: Optional[str]
     owner_id: str
     status_space: str
+    task_count: int = 0
     created_at: datetime
     updated_at: datetime
     archived_at: Optional[datetime] = None
@@ -430,16 +431,6 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-
-
-class TaskBoardResponse(BaseModel):
-    new: list[TaskListItemResponse]
-    in_progress: list[TaskListItemResponse]
-    in_testing: list[TaskListItemResponse]
-    pending_review: list[TaskListItemResponse]
-    need_revision: list[TaskListItemResponse]
-    done: list[TaskListItemResponse]
-    cancelled: list[TaskListItemResponse]
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

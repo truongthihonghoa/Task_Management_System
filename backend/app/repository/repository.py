@@ -26,7 +26,7 @@ def get_user_by_id(db: Session, user_id: str) -> User | None:
 def get_task_by_id(db: Session, task_id: str) -> Task | None:
     return db.execute(
         select(Task)
-        .options(joinedload(Task.space))
+        .options(joinedload(Task.space), joinedload(Task.sprint))
         .where(Task.task_id == task_id)
     ).scalar_one_or_none()
 

@@ -73,7 +73,6 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
     assert spaces.list_spaces(include_deleted=True, db=db, current_user=current_user) == []
     assert spaces.get_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.update_space("SPC00000002", update_payload, db, current_user) == {"space_id": "SPC00000002"}
-    assert spaces.archive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.complete_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.unarchive_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
     assert spaces.restore_space("SPC00000002", db, current_user) == {"space_id": "SPC00000002"}
@@ -84,7 +83,6 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
         ("list", db, {"include_deleted": True, "current_user": current_user}),
         ("get", db, "SPC00000002", {"current_user": current_user}),
         ("update", db, "SPC00000002", update_payload, {"current_user": current_user}),
-        ("archive", db, "SPC00000002", {"current_user": current_user}),
         ("archive", db, "SPC00000002", {"current_user": current_user}),
         ("unarchive", db, "SPC00000002", {"current_user": current_user}),
         ("restore", db, "SPC00000002", {"current_user": current_user}),

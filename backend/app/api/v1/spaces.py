@@ -151,15 +151,6 @@ def update_space(
     return space_crud.update_space(db, space_id, payload, current_user=current_user)
 
 
-@router.post("/{space_id}/archive", response_model=SpaceResponse)
-def archive_space(
-    space_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    return space_crud.archive_space(db, space_id, current_user=current_user)
-
-
 @router.post("/{space_id}/complete", response_model=SpaceResponse)
 def complete_space(
     space_id: str,
