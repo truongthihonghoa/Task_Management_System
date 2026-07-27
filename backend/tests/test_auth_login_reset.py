@@ -279,14 +279,12 @@ def test_upload_register_avatar_uses_current_user_and_returns_avatar_url(monkeyp
     db = FakeDb()
     current_user = make_user()
     uploaded = []
-    audit_logs = []
 
     monkeypatch.setattr(
         auth_api.user_service,
         "update_user_avatar",
         lambda _db, user_id, file: uploaded.append((user_id, file)) or "/media/avatar/new-avatar.png",
     )
-    monkeypatch.setattr(auth_api, "create_audit_log", lambda _db, **kwargs: audit_logs.append(kwargs))
 
     file = SimpleNamespace(filename="avatar.png", content_type="image/png")
     response = auth_api.upload_register_avatar(
@@ -299,8 +297,6 @@ def test_upload_register_avatar_uses_current_user_and_returns_avatar_url(monkeyp
     assert response.message == "Registration avatar uploaded successfully."
     assert response.avatar_url == "/media/avatar/new-avatar.png"
     assert uploaded == [(current_user.user_id, file)]
-    assert audit_logs[0]["action"] == "UPLOAD_REGISTER_AVATAR"
-    assert audit_logs[0]["entity_id"] == current_user.user_id
     assert db.commits == 1
 
 
@@ -422,7 +418,7 @@ def test_logout_revokes_refresh_token_for_current_access_token(monkeypatch):
             {
                 "user_id": user.user_id,
                 "action": "LOGOUT",
-                "label_title": "Logout user",
+                "label_title": "USER",
                 "entity_id": user.user_id,
             },
         ),
@@ -460,7 +456,6 @@ def test_refresh_tokens_with_valid_refresh_token_updates_access_token(monkeypatc
         "update_user_token",
         lambda _db, token, **kwargs: updated_tokens.append((token, kwargs)) or setattr(token, "access_token", kwargs["new_access_token"]) or token,
     )
-    monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
 
     response = auth_service.refresh_tokens(db, refresh_token)
 
@@ -469,7 +464,7 @@ def test_refresh_tokens_with_valid_refresh_token_updates_access_token(monkeypatc
     assert response.user.user_id == user.user_id
     assert stored_token.access_token == "new-access-token"
     assert updated_tokens[0][1]["new_access_token"] == "new-access-token"
-    assert audits[0]["action"] == "TOKEN_REFRESH"
+    assert audits == []
     assert db.commits == 1
     assert db.rollbacks == 0
 

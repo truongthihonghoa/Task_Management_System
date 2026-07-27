@@ -8,22 +8,10 @@ import EditSprintModal from '../components/tasks/EditSprintModal';
 import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
-import { DEMO_SPACES } from './SpaceManagement';
 import axiosClient, { API_BASE_URL } from '../api/axiosClient';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
-  { name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  { name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  { name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  { name: 'Trang Nguyen', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
-];
-
-const projectPeopleDirectory = [
-  { id: 'pham-tien', name: 'Pham Tien', email: 'pham.tien@example.com', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  { id: 'hoang-hoa', name: 'Hoang Hoa', email: 'hoanghoa@example.com', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  { id: 'trong-nghia', name: 'Trong Nghia', email: 'trongnghia@example.com', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
 
 const normalizeAvatarUrl = (avatarUrl) => {
@@ -61,10 +49,6 @@ const listPendingInvitationsRequest = async (spaceId) => {
 };
 
 const assigneeProfiles = {
-  'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  'Hoang Hoa': { initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  'Trong Nghia': { initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  'Trang Nguyen': { initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' },
   'Unassigned': { initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF' }
 };
 
@@ -102,23 +86,7 @@ const AssigneeAvatar = ({ user = {}, sizeClass = 'w-6 h-6', textClass = 'text-[1
   );
 };
 
-const getInitialProjectPeople = (space) => {
-  const assignedPeople = availableAssignees
-    .slice(1)
-    .map(assignee => projectPeopleDirectory.find(person => person.name === assignee.name))
-    .filter(Boolean);
-
-  if (!space) return assignedPeople;
-
-  const spacePeopleIds = [space.ownerId, ...(space.memberIds || [])].filter(Boolean);
-  const spacePeople = spacePeopleIds
-    .map(id => projectPeopleDirectory.find(person => person.id === id))
-    .filter(Boolean);
-
-  return [...spacePeople, ...assignedPeople].filter((person, index, people) =>
-    people.findIndex(item => item.id === person.id) === index
-  );
-};
+const getInitialProjectPeople = () => [];
 
 const getNextTaskId = (tasks) => {
   const maxTaskNumber = tasks.reduce((max, task) => {
@@ -495,10 +463,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const spaceId = spaceIdOverride || routeSpaceId;
   const isAdmin = currentRole === 'ADMIN';
-  const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
   const [apiSpace, setApiSpace] = useState(null);
-  const projectOwnerId = apiSpace?.ownerId || selectedSpace?.ownerId;
-  const pageTitle = apiSpace?.title || selectedSpace?.title || 'Task Management';
+  const projectOwnerId = apiSpace?.ownerId || '';
+  const pageTitle = apiSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
@@ -572,11 +539,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
+  const [selectedSummaryMemberId, setSelectedSummaryMemberId] = useState('All');
   const [openAssigneeFilterMenu, setOpenAssigneeFilterMenu] = useState(null);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
-  const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [projectPeople, setProjectPeople] = useState(getInitialProjectPeople);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
   const [addPeopleFeedback, setAddPeopleFeedback] = useState('');
@@ -626,6 +594,21 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSelectedAssigneeFilter(filterValue);
     setOpenAssigneeFilterMenu(null);
   };
+
+  const handleSelectSummaryMemberFilter = (memberId) => {
+    setSelectedSummaryMemberId(memberId || 'All');
+    setOpenAssigneeFilterMenu(null);
+  };
+
+  useEffect(() => {
+    if (selectedSummaryMemberId === 'All') return;
+    const hasSelectedMember = projectAssigneeOptions.some(user => (
+      (user.user_id || user.id) === selectedSummaryMemberId
+    ));
+    if (!hasSelectedMember) {
+      setSelectedSummaryMemberId('All');
+    }
+  }, [projectAssigneeOptions, selectedSummaryMemberId]);
 
   useEffect(() => {
     if (setCurrentSpaceNameForModal) {
@@ -970,12 +953,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   useEffect(() => {
-    setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setProjectPeople(getInitialProjectPeople());
     setPendingInvitations([]);
     setPendingPeopleEmails([]);
     setAddPeopleFeedback('');
     setSelectedAssigneeFilter('All');
-  }, [selectedSpace?.id]);
+  }, [spaceId]);
 
   useEffect(() => {
     if (!isAddPeopleOpen) return;
@@ -1046,17 +1029,17 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
 
     const selectedAssigneeIds = Array.from(new Set(
-  (taskData.assigneeIds || [])
-    .concat(taskData.assigneeId ? [taskData.assigneeId] : [])
-    .map(String)
-    .map(id => id.trim())
-    .filter(Boolean)
-));
+      (taskData.assigneeIds || [])
+        .concat(taskData.assigneeId ? [taskData.assigneeId] : [])
+        .map(String)
+        .map(id => id.trim())
+        .filter(Boolean)
+    ));
 
-const storyPoints = parseNonNegativeStoryPoints(taskData.storyPoints);
-if (storyPoints === null) {
-  throw new Error('Story points must be 0 or greater.');
-}
+    const storyPoints = parseNonNegativeStoryPoints(taskData.storyPoints);
+    if (storyPoints === null) {
+      throw new Error('Story points must be 0 or greater.');
+    }
     const formData = new FormData();
     formData.append('title', taskData.summary.trim());
     formData.append('sprint_id', selectedSprint.id);
@@ -1612,15 +1595,15 @@ if (storyPoints === null) {
       ? [
         ...currentAssignees,
         {
-        entryId: `optimistic-${taskId}-${nextAssigneeId}`,
-        assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
-        taskId,
-        assigneeId: nextAssigneeId,
-        assignee_id: nextAssigneeId,
-        assignedAt: new Date().toISOString(),
-        assignee_at: new Date().toISOString(),
-        user: mapApiUserSummary(user),
-      }]
+          entryId: `optimistic-${taskId}-${nextAssigneeId}`,
+          assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
+          taskId,
+          assigneeId: nextAssigneeId,
+          assignee_id: nextAssigneeId,
+          assignedAt: new Date().toISOString(),
+          assignee_at: new Date().toISOString(),
+          user: mapApiUserSummary(user),
+        }]
       : [];
     const optimisticUpdates = buildTaskAssigneeUpdates(optimisticAssignee);
 
@@ -1772,15 +1755,28 @@ if (storyPoints === null) {
   };
 
   const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
+  const canUseSummaryMemberFilter = summaryRole === 'SUPER_ADMIN' || summaryRole === 'OWNER';
   const spaceMemberCount = new Set(
     tasks.flatMap(task => getTaskAssigneeUsers(task).map(user => user.user_id || user.id || user.name)).filter(Boolean)
   ).size;
   const assigneeFilterMembers = projectAssigneeOptions.slice(1);
-  const selectedAssigneeFilterMembers = selectedAssigneeFilter === 'All'
+  const selectedSummaryMember = selectedSummaryMemberId === 'All'
+    ? null
+    : assigneeFilterMembers.find(user => (user.user_id || user.id) === selectedSummaryMemberId) || null;
+  const selectedSummaryFilterMembers = selectedSummaryMemberId === 'All'
     ? assigneeFilterMembers
-    : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter);
+    : selectedSummaryMember ? [selectedSummaryMember] : [];
+  const summaryMemberId = !canUseSummaryMemberFilter || selectedSummaryMemberId === 'All'
+    ? null
+    : selectedSummaryMember?.user_id || selectedSummaryMember?.id || selectedSummaryMemberId;
   const assigneeFilterAvatarClass = (user) => {
     const isActive = selectedAssigneeFilter === 'All' || user.name === selectedAssigneeFilter;
+    return isActive
+      ? 'relative z-10 border-2 border-[#A78BFA] ring-2 ring-[#EDE9FE] shadow-sm'
+      : 'border-2 border-white opacity-70';
+  };
+  const summaryMemberAvatarClass = (user) => {
+    const isActive = selectedSummaryMemberId === 'All' || (user.user_id || user.id) === selectedSummaryMemberId;
     return isActive
       ? 'relative z-10 border-2 border-[#A78BFA] ring-2 ring-[#EDE9FE] shadow-sm'
       : 'border-2 border-white opacity-70';
@@ -1795,23 +1791,23 @@ if (storyPoints === null) {
         className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
       >
         <div className="flex -space-x-1">
-          {selectedAssigneeFilterMembers.slice(0, 3).map(user => (
+          {selectedSummaryFilterMembers.slice(0, 3).map(user => (
             <AssigneeAvatar
               key={user.user_id || user.id || user.name}
               user={user}
               sizeClass="w-5 h-5"
               textClass="text-[9px]"
-              className={assigneeFilterAvatarClass(user)}
+              className={summaryMemberAvatarClass(user)}
             />
           ))}
-          {selectedAssigneeFilter === 'All' && selectedAssigneeFilterMembers.length > 3 && (
+          {selectedSummaryMemberId === 'All' && selectedSummaryFilterMembers.length > 3 && (
             <span className="w-5 h-5 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[8px] font-bold text-gray-700">
-              +{selectedAssigneeFilterMembers.length - 3}
+              +{selectedSummaryFilterMembers.length - 3}
             </span>
           )}
         </div>
         <span className="text-[11px] font-bold text-[#5e4db2]">
-          {selectedAssigneeFilter === 'All' ? 'All members' : selectedAssigneeFilter}
+          {selectedSummaryMemberId === 'All' ? 'All members' : selectedSummaryMember?.name || 'All members'}
         </span>
         <span className="material-symbols-outlined text-[#5e4db2] text-[13px]">expand_more</span>
       </button>
@@ -1819,7 +1815,7 @@ if (storyPoints === null) {
         <div className="py-1">
           <button
             type="button"
-            onClick={() => handleSelectAssigneeFilter('All')}
+            onClick={() => handleSelectSummaryMemberFilter('All')}
             className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
           >
             <span className="material-symbols-outlined flex h-6 w-6 items-center justify-center rounded-full bg-[#F3E8FF] text-[16px] text-[#7E22CE]">
@@ -1831,7 +1827,7 @@ if (storyPoints === null) {
             <button
               key={user.user_id || user.id || user.name}
               type="button"
-              onClick={() => handleSelectAssigneeFilter(user.name)}
+              onClick={() => handleSelectSummaryMemberFilter(user.user_id || user.id)}
               className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
             >
               <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[9px]" />
@@ -1867,147 +1863,147 @@ if (storyPoints === null) {
                   Add people
                 </button>
                 {isAddPeopleOpen && (
-                <div
-                  ref={addPeoplePanelRef}
-                  className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
-                >
-                  <div className="p-3 border-b border-outline-variant">
-                    <div className="relative">
-                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
-                      <input
-                        type="text"
-                        value={peopleSearch}
-                        onChange={(event) => setPeopleSearch(event.target.value)}
-                        placeholder="Enter an email address..."
-                        className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
-                      />
-                    </div>
-                    {addPeopleFeedback && (
-                      <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
-                        {addPeopleFeedback}
+                  <div
+                    ref={addPeoplePanelRef}
+                    className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                  >
+                    <div className="p-3 border-b border-outline-variant">
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                        <input
+                          type="text"
+                          value={peopleSearch}
+                          onChange={(event) => setPeopleSearch(event.target.value)}
+                          placeholder="Enter an email address..."
+                          className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
+                        />
                       </div>
-                    )}
-                  </div>
-                  <div className="max-h-64 overflow-y-auto py-1">
-                    {pendingInvitationRows.length > 0 && (
-                      <div className="border-b border-outline-variant pb-1">
-                        <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6E5A8A]">
-                          Pending invitations
+                      {addPeopleFeedback && (
+                        <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
+                          {addPeopleFeedback}
                         </div>
-                        {pendingInvitationRows.map(invitation => (
-                          <div key={invitation.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-[#FAF8FF]">
-                            <div className="flex min-w-0 items-center gap-3">
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto py-1">
+                      {pendingInvitationRows.length > 0 && (
+                        <div className="border-b border-outline-variant pb-1">
+                          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6E5A8A]">
+                            Pending invitations
+                          </div>
+                          {pendingInvitationRows.map(invitation => (
+                            <div key={invitation.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-[#FAF8FF]">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <AssigneeAvatar
+                                  user={invitation}
+                                  sizeClass="w-8 h-8"
+                                  textClass="text-[11px]"
+                                />
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12px] font-semibold text-[#172B4D]">{invitation.name}</div>
+                                  <div className="truncate text-[10px] text-outline">{invitation.email}</div>
+                                  <div className="truncate text-[10px] text-[#6E5A8A]">
+                                    Requested by {invitation.requesterName}
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="max-w-[112px] rounded bg-[#EEF2FF] px-2 py-1 text-right text-[10px] font-bold leading-tight text-[#003d9b]">
+                                {getPendingInvitationLabel(invitation.status)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {peoplePanelRows.map(person => {
+                        const normalizedEmail = person.email.toLowerCase();
+                        const personUserId = person.user_id || person.id || '';
+                        const isAdded = projectPeople.some(member =>
+                          member.email?.toLowerCase() === normalizedEmail ||
+                          (personUserId && (member.user_id === personUserId || member.id === personUserId))
+                        );
+                        const isPending = pendingPeopleEmails.includes(normalizedEmail);
+                        const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
+                        const isOwner = projectOwnerId && (projectOwnerId === personUserId);
+                        return (
+                          <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
+                            <div className="flex items-center gap-3 min-w-0">
                               <AssigneeAvatar
-                                user={invitation}
+                                user={person}
                                 sizeClass="w-8 h-8"
                                 textClass="text-[11px]"
                               />
                               <div className="min-w-0">
-                                <div className="truncate text-[12px] font-semibold text-[#172B4D]">{invitation.name}</div>
-                                <div className="truncate text-[10px] text-outline">{invitation.email}</div>
-                                <div className="truncate text-[10px] text-[#6E5A8A]">
-                                  Requested by {invitation.requesterName}
-                                </div>
+                                <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
+                                <div className="text-[10px] text-outline truncate">{person.email}</div>
                               </div>
                             </div>
-                            <span className="max-w-[112px] rounded bg-[#EEF2FF] px-2 py-1 text-right text-[10px] font-bold leading-tight text-[#003d9b]">
-                              {getPendingInvitationLabel(invitation.status)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {peoplePanelRows.map(person => {
-                      const normalizedEmail = person.email.toLowerCase();
-                      const personUserId = person.user_id || person.id || '';
-                      const isAdded = projectPeople.some(member =>
-                        member.email?.toLowerCase() === normalizedEmail ||
-                        (personUserId && (member.user_id === personUserId || member.id === personUserId))
-                      );
-                      const isPending = pendingPeopleEmails.includes(normalizedEmail);
-                      const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
-                      const isOwner = projectOwnerId && (projectOwnerId === personUserId);
-                      return (
-                        <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <AssigneeAvatar
-                              user={person}
-                              sizeClass="w-8 h-8"
-                              textClass="text-[11px]"
-                            />
-                            <div className="min-w-0">
-                              <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
-                              <div className="text-[10px] text-outline truncate">{person.email}</div>
-                            </div>
-                          </div>
-                          {isOwner ? (
-                            <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
-                              Owner
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
-                              onClick={() => handleAddProjectPerson(person)}
-                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
+                            {isOwner ? (
+                              <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
+                                Owner
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
+                                onClick={() => handleAddProjectPerson(person)}
+                                className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
                                   ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
                                   : isPending
                                     ? 'bg-[#EEF2FF] text-[#003d9b] cursor-default'
                                     : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                                }`}
-                            >
-                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : canDirectAddPeople ? 'Invite' : 'Request'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {peoplePanelRows.length === 0 && trimmedPeopleSearch && (
-                      <div className="px-3 py-3">
-                        <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
-                          <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
-                          <div className="text-[10px] text-outline">
-                            {canAddEmail
-                              ? canDirectAddPeople
-                                ? 'Send an invitation to this email'
-                                : 'Send an approval request to the owner'
-                              : 'Enter a valid email address'}
+                                  }`}
+                              >
+                                {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : canDirectAddPeople ? 'Invite' : 'Request'}
+                              </button>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPeopleSearch('')}
-                            className="px-3 py-1.5 rounded border border-outline-variant bg-white text-[11px] font-bold text-[#4B5563] hover:bg-[#F3F4F6] transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canAddEmail || Boolean(addingPeopleEmail)}
-                            onClick={handleAddEmailPerson}
-                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
+                        );
+                      })}
+                      {peoplePanelRows.length === 0 && trimmedPeopleSearch && (
+                        <div className="px-3 py-3">
+                          <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
+                            <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
+                            <div className="text-[10px] text-outline">
+                              {canAddEmail
+                                ? canDirectAddPeople
+                                  ? 'Send an invitation to this email'
+                                  : 'Send an approval request to the owner'
+                                : 'Enter a valid email address'}
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPeopleSearch('')}
+                              className="px-3 py-1.5 rounded border border-outline-variant bg-white text-[11px] font-bold text-[#4B5563] hover:bg-[#F3F4F6] transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canAddEmail || Boolean(addingPeopleEmail)}
+                              onClick={handleAddEmailPerson}
+                              className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
                                 ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              }`}
-                          >
-                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : canDirectAddPeople ? 'Invite' : 'Request'}
-                          </button>
+                                }`}
+                            >
+                              {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : canDirectAddPeople ? 'Invite' : 'Request'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {peoplePanelRows.length === 0 && !trimmedPeopleSearch && (
-                      <div className="px-4 py-5 text-center text-[12px] text-outline">No members in this space yet</div>
-                    )}
+                      )}
+                      {peoplePanelRows.length === 0 && !trimmedPeopleSearch && (
+                        <div className="px-4 py-5 text-center text-[12px] text-outline">No members in this space yet</div>
+                      )}
+                    </div>
                   </div>
-                </div>
                 )}
               </div>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {view === 'summary' && summaryMemberFilter}
+        {view === 'summary' && canUseSummaryMemberFilter && summaryMemberFilter}
           <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-outline-variant">
             <button
               className={viewTabClass('summary')}
@@ -2034,7 +2030,13 @@ if (storyPoints === null) {
       </div>
 
       {view === 'summary' && (
-        <Dashboard embedded forcedRole={summaryRole} spaceMemberCount={spaceMemberCount} />
+        <Dashboard
+          embedded
+          forcedRole={summaryRole}
+          spaceId={spaceId}
+          summaryMemberId={summaryMemberId}
+          spaceMemberCount={spaceMemberCount}
+        />
       )}
 
       {tasksError && view !== 'summary' && (
@@ -2277,92 +2279,92 @@ if (storyPoints === null) {
 
               {/* Calendar Dropdown */}
               {isDateDropdownOpen && (
-              <div
-                className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewMonth(m => {
-                            if (m === 0) {
-                              setViewYear(y => y - 1);
-                              return 11;
-                            }
-                            return m - 1;
-                          });
-                        }}
-                        className="p-1 hover:bg-gray-100 rounded"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewMonth(m => {
-                            if (m === 11) {
-                              setViewYear(y => y + 1);
-                              return 0;
-                            }
-                            return m + 1;
-                          });
-                        }}
-                        className="p-1 hover:bg-gray-100 rounded"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                      <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-1">
-                    {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
-                      if (day === null) {
-                        return <div key={`empty-${i}`} className="h-7 w-7" />;
-                      }
-                      const isSelected = selectedDate &&
-                        selectedDate.getDate() === day &&
-                        selectedDate.getMonth() === viewMonth &&
-                        selectedDate.getFullYear() === viewYear;
-                      const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
-                      return (
+                <div
+                  className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
+                      <div className="flex gap-1">
                         <button
-                          key={day}
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isSelected) {
-                              setSelectedDate(null);
-                            } else {
-                              setSelectedDate(new Date(viewYear, viewMonth, day));
-                            }
-                            setIsDateDropdownOpen(false);
+                            setViewMonth(m => {
+                              if (m === 0) {
+                                setViewYear(y => y - 1);
+                                return 11;
+                              }
+                              return m - 1;
+                            });
                           }}
-                          className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
-                            ? 'bg-[#5e4db2] text-white font-bold'
-                            : isToday
-                              ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
-                              : 'hover:bg-surface-container text-on-surface'
-                            }`}
+                          className="p-1 hover:bg-gray-100 rounded"
                         >
-                          {day}
+                          <span className="material-symbols-outlined text-[16px]">chevron_left</span>
                         </button>
-                      );
-                    })}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewMonth(m => {
+                              if (m === 11) {
+                                setViewYear(y => y + 1);
+                                return 0;
+                              }
+                              return m + 1;
+                            });
+                          }}
+                          className="p-1 hover:bg-gray-100 rounded"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                        <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1">
+                      {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
+                        if (day === null) {
+                          return <div key={`empty-${i}`} className="h-7 w-7" />;
+                        }
+                        const isSelected = selectedDate &&
+                          selectedDate.getDate() === day &&
+                          selectedDate.getMonth() === viewMonth &&
+                          selectedDate.getFullYear() === viewYear;
+                        const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isSelected) {
+                                setSelectedDate(null);
+                              } else {
+                                setSelectedDate(new Date(viewYear, viewMonth, day));
+                              }
+                              setIsDateDropdownOpen(false);
+                            }}
+                            className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
+                              ? 'bg-[#5e4db2] text-white font-bold'
+                              : isToday
+                                ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
+                                : 'hover:bg-surface-container text-on-surface'
+                              }`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
               )}
             </div>
           </div>
@@ -2467,38 +2469,38 @@ if (storyPoints === null) {
                 })()}
                 {/* Sprint 1 ... dropdown menu */}
                 {canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
-                <div className="relative" data-sprint-menu>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
-                    className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">more_horiz</span>
-                  </button>
-                  {openSprintMenuId === 'sprint-1' && (
-                    <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
-                      {canStartSprint(sprint1Data) && (
+                  <div className="relative" data-sprint-menu>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
+                      className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                    </button>
+                    {openSprintMenuId === 'sprint-1' && (
+                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                        {canStartSprint(sprint1Data) && (
+                          <button
+                            onClick={() => handleActivateSprint(sprint1Data.id)}
+                            className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                          >
+                            Start sprint
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleActivateSprint(sprint1Data.id)}
+                          onClick={() => handleOpenEditSprint(sprint1Data)}
                           className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
                         >
-                          Start sprint
+                          Edit sprint
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleOpenEditSprint(sprint1Data)}
-                        className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
-                      >
-                        Edit sprint
-                      </button>
-                      <button
-                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
-                        className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
-                      >
-                        Delete sprint
-                      </button>
-                    </div>
-                  )}
-                </div>
+                        <button
+                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
+                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                        >
+                          Delete sprint
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -2561,158 +2563,158 @@ if (storyPoints === null) {
           {extraSprints.map((sprint) => {
             const extraSprintTasks = filteredTasks.filter(task => task.sprintId === sprint.id);
             return (
-            <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
-              {/* Sprint Header */}
-              <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
-                <div className="flex items-center gap-3">
-                  {canSelectTasks && sprint.status !== 'Completed' && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
-                  <span
-                    className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                    style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                    onClick={() => toggleSprintExpanded(sprint.id)}
-                  >
-                    expand_more
-                  </span>
-                  <div className="flex items-center gap-1.5 cursor-pointer hover:bg-slate-100/80 px-2 py-0.5 rounded transition-all select-none">
-                    <span className="text-[12px] font-bold text-on-surface">{sprint.name}</span>
-                    <span className="text-[11px] text-outline">{sprint.dateRange}</span>
-                    <span className="material-symbols-outlined text-[14px] text-outline">info</span>
-                  </div>
-                  <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex gap-1">
-                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
-                      {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
-                      {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
-                      {extraSprintTasks.filter(t => t.status === 'Done').length}
-                    </span>
-                  </div>
-                  {canModifyTasks && (() => {
-                    const sprintAction = getSprintAction(sprint);
-                    if (!sprintAction) return null;
-                    return (
-                      <button
-                        onClick={sprintAction.onClick}
-                        disabled={sprintAction.disabled}
-                        title={sprintAction.title}
-                        className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                      >
-                        {sprintAction.label}
-                      </button>
-                    );
-                  })()}
-                  {/* Extra sprint ... dropdown menu */}
-                  {canModifyTasks && sprint.status !== 'Completed' && (
-                  <div className="relative" data-sprint-menu>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
-                      className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+              <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
+                {/* Sprint Header */}
+                <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
+                  <div className="flex items-center gap-3">
+                    {canSelectTasks && sprint.status !== 'Completed' && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
+                    <span
+                      className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                      style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                      onClick={() => toggleSprintExpanded(sprint.id)}
                     >
-                      <span className="material-symbols-outlined text-[18px]">more_horiz</span>
-                    </button>
-                    {openSprintMenuId === sprint.id && (
-                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
-                        {shouldShowStartSprint(sprint) && (
-                          <button
-                            disabled={!canStartSprint(sprint)}
-                            title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
-                            onClick={() => {
-                              if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
-                            }}
-                            className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
-                          >
-                            Start sprint
-                          </button>
+                      expand_more
+                    </span>
+                    <div className="flex items-center gap-1.5 cursor-pointer hover:bg-slate-100/80 px-2 py-0.5 rounded transition-all select-none">
+                      <span className="text-[12px] font-bold text-on-surface">{sprint.name}</span>
+                      <span className="text-[11px] text-outline">{sprint.dateRange}</span>
+                      <span className="material-symbols-outlined text-[14px] text-outline">info</span>
+                    </div>
+                    <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex gap-1">
+                      <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
+                        {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
+                        {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
+                        {extraSprintTasks.filter(t => t.status === 'Done').length}
+                      </span>
+                    </div>
+                    {canModifyTasks && (() => {
+                      const sprintAction = getSprintAction(sprint);
+                      if (!sprintAction) return null;
+                      return (
+                        <button
+                          onClick={sprintAction.onClick}
+                          disabled={sprintAction.disabled}
+                          title={sprintAction.title}
+                          className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                        >
+                          {sprintAction.label}
+                        </button>
+                      );
+                    })()}
+                    {/* Extra sprint ... dropdown menu */}
+                    {canModifyTasks && sprint.status !== 'Completed' && (
+                      <div className="relative" data-sprint-menu>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
+                          className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                        </button>
+                        {openSprintMenuId === sprint.id && (
+                          <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                            {shouldShowStartSprint(sprint) && (
+                              <button
+                                disabled={!canStartSprint(sprint)}
+                                title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
+                                onClick={() => {
+                                  if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
+                                }}
+                                className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
+                              >
+                                Start sprint
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenEditSprint(sprint)}
+                              className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                            >
+                              Edit sprint
+                            </button>
+                            <button
+                              onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
+                              className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                            >
+                              Delete sprint
+                            </button>
+                          </div>
                         )}
-                        <button
-                          onClick={() => handleOpenEditSprint(sprint)}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
-                        >
-                          Edit sprint
-                        </button>
-                        <button
-                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
-                        >
-                          Delete sprint
-                        </button>
                       </div>
                     )}
                   </div>
-                  )}
                 </div>
+
+                {/* Sprint Body */}
+                {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
+                  <div className="max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
+                        <tr className="text-[11px] text-outline uppercase tracking-wider">
+                          <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                          <th className="px-3 py-3 font-bold text-center">Points</th>
+                          <th className="px-6 py-3 font-bold">Title</th>
+                          <th className="px-6 py-3 font-bold">Assignee</th>
+                          <th className="px-6 py-3 font-bold text-center">Priority</th>
+                          <th className="px-6 py-3 font-bold">Status</th>
+                          <th className="px-6 py-3 font-bold">Completed</th>
+                          {canManageTasks && sprint.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {extraSprintTasks.map(task => (
+                          <TaskRow
+                            key={task.id}
+                            {...task}
+                            isAdmin={canManageTasks && sprint.status !== 'Completed'}
+                            canSelect={canSelectTasks && sprint.status !== 'Completed'}
+                            canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
+                            isSelected={selectedTasks.includes(task.id)}
+                            isAnySelected={selectedTasks.length > 0}
+                            onToggle={() => toggleTask(task.id)}
+                            onOpenDetail={() => handleOpenTaskDetail(task)}
+                            onDelete={() => {
+                              setTaskToDelete(task);
+                            }}
+                            assigneeOptions={projectAssigneeOptions}
+                            onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                            onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Sprint Body - Empty State */}
+                {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
+                  <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
+                    <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
+                    <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
+                  </div>
+                )}
+
+                {/* + Create button below sprint body */}
+                {expandedSprints[sprint.id] && canModifyTasks && sprint.status !== 'Completed' && (
+                  <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
+                    <button
+                      onClick={() => {
+                        if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint.name);
+                        setShowCreateModal && setShowCreateModal(true);
+                      }}
+                      className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
+                    >
+                      <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
+                      <span className="text-[12px] font-medium">Create task</span>
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {/* Sprint Body */}
-              {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
-                <div className="max-h-[500px] overflow-y-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
-                      <tr className="text-[11px] text-outline uppercase tracking-wider">
-                        <th className="px-2 py-3 font-bold text-center">Task ID</th>
-                        <th className="px-3 py-3 font-bold text-center">Points</th>
-                        <th className="px-6 py-3 font-bold">Title</th>
-                        <th className="px-6 py-3 font-bold">Assignee</th>
-                        <th className="px-6 py-3 font-bold text-center">Priority</th>
-                        <th className="px-6 py-3 font-bold">Status</th>
-                        <th className="px-6 py-3 font-bold">Completed</th>
-                        {canManageTasks && sprint.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant">
-                      {extraSprintTasks.map(task => (
-                        <TaskRow
-                          key={task.id}
-                          {...task}
-                          isAdmin={canManageTasks && sprint.status !== 'Completed'}
-                          canSelect={canSelectTasks && sprint.status !== 'Completed'}
-                          canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
-                          isSelected={selectedTasks.includes(task.id)}
-                          isAnySelected={selectedTasks.length > 0}
-                          onToggle={() => toggleTask(task.id)}
-                          onOpenDetail={() => handleOpenTaskDetail(task)}
-                          onDelete={() => {
-                            setTaskToDelete(task);
-                          }}
-                          assigneeOptions={projectAssigneeOptions}
-                          onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
-                          onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Sprint Body - Empty State */}
-              {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
-                <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
-                  <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
-                  <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
-                </div>
-              )}
-
-              {/* + Create button below sprint body */}
-              {expandedSprints[sprint.id] && canModifyTasks && sprint.status !== 'Completed' && (
-                <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
-                  <button
-                    onClick={() => {
-                      if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint.name);
-                      setShowCreateModal && setShowCreateModal(true);
-                    }}
-                    className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
-                  >
-                    <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
-                    <span className="text-[12px] font-medium">Create task</span>
-                  </button>
-                </div>
-              )}
-            </div>
             );
           })}
 
@@ -2964,27 +2966,27 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
-  
-  const assignedUsers = getTaskAssigneeUsers(task);
-const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
-const unassignedProfile = getAssigneeProfile('');
 
-const savePointsValue = React.useCallback(async (value) => {
-  const nextPts = parseNonNegativeStoryPoints(value);
-  if (nextPts === null) {
-    setTempPts(normalizedPts);
-    setIsEditing(false);
-    return;
-  }
-  setTempPts(nextPts);
-  try {
-    if (nextPts !== normalizedPts) {
-      await onPatchTask?.(id, { story_points: nextPts });
+  const assignedUsers = getTaskAssigneeUsers(task);
+  const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
+  const unassignedProfile = getAssigneeProfile('');
+
+  const savePointsValue = React.useCallback(async (value) => {
+    const nextPts = parseNonNegativeStoryPoints(value);
+    if (nextPts === null) {
+      setTempPts(normalizedPts);
+      setIsEditing(false);
+      return;
     }
-  } finally {
-    setIsEditing(false);
-  }
-}, [id, normalizedPts, onPatchTask]);
+    setTempPts(nextPts);
+    try {
+      if (nextPts !== normalizedPts) {
+        await onPatchTask?.(id, { story_points: nextPts });
+      }
+    } finally {
+      setIsEditing(false);
+    }
+  }, [id, normalizedPts, onPatchTask]);
 
   useEffect(() => {
     setHasPreviewImageError(false);
@@ -3333,30 +3335,30 @@ const savePointsValue = React.useCallback(async (value) => {
                   {normalizedPts} pts
                 </button>
                 {isEditing && (
-                <div
-                  className="absolute left-0 top-full z-30 mt-2 flex w-[56px] flex-col rounded-md border border-primary bg-white p-1 shadow-xl"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="h-7 w-full rounded border border-outline-variant px-1.5 text-[11px] outline-none focus:border-primary"
-                    value={tempPts}
-                    onChange={(e) => setTempPts(e.target.value)}
-                    onFocus={(event) => event.target.select()}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        handleSavePointsEdit(event);
-                      }
-                      if (event.key === 'Escape') {
-                        handleCancelPointsEdit(event);
-                      }
-                    }}
-                    autoFocus
-                  />
-                </div>
+                  <div
+                    className="absolute left-0 top-full z-30 mt-2 flex w-[56px] flex-col rounded-md border border-primary bg-white p-1 shadow-xl"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="h-7 w-full rounded border border-outline-variant px-1.5 text-[11px] outline-none focus:border-primary"
+                      value={tempPts}
+                      onChange={(e) => setTempPts(e.target.value)}
+                      onFocus={(event) => event.target.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          handleSavePointsEdit(event);
+                        }
+                        if (event.key === 'Escape') {
+                          handleCancelPointsEdit(event);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -3436,21 +3438,21 @@ const savePointsValue = React.useCallback(async (value) => {
                     const userId = user.user_id || user.id || '';
                     const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
                     return (
-                    <button
-                      key={user.name}
-                      type="button"
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        setShowAssigneeMenu(false);
-                        await onUpdateAssignee?.(id, user);
-                      }}
-                      disabled={Boolean(isAssigned)}
-                      className={`w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
-                    >
-                      <AssigneeAvatar user={user} sizeClass="w-7 h-7" textClass="text-[10px]" />
-                      <span>{user.name}</span>
-                      {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
-                    </button>
+                      <button
+                        key={user.name}
+                        type="button"
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          setShowAssigneeMenu(false);
+                          await onUpdateAssignee?.(id, user);
+                        }}
+                        disabled={Boolean(isAssigned)}
+                        className={`w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
+                      >
+                        <AssigneeAvatar user={user} sizeClass="w-7 h-7" textClass="text-[10px]" />
+                        <span>{user.name}</span>
+                        {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
+                      </button>
                     );
                   })}
                 </div>
@@ -3609,21 +3611,21 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                       const userId = user.user_id || user.id || '';
                       const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
                       return (
-                      <button
-                        key={user.name}
-                      type="button"
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          setShowAssigneeMenu(false);
-                          await onUpdateAssignee?.(user);
-                        }}
-                        disabled={Boolean(isAssigned)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
-                      >
-                        <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[10px]" />
-                        <span>{user.name}</span>
-                        {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
-                      </button>
+                        <button
+                          key={user.name}
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            setShowAssigneeMenu(false);
+                            await onUpdateAssignee?.(user);
+                          }}
+                          disabled={Boolean(isAssigned)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
+                        >
+                          <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[10px]" />
+                          <span>{user.name}</span>
+                          {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
+                        </button>
                       );
                     })}
                   </div>,
@@ -3663,4 +3665,7 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
     </tr>
   );
 }
-}
+
+
+
+
