@@ -63,7 +63,10 @@ export function AuthProvider({ children }) {
     setCurrentUser(mergedProfile, { persist: true });
     setUser(mergedProfile);
 
-    return response;
+    return {
+      ...response,
+      user: mergedProfile,
+    };
   } finally {
     setIsLoading(false);
   }

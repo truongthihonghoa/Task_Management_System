@@ -15,6 +15,10 @@ function getErrorMessage(error) {
     return 'Unable to sign in. Please check your email and password.';
 }
 
+function normalizeRole(role) {
+    return String(role || '').trim().toUpperCase().replace(/\s+/g, '_');
+}
+
 export default function LoginPage() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -69,13 +73,8 @@ export default function LoginPage() {
             setEmail('');
             setPassword('');
 
-            const from = location.state?.from;
-            const fallbackPath = response.user?.role === 'SUPER_ADMIN'
-                ? '/dashboard'
-                : '/dashboard/spaces';
-            const redirectPath = from
-                ? `${from.pathname || fallbackPath}${from.search || ''}`
-                : fallbackPath;
+            const isSuperAdmin = normalizeRole(response.user?.role) === 'SUPER_ADMIN';
+            const redirectPath = isSuperAdmin ? '/dashboard' : '/dashboard/spaces';
 
             navigate(redirectPath, { replace: true });
         } catch (error) {
