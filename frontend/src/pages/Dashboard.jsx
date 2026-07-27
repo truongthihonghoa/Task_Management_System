@@ -36,6 +36,8 @@ const STATUS_COLORS = {
   cancelled: '#64748b',
 };
 
+const REPRESENTATIVE_STATUS_KEYS = new Set(['new', 'in_progress', 'done', 'overdue']);
+
 const ACCOUNT_STYLES = {
   active: { color: '#10b981', gradient: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)', glow: 'rgba(16, 185, 129, 0.2)', icon: 'check_circle' },
   pending: { color: '#f59e0b', gradient: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)', glow: 'rgba(245, 158, 11, 0.2)', icon: 'pending' },
@@ -323,6 +325,7 @@ const buildStatusData = (overview, fallback) => {
     const left = 50 + Math.cos(angle) * tooltipRadius;
     const top = 50 + Math.sin(angle) * tooltipRadius;
     const segment = {
+      key: String(item.key || '').toLowerCase(),
       label: item.label || toTitleCase(item.key),
       count,
       color: STATUS_COLORS[String(item.key || '').toLowerCase()] || '#888995',
@@ -457,14 +460,16 @@ const mapAuditActivity = (log) => {
   };
 };
 
-const mapRecentActivityTask = (activity, uppercaseGroup = true) => {
+const mapRecentActivityTask = (activity, uppercaseGroup = true, { showSpaceContext = true } = {}) => {
   const assignees = (activity?.assignees || []).map((assignee) => {
     const user = normalizeUser(assignee);
     return { name: user.full_name, full_name: user.full_name, initials: user.initials, color: user.color, avatarUrl: user.avatarUrl };
   });
+  const subtitleParts = [activity?.target_id];
+  if (showSpaceContext) subtitleParts.push(activity?.space_name);
   return {
     title: activity?.target_title || activity?.action || activity?.target_id || 'Activity',
-    subtitle: activity?.subtitle || [activity?.target_id, activity?.space_name].filter(Boolean).join(' - '),
+    subtitle: activity?.subtitle || subtitleParts.filter(Boolean).join(' - '),
     status: activity?.status || '',
     group: groupFromDate(activity?.created_at, uppercaseGroup),
     time: formatRelativeTime(activity?.created_at),
@@ -475,8 +480,8 @@ const mapRecentActivityTask = (activity, uppercaseGroup = true) => {
   };
 };
 
-const mapAssignedToMeActivity = (activity) => {
-  const mapped = mapRecentActivityTask(activity, true);
+const mapAssignedToMeActivity = (activity, options) => {
+  const mapped = mapRecentActivityTask(activity, true, options);
   const status = String(activity?.status || '').toLowerCase();
   const statusGroup = status.includes('progress')
     ? 'IN PROGRESS'
@@ -513,7 +518,7 @@ const mapRecentActivityPreview = (activity) => {
   };
 };
 
-const mapAssignmentHistory = (history) => {
+const mapAssignmentHistory = (history, { showSpaceContext = true } = {}) => {
   const previousAssignee = history?.previous_assignee ? normalizeUser(history.previous_assignee) : null;
   const newAssignee = history?.new_assignee ? normalizeUser(history.new_assignee) : null;
   const changedBy = history?.changed_by ? normalizeUser(history.changed_by) : null;
@@ -521,7 +526,7 @@ const mapAssignmentHistory = (history) => {
     assignment_history_id: history?.assignment_history_id,
     task_id: history?.task_id,
     task_title: history?.task_title || history?.task_id,
-    space_name: history?.space_name || '',
+    space_name: showSpaceContext ? (history?.space_name || '') : '',
     previous_assignee: previousAssignee,
     new_assignee: newAssignee,
     changed_by: changedBy,
@@ -1074,19 +1079,25 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   }, []);
   const currentWorkedOnTasks = isAdmin
     ? (superAdminBundle?.workedOn?.items?.map((item) => mapRecentActivityTask(item, true)) || [])
-    : (spaceSummary?.recent_tasks?.items?.map((item) => mapRecentActivityTask(item, true)) || []);
+    : (spaceSummary?.recent_tasks?.items?.map((item) => mapRecentActivityTask(item, true, { showSpaceContext: false })) || []);
   const currentViewedTasks = isAdmin
     ? (superAdminBundle?.viewed?.items?.map((item) => mapRecentActivityTask(item, false)) || [])
-    : (spaceSummary?.viewed_items?.items?.map((item) => mapRecentActivityTask(item, false)) || []);
+    : (spaceSummary?.viewed_items?.items?.map((item) => mapRecentActivityTask(item, false, { showSpaceContext: false })) || []);
   const currentAssignedTasks = isAdmin
-    ? (adminAssignmentHistoryResponse?.items?.map(mapAssignmentHistory) || [])
+    ? (adminAssignmentHistoryResponse?.items?.map((item) => mapAssignmentHistory(item)) || [])
     : (isPrivilegedSpaceSummary
-      ? (spaceSummary?.assignment_history?.items?.map(mapAssignmentHistory) || [])
-      : (spaceSummary?.assigned_to_me?.items?.map(mapAssignedToMeActivity) || []));
+      ? (spaceSummary?.assignment_history?.items?.map((item) => mapAssignmentHistory(item, { showSpaceContext: false })) || [])
+      : (spaceSummary?.assigned_to_me?.items?.map((item) => mapAssignedToMeActivity(item, { showSpaceContext: false })) || []));
   const viewedCount = isAdmin
     ? (activitySpaceFilterApplied ? (activityCounts.viewed ?? superAdminBundle?.viewed?.total ?? currentViewedTasks.length) : 0)
     : (activityCounts.viewed ?? spaceSummary?.viewed_items?.total ?? currentViewedTasks.length);
   const statusData = isAdmin ? buildStatusData(superAdminDashboard?.task_status_overview, []) : buildStatusData(spaceSummary?.task_status_overview, []);
+  const statusLegendData = (() => {
+    const indexedItems = statusData.map((item, index) => ({ ...item, index }));
+    const positiveItems = indexedItems.filter((item) => item.count > 0);
+    if (positiveItems.length) return positiveItems;
+    return indexedItems.filter((item) => REPRESENTATIVE_STATUS_KEYS.has(item.key));
+  })();
   const totalTasksCount = isAdmin ? (superAdminDashboard?.metrics?.total_tasks ?? superAdminDashboard?.task_status_overview?.total ?? 0) : (spaceSummary?.metrics?.total_tasks ?? 0);
   const pageTitle = embedded ? "Space Summary" : "Dashboard";
   const pageDescription = embedded
@@ -1804,15 +1815,15 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                 </div>
               </div>
               <div className="space-y-3">
-                {statusData.map((item, index) => (
+                {statusLegendData.map((item) => (
                   <div
-                    key={index}
-                    className={`flex items-center gap-3 cursor-pointer p-1.5 rounded-lg transition-all ${hoveredSegment === index ? 'bg-gray-50 translate-x-1' : ''}`}
-                    onMouseEnter={() => setHoveredSegment(index)}
+                    key={item.key || item.index}
+                    className={`flex items-center gap-3 cursor-pointer p-1.5 rounded-lg transition-all ${hoveredSegment === item.index ? 'bg-gray-50 translate-x-1' : ''}`}
+                    onMouseEnter={() => setHoveredSegment(item.index)}
                     onMouseLeave={() => setHoveredSegment(null)}
                   >
-                    <div className="w-3 h-3 rounded-full transition-transform shadow-sm" style={{ backgroundColor: item.color, transform: hoveredSegment === index ? 'scale(1.25)' : 'scale(1)' }}></div>
-                    <span className={`text-xs font-bold transition-colors ${hoveredSegment === index ? 'text-[#4C2B74]' : 'text-[#5e636e]'}`}>
+                    <div className="w-3 h-3 rounded-full transition-transform shadow-sm" style={{ backgroundColor: item.color, transform: hoveredSegment === item.index ? 'scale(1.25)' : 'scale(1)' }}></div>
+                    <span className={`text-xs font-bold transition-colors ${hoveredSegment === item.index ? 'text-[#4C2B74]' : 'text-[#5e636e]'}`}>
                       {item.label}: {item.count}
                     </span>
                   </div>
@@ -2033,8 +2044,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
 
 
-        <div className="glass-card rounded-2xl overflow-hidden flex flex-col w-full">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className={`glass-card rounded-2xl flex flex-col w-full ${isAdmin ? 'min-h-[520px] overflow-visible' : 'overflow-hidden'}`}>
+          <div className={`flex-1 ${isAdmin ? 'overflow-visible' : 'overflow-y-auto custom-scrollbar'}`}>
             {isAdmin ? (
               <div className="p-8 pb-4 border-b border-gray-100 bg-white sticky top-0 z-20">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -2313,7 +2324,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   {(isAdmin || isPrivilegedSpaceSummary) ? (
                     <div>
                       <div className="hidden xl:block px-8 py-3 bg-gradient-to-r from-[#faf7ff] via-white to-[#f8fafc] border-y border-[#ede7f6] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                        <div className="grid grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px] gap-6 items-center">
+                        <div className={`grid ${isAdmin ? 'grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px]' : 'grid-cols-[280px_minmax(360px,1fr)_260px_90px]'} gap-6 items-center`}>
                           {[
                             { label: "Task", icon: "assignment" },
                             { label: "Assignee Change", icon: "compare_arrows" },
@@ -2340,24 +2351,32 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                         )}
                         {filteredAssigned.map((task, idx) => {
                           const statusClass = assignmentStatusStyles[task.status] || "bg-gray-100 text-gray-700 border-gray-200";
+                          const isScopedAdminActivity = isAdmin && Boolean(selectedActivitySpaceId);
                           return (
                             <div key={task.assignment_history_id || idx} className="px-8 py-5 hover:bg-[#f9f1fc]/40 transition-all cursor-pointer group">
-                              <div className="grid grid-cols-1 xl:grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px] gap-5 xl:gap-6 items-start xl:items-center">
-                                <div className="flex items-start gap-4 min-w-0">
-                                  <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm group-hover:scale-105 transition-transform bg-amber-50 text-amber-600 border-amber-100">
-                                    <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
-                                  </div>
+                              <div className={`grid grid-cols-1 ${isAdmin ? 'xl:grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px]' : 'xl:grid-cols-[280px_minmax(360px,1fr)_260px_90px]'} gap-5 xl:gap-6 items-start xl:items-center`}>
+                                <div className={`flex items-start min-w-0 ${isAdmin ? 'gap-4' : 'gap-0'}`}>
+                                  {isAdmin && (
+                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm group-hover:scale-105 transition-transform bg-amber-50 text-amber-600 border-amber-100">
+                                      <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
+                                    </div>
+                                  )}
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <h5 className="font-bold text-[#170338] text-[13.5px] group-hover:text-[#4C2B74] transition-colors truncate">
                                         {task.task_title || task.title}
                                       </h5>
-                                      <span className="px-2 py-0.5 rounded-md bg-[#f4f5f7] text-[#5e636e] text-[9px] font-black border border-[#dfe1e6] shrink-0">
-                                        {task.task_id}
-                                      </span>
                                     </div>
-                                    <p className="text-[11px] text-[#5e636e] mt-1 font-semibold truncate">{task.space_name}</p>
-                                    <p className="text-[10px] text-[#8c8c8c] mt-1 font-bold">{task.assignment_history_id}</p>
+                                    {task.space_name && !isScopedAdminActivity && (
+                                      <p className="text-[11px] text-[#5e636e] mt-1 font-semibold truncate">{task.space_name}</p>
+                                    )}
+                                    {(task.assignment_history_id || task.task_id) && (
+                                      <p className="mt-1 text-[10px] font-black tracking-wide text-[#8c8c8c]">
+                                        {task.assignment_history_id && <span>{task.assignment_history_id}</span>}
+                                        {task.assignment_history_id && task.task_id && <span className="mx-1.5 text-[#c7bfd0]">/</span>}
+                                        {task.task_id && <span>{task.task_id}</span>}
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
 
