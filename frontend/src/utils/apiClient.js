@@ -1,6 +1,9 @@
 import axios from "axios";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const REFRESH_URL = API_BASE_URL.endsWith("/api/v1")
+    ? `${API_BASE_URL}/auth/refresh`
+    : `${API_BASE_URL}/api/v1/auth/refresh`;
 
 // Centralized token getter helpers matching different storage keys used across components
 export const getAccessToken = () => {
@@ -76,7 +79,7 @@ const processQueue = (error, token = null) => {
 apiClient.interceptors.response.use(
     (response) => response,
     async (error) => {
-        const originalRequest = error.config;
+        const originalRequest = error.config || {};
 
         // Skip interceptor if error is not 401 or if request was already retried
         if (!error.response || error.response.status !== 401 || originalRequest._retry) {
@@ -84,7 +87,7 @@ apiClient.interceptors.response.use(
         }
 
         // Avoid infinite loop if the refresh endpoint itself returns 401
-        if (originalRequest.url.includes("/api/v1/auth/refresh") || originalRequest.url.includes("/auth/refresh")) {
+        if ((originalRequest.url || "").includes("/api/v1/auth/refresh") || (originalRequest.url || "").includes("/auth/refresh")) {
             clearTokens();
             window.location.href = "/";
             return Promise.reject(error);
@@ -114,7 +117,7 @@ apiClient.interceptors.response.use(
 
         try {
             // Call refresh endpoint with basic axios instance to avoid recursion
-            const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+            const response = await axios.post(REFRESH_URL, {
                 refresh_token: refreshToken,
             });
 

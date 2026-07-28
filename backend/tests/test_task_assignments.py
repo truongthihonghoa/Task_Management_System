@@ -355,6 +355,26 @@ def test_permissions_and_deleted_task_guards(monkeypatch):
     assert deleted_exc.value.status_code == 400
 
 
+def test_assign_task_rejects_completed_sprint(monkeypatch):
+    db = FakeDb()
+    task = install_common_task_mocks(
+        monkeypatch,
+        task=make_task(sprint=SimpleNamespace(status="Completed")),
+    )
+    service = make_service()
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.assign_task_assignees(
+            db,
+            task.task_id,
+            AssignTaskAssigneesRequest(assignee_ids=["USR00000002"]),
+            make_user("USR00000001"),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Completed sprint is read-only."
+
+
 def test_transaction_rolls_back_when_assignment_creation_fails(monkeypatch):
     db = FakeDb()
     task = install_common_task_mocks(monkeypatch)

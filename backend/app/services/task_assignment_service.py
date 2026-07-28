@@ -230,6 +230,10 @@ class TaskAssignmentService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task deleted.")
         return task
 
+    def _ensure_task_sprint_mutable(self, task: Task) -> None:
+        if getattr(getattr(task, "sprint", None), "status", None) == "Completed":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint is read-only.")
+
     def _is_space_owner(self, task: Task, user: User) -> bool:
         return task.space is not None and task.space.owner_id == user.user_id
 
@@ -251,6 +255,7 @@ class TaskAssignmentService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="SUPER_ADMIN cannot modify task assignments.",
             )
+        self._ensure_task_sprint_mutable(task)
         self._ensure_can_view_task_assignments(db, task, current_user)
 
     def _validate_assignable_user(self, db: Session, task: Task, user_id: str) -> User:

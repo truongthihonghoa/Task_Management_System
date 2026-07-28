@@ -188,28 +188,12 @@ def list_task_records(
     return items, total
 
 
-def list_board_task_records(db: Session, space_id: str, *, active_sprint_only: bool = True) -> list[Task]:
-    query = (
-        db.query(Task)
-        .options(
-            joinedload(Task.sprint),
-            joinedload(Task.attachments),
-            joinedload(Task.assignees).joinedload(TaskAssignee.assignee),
-        )
-        .filter(Task.space_id == space_id, Task.deleted_at.is_(None))
-    )
-    if active_sprint_only:
-        query = query.join(Task.sprint).filter(Sprint.status == "Active")
-    return (
-        query
-        .order_by(Task.created_at.desc(), Task.task_id.desc())
-        .all()
-    )
-
-
-def create_task_record(db: Session, task: Task) -> Task:
+def create_task_record(db: Session, task: Task, *, commit: bool = True) -> Task:
     db.add(task)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(task)
     return task
 

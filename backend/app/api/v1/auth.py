@@ -22,7 +22,6 @@ from app.core.security import get_current_user, bearer_scheme
 from app.repository.repository import (
     EMAIL_VERIFICATION,
     PASSWORD_RESET,
-    create_audit_log,
     create_user,
     create_user_token,
     get_user_by_email,
@@ -96,14 +95,6 @@ def upload_register_avatar(
 ) -> UpdateAvatarResponse:
     try:
         avatar_url = user_service.update_user_avatar(db, current_user.user_id, file)
-        create_audit_log(
-            db,
-            user_id=current_user.user_id,
-            action="UPLOAD_REGISTER_AVATAR",
-            label_title="Upload registration avatar",
-            entity_id=current_user.user_id,
-            payload={"avatar_url": avatar_url},
-        )
         db.commit()
         return UpdateAvatarResponse(message="Registration avatar uploaded successfully.", avatar_url=avatar_url)
     except Exception:

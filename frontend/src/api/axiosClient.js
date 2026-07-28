@@ -50,6 +50,10 @@ function redirectToLogin() {
 async function refreshAccessToken() {
   if (!refreshPromise) {
     const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      return Promise.reject(new Error('No refresh token is available.'));
+    }
+
     const body = refreshToken ? { refresh_token: refreshToken } : {};
 
     refreshPromise = refreshClient
@@ -59,10 +63,10 @@ async function refreshAccessToken() {
         if (!newAccessToken) {
           throw new Error('Refresh response did not include an access token.');
         }
-        setAccessToken(newAccessToken);
+        setAccessToken(newAccessToken, { persist: true });
 
         if (response.data?.refresh_token) {
-          setRefreshToken(response.data.refresh_token);
+          setRefreshToken(response.data.refresh_token, { persist: true });
         }
 
         return newAccessToken;

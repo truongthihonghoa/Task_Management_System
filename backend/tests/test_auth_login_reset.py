@@ -10,6 +10,7 @@ from app.api.v1 import auth as auth_api
 from app.services import auth_service
 from app.repository.auth import PASSWORD_RESET
 from app.schemas.pydantic_models import EmailRequest, LoginRequest, RegisterRequest, ResetPasswordRequest
+from app.core.security import create_refresh_token
 
 RESET_TOKEN = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
@@ -175,7 +176,7 @@ def test_login_wrong_password_locks_at_max_attempts(monkeypatch):
 
 def test_register_notifies_super_admins(monkeypatch):
     db = FakeDb()
-    now = datetime.utcnow()
+    now = vietnam_now()
     token = make_token(
         email="new.user@example.com",
         token_type=auth_service.EMAIL_VERIFICATION,
@@ -278,14 +279,12 @@ def test_upload_register_avatar_uses_current_user_and_returns_avatar_url(monkeyp
     db = FakeDb()
     current_user = make_user()
     uploaded = []
-    audit_logs = []
 
     monkeypatch.setattr(
         auth_api.user_service,
         "update_user_avatar",
         lambda _db, user_id, file: uploaded.append((user_id, file)) or "/media/avatar/new-avatar.png",
     )
-    monkeypatch.setattr(auth_api, "create_audit_log", lambda _db, **kwargs: audit_logs.append(kwargs))
 
     file = SimpleNamespace(filename="avatar.png", content_type="image/png")
     response = auth_api.upload_register_avatar(
@@ -298,8 +297,6 @@ def test_upload_register_avatar_uses_current_user_and_returns_avatar_url(monkeyp
     assert response.message == "Registration avatar uploaded successfully."
     assert response.avatar_url == "/media/avatar/new-avatar.png"
     assert uploaded == [(current_user.user_id, file)]
-    assert audit_logs[0]["action"] == "UPLOAD_REGISTER_AVATAR"
-    assert audit_logs[0]["entity_id"] == current_user.user_id
     assert db.commits == 1
 
 
@@ -421,10 +418,112 @@ def test_logout_revokes_refresh_token_for_current_access_token(monkeypatch):
             {
                 "user_id": user.user_id,
                 "action": "LOGOUT",
-                "label_title": "Logout user",
+                "label_title": "USER",
                 "entity_id": user.user_id,
             },
         ),
     ]
     assert db.commits == 1
     assert db.rollbacks == 0
+
+
+def test_refresh_tokens_with_valid_refresh_token_updates_access_token(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    refresh_token, refresh_expires_at = create_refresh_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+    stored_token = SimpleNamespace(
+        user_id=user.user_id,
+        access_token="old-access-token",
+        refresh_token=refresh_token,
+        access_expires_at=vietnam_now() - timedelta(minutes=1),
+        refresh_expires_at=refresh_expires_at,
+        is_revoked=False,
+    )
+    audits = []
+    updated_tokens = []
+
+    monkeypatch.setattr(auth_service, "get_user_token_by_refresh_token", lambda _db, token: stored_token)
+    monkeypatch.setattr(auth_service, "get_user_by_id", lambda _db, user_id: user)
+    monkeypatch.setattr(
+        auth_service,
+        "create_access_token",
+        lambda payload: ("new-access-token", vietnam_now() + timedelta(minutes=30)),
+    )
+    monkeypatch.setattr(
+        auth_service,
+        "update_user_token",
+        lambda _db, token, **kwargs: updated_tokens.append((token, kwargs)) or setattr(token, "access_token", kwargs["new_access_token"]) or token,
+    )
+
+    response = auth_service.refresh_tokens(db, refresh_token)
+
+    assert response.access_token == "new-access-token"
+    assert response.refresh_token == refresh_token
+    assert response.user.user_id == user.user_id
+    assert stored_token.access_token == "new-access-token"
+    assert updated_tokens[0][1]["new_access_token"] == "new-access-token"
+    assert audits == []
+    assert db.commits == 1
+    assert db.rollbacks == 0
+
+
+def test_refresh_tokens_rejects_refresh_token_not_stored(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    refresh_token, _ = create_refresh_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+
+    monkeypatch.setattr(auth_service, "get_user_token_by_refresh_token", lambda _db, token: None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth_service.refresh_tokens(db, refresh_token)
+
+    assert_http_error(exc_info, 401, "Refresh token is invalid.")
+    assert db.commits == 0
+
+
+def test_refresh_tokens_rejects_expired_stored_refresh_token(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    refresh_token, _ = create_refresh_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+    stored_token = SimpleNamespace(
+        user_id=user.user_id,
+        refresh_token=refresh_token,
+        refresh_expires_at=vietnam_now() - timedelta(seconds=1),
+        is_revoked=False,
+    )
+
+    monkeypatch.setattr(auth_service, "get_user_token_by_refresh_token", lambda _db, token: stored_token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth_service.refresh_tokens(db, refresh_token)
+
+    assert_http_error(exc_info, 401, "Refresh token has expired.")
+    assert db.commits == 0
+
+
+def test_refresh_tokens_rejects_revoked_refresh_token(monkeypatch):
+    db = FakeDb()
+    user = make_user()
+    refresh_token, refresh_expires_at = create_refresh_token(
+        {"user_id": user.user_id, "email": user.email, "role": user.role}
+    )
+    stored_token = SimpleNamespace(
+        user_id=user.user_id,
+        refresh_token=refresh_token,
+        refresh_expires_at=refresh_expires_at,
+        is_revoked=True,
+    )
+
+    monkeypatch.setattr(auth_service, "get_user_token_by_refresh_token", lambda _db, token: stored_token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth_service.refresh_tokens(db, refresh_token)
+
+    assert_http_error(exc_info, 401, "Refresh token has been revoked.")
+    assert db.commits == 0

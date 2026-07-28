@@ -255,13 +255,6 @@ def check_email(db: Session, email: str) -> MessageResponse:
             used_at=None,
             created_at=now,
         )
-        create_audit_log(db, action="CHECK_EMAIL", label_title="Check email", payload={"email": email})
-        create_audit_log(
-            db,
-            action="SEND_VERIFICATION_CODE",
-            label_title="Send verification code",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
         
         # Send email and check if successful
         email_sent = send_verification_email(email, otp_code)
@@ -310,12 +303,6 @@ def verify_email(db: Session, email: str, otp_code: str) -> VerifyEmailResponse:
 
     try:
         token.used_at = now
-        create_audit_log(
-            db,
-            action="VERIFY_EMAIL",
-            label_title="Verify email",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
         db.commit()
     except Exception:
         db.rollback()
@@ -354,12 +341,6 @@ def resend_verification(db: Session, email: str) -> MessageResponse:
         token.expires_at = _otp_expires_at(now)
         token.used_at = None
         token.resend_count += 1
-        create_audit_log(
-            db,
-            action="SEND_VERIFICATION_CODE",
-            label_title="Resend verification code",
-            payload={"email": email, "token_type": EMAIL_VERIFICATION},
-        )
         
         # Send email and check if successful
         email_sent = send_verification_email(email, otp_code)
@@ -506,14 +487,6 @@ def forgot_password(db: Session, email: str) -> MessageResponse:
             used_at=None,
             created_at=now,
         )
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_LINK",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
         email_sent = send_password_reset_email(email, token_code)
         if not email_sent:
             db.rollback()
@@ -548,14 +521,6 @@ def verify_reset_code(db: Session, email: str, code: str) -> VerifyEmailResponse
 
     try:
         token.used_at = now
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="VERIFY_PASSWORD_RESET_TOKEN",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
         db.commit()
     except Exception:
         db.rollback()
@@ -596,14 +561,6 @@ def resend_reset_code(db: Session, email: str) -> MessageResponse:
         token.expires_at = expires_at
         token.used_at = None
         token.resend_count += 1
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="SEND_PASSWORD_RESET_LINK",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": email, "token_type": PASSWORD_RESET},
-        )
         
         email_sent = send_password_reset_email(email, token_code)
         if not email_sent:
@@ -723,7 +680,7 @@ def register(db: Session, payload: RegisterRequest) -> RegisterResponse:
             db,
             user_id=user.user_id,
             action="REGISTER_USER",
-            label_title="Register user",
+            label_title="USER",
             entity_id=user.user_id,
             payload={"email": user.email, "role": user.role},
         )
@@ -772,7 +729,7 @@ def logout(db: Session, current_user, access_token: str) -> MessageResponse:
             db,
             user_id=current_user.user_id,
             action="LOGOUT",
-            label_title="Logout user",
+            label_title="USER",
             entity_id=current_user.user_id,
         )
         db.commit()
@@ -844,15 +801,6 @@ def refresh_tokens(db: Session, refresh_token: str) -> LoginResponse:
             stored_token,
             new_access_token=new_access_token,
             access_expires_at=access_expires_at,
-        )
-        
-        create_audit_log(
-            db,
-            user_id=user.user_id,
-            action="TOKEN_REFRESH",
-            label_title="USER",
-            entity_id=user.user_id,
-            payload={"email": user.email},
         )
         db.commit()
         db.refresh(user)

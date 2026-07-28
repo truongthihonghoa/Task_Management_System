@@ -15,7 +15,6 @@ from app.models.task import Task
 from app.models.user import User
 from app.schemas.pydantic_models import (
     AssignTaskAssigneesRequest,
-    TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
     TaskListItemResponse,
@@ -78,6 +77,29 @@ def _ensure_space_owner(space: Space, user: User) -> None:
         )
 
 
+def _validate_task_assignees_for_space(db: Session, space_id: str, assignee_ids: Iterable[str]) -> None:
+    for assignee_id in assignee_ids:
+        user = db.get(User, assignee_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User not found: {assignee_id}")
+        if user.status_user != "Active":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is inactive: {assignee_id}")
+        if user.locked_until is not None and user.locked_until > vietnam_now():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User is locked: {assignee_id}")
+        if task_repository.get_active_space_member(db, space_id, assignee_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User is not an active member of the task space: {assignee_id}",
+            )
+
+
+def _create_task_record_for_flow(db: Session, task: Task) -> Task:
+    try:
+        return task_repository.create_task_record(db, task, commit=False)
+    except TypeError:
+        return task_repository.create_task_record(db, task)
+
+
 def _get_sprint_for_space_or_404(db: Session, space_id: str, sprint_id: str) -> Sprint:
     sprint = task_repository.get_sprint(db, sprint_id)
     if not sprint:
@@ -89,7 +111,14 @@ def _get_sprint_for_space_or_404(db: Session, space_id: str, sprint_id: str) -> 
         )
     if sprint.status == "Deleted":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint is deleted")
+    if sprint.status == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint is read-only")
     return sprint
+
+
+def _ensure_task_sprint_mutable(task: Task) -> None:
+    if getattr(getattr(task, "sprint", None), "status", None) == "Completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed sprint is read-only")
 
 
 def _get_task_or_404(db: Session, task_id: str) -> Task:
@@ -130,7 +159,11 @@ def _build_task_list_item_response(task: Task) -> TaskListItemResponse:
     _apply_task_date_flags(response, task)
     response.assignees = sorted(response.assignees, key=lambda assignee: assignee.assignee_at)
     response.attachments = sorted(
-        [attachment for attachment in response.attachments if attachment.deleted_at is None],
+        [
+            attachment
+            for attachment in response.attachments
+            if attachment.deleted_at is None and attachment.usage == "attachment"
+        ],
         key=lambda attachment: attachment.uploaded_at,
         reverse=True,
     )
@@ -199,7 +232,9 @@ def _build_task_detail_response(task: Task) -> TaskDetailResponse:
         key=lambda comment: comment.created_at,
     )
     response.attachments = [
-        attachment for attachment in response.attachments if attachment.deleted_at is None
+        attachment
+        for attachment in response.attachments
+        if attachment.deleted_at is None and attachment.usage == "attachment"
     ]
     response.attachments = sorted(response.attachments, key=lambda attachment: attachment.uploaded_at, reverse=True)
     response.assignment_history = sorted(
@@ -223,6 +258,17 @@ def create_task(
     _ensure_space_active(space)
     _ensure_can_modify_space_tasks(db, space, current_user)
     _get_sprint_for_space_or_404(db, space_id, payload.sprint_id)
+    normalized_assignee_ids = list(
+        dict.fromkeys(
+            assignee_id.strip()
+            for assignee_id in assignee_ids or []
+            if assignee_id and assignee_id.strip()
+        )
+    )
+    _validate_task_assignees_for_space(db, space_id, normalized_assignee_ids)
+    valid_attachments = [attachment for attachment in attachments or [] if attachment.filename]
+    for attachment in valid_attachments:
+        media_service.validate_task_media_upload("attachment", attachment)
 
     now = vietnam_now()
     task = Task(
@@ -238,38 +284,36 @@ def create_task(
         created_at=now,
         updated_at=now,
     )
-    task_repository.create_task_record(db, task)
-    for attachment in attachments or []:
-        if not attachment.filename:
-            continue
-        media_service.upload_task_media(
-            db,
-            task.task_id,
-            usage="attachment",
-            file=attachment,
-            current_user=current_user,
-        )
-    normalized_assignee_ids = list(
-        dict.fromkeys(
-            assignee_id.strip()
-            for assignee_id in assignee_ids or []
-            if assignee_id and assignee_id.strip()
-        )
-    )
-    if normalized_assignee_ids:
-        from app.services.task_assignment_service import TaskAssignmentService
+    try:
+        _create_task_record_for_flow(db, task)
+        for attachment in valid_attachments:
+            media_service.upload_task_media(
+                db,
+                task.task_id,
+                usage="attachment",
+                file=attachment,
+                current_user=current_user,
+            )
+        if normalized_assignee_ids:
+            from app.services.task_assignment_service import TaskAssignmentService
 
-        TaskAssignmentService().assign_task_assignees(
-            db,
-            task.task_id,
-            AssignTaskAssigneesRequest(
-                assignee_ids=normalized_assignee_ids,
-                reason="Assigned while creating task",
-            ),
-            current_user,
-        )
-    sprint_service.apply_sprint_automation(db, space_id)
-    return _build_task_detail_response(_get_task_or_404(db, task.task_id))
+            TaskAssignmentService().assign_task_assignees(
+                db,
+                task.task_id,
+                AssignTaskAssigneesRequest(
+                    assignee_ids=normalized_assignee_ids,
+                    reason="Assigned while creating task",
+                ),
+                current_user,
+            )
+        sprint_service.apply_sprint_automation(db, space_id)
+        if hasattr(db, "commit"):
+            db.commit()
+        return _build_task_detail_response(_get_task_or_404(db, task.task_id))
+    except Exception:
+        if hasattr(db, "rollback"):
+            db.rollback()
+        raise
 
 
 def list_tasks(
@@ -305,67 +349,25 @@ def list_tasks(
     return _build_task_list_response(tasks, total, page=page, page_size=page_size)
 
 
-def list_deleted_tasks(
-    db: Session,
-    space_id: str,
-    current_user: User,
-    *,
-    page: int,
-    page_size: int,
-    search: str | None,
-    task_status: str | None,
-    priority: str | None,
-    sort: str,
-) -> TaskListResponse:
-    space = _get_space_or_404(db, space_id)
-    _ensure_space_not_deleted(space)
-    _ensure_space_owner(space, current_user)
-
-    tasks, total = task_repository.list_task_records(
-        db,
-        space_id=space_id,
-        deleted=True,
-        page=page,
-        page_size=page_size,
-        search=search,
-        task_status=task_status,
-        priority=priority,
-        sort=sort,
-    )
-    return _build_task_list_response(tasks, total, page=page, page_size=page_size)
-
-
-def get_task_board(db: Session, space_id: str, current_user: User) -> TaskBoardResponse:
-    space = _get_space_or_404(db, space_id)
-    _ensure_space_not_deleted(space)
-    _ensure_can_view_space_tasks(db, space, current_user)
-    sprint_service.apply_sprint_automation(db, space_id)
-
-    grouped = {task_status: [] for task_status in task_repository.TASK_STATUSES}
-    for task in task_repository.list_board_task_records(db, space_id, active_sprint_only=True):
-        grouped.setdefault(task.task_status, []).append(_build_task_list_item_response(task))
-    return TaskBoardResponse(**grouped)
-
-
 def get_task_detail(db: Session, task_id: str, current_user: User) -> TaskDetailResponse:
     task = _get_task_or_404(db, task_id)
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_not_deleted(space)
     _ensure_can_view_space_tasks(db, space, current_user)
-    return _build_task_detail_response(task)
     recent_view_repository.record_recent_view(
         db,
         user_id=current_user.user_id,
         entity_type="task",
         entity_id=task.task_id,
     )
-    return TaskDetailResponse.model_validate(task)
+    return _build_task_detail_response(task)
 
 
 def update_task(db: Session, task_id: str, payload: TaskUpdate, current_user: User) -> TaskDetailResponse:
     task = _get_task_or_404(db, task_id)
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is deleted")
+    _ensure_task_sprint_mutable(task)
 
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_active(space)
@@ -436,6 +438,7 @@ def delete_task(db: Session, task_id: str, current_user: User) -> TaskDetailResp
     task = _get_task_or_404(db, task_id)
     if task.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is already deleted")
+    _ensure_task_sprint_mutable(task)
 
     space = task.space or _get_space_or_404(db, task.space_id)
     _ensure_space_active(space)

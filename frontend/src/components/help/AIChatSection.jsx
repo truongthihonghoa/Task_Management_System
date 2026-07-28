@@ -1,18 +1,39 @@
 import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
+
+import { askTaskFlowAI } from '../../api/helpApi';
 
 const AIChatSection = () => {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I\'m your TaskFlow AI Assistant. How can I help you today?' }
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const { spaceId } = useParams();
 
-  const handleSend = () => {
-    if (inputValue.trim()) {
-      setMessages([...messages, { role: 'user', text: inputValue }]);
-      setInputValue('');
-      setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'assistant', text: 'Thanks for your question! I\'m here to help you with TaskFlow.' }]);
-      }, 1000);
+  const handleSend = async () => {
+    const nextMessage = inputValue.trim();
+    if (!nextMessage || isSending) {
+      return;
+    }
+
+    const nextMessages = [...messages, { role: 'user', text: nextMessage }];
+    setMessages(nextMessages);
+    setInputValue('');
+    setIsSending(true);
+
+    try {
+      const response = await askTaskFlowAI({
+        message: nextMessage,
+        current_space_id: spaceId || null,
+        history: nextMessages.slice(-10),
+      });
+      setMessages(prev => [...prev, { role: 'assistant', text: response.reply }]);
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'I could not answer that safely right now. Please try again.';
+      setMessages(prev => [...prev, { role: 'assistant', text: errorMessage }]);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -40,10 +61,17 @@ const AIChatSection = () => {
                 ? 'bg-[#2D1B4E] text-white'
                 : 'bg-gray-100 text-gray-900'
             }`}>
-              <p className="text-sm">{msg.text}</p>
+              <p className="text-sm whitespace-pre-line">{msg.text}</p>
             </div>
           </div>
         ))}
+        {isSending && (
+          <div className="flex justify-start">
+            <div className="max-w-[70%] px-4 py-3 rounded-lg bg-gray-100 text-gray-500">
+              <p className="text-sm">Thinking...</p>
+            </div>
+          </div>
+        )}
       </div>
       <div className="p-4 bg-white border-t border-gray-200">
         <div className="relative flex items-center">
@@ -52,11 +80,13 @@ const AIChatSection = () => {
             placeholder="Ask a question..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            disabled={isSending}
           />
           <button
             onClick={handleSend}
-            className="absolute right-2 w-9 h-9 bg-[#2D1B4E] text-white rounded-full flex items-center justify-center hover:bg-opacity-90 transition-colors"
+            disabled={isSending || !inputValue.trim()}
+            className="absolute right-2 w-9 h-9 bg-[#2D1B4E] text-white rounded-full flex items-center justify-center hover:bg-opacity-90 transition-colors disabled:opacity-50"
           >
             <i className="w-4 h-4" data-lucide="send"></i>
           </button>

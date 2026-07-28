@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -13,7 +13,6 @@ from app.schemas.pydantic_models import (
     ReassignTaskAssigneeRequest,
     RemoveTaskAssigneeRequest,
     TaskAssigneesResponse,
-    TaskBoardResponse,
     TaskCreate,
     TaskDetailResponse,
     TaskListResponse,
@@ -26,7 +25,8 @@ from app.services import task_management_service
 from app.services.task_assignment_service import TaskAssignmentService
 
 
-router = APIRouter(tags=["task management"])
+router = APIRouter(tags=["task-management"])
+task_assignment_service = TaskAssignmentService()
 
 
 @router.post(
@@ -43,11 +43,17 @@ def create_task(
     task_status: TaskStatus = Form(default="new"),
     story_points: float = Form(default=0),
     completed_at: datetime | None = Form(default=None),
-    assignee_ids: list[str] = Form(default_factory=list),
+    assignee_ids: list[str] | None = Form(default=None),
     attachments: list[UploadFile] = File(default_factory=list),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
+    if story_points < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Story points must be 0 or greater.",
+        )
+
     payload = TaskCreate(
         title=title,
         description=description,
@@ -57,13 +63,17 @@ def create_task(
         story_points=story_points,
         completed_at=completed_at,
     )
+    normalized_assignee_ids = assignee_ids if isinstance(assignee_ids, list) else None
+    service_kwargs = {"attachments": attachments}
+    if normalized_assignee_ids:
+        service_kwargs["assignee_ids"] = normalized_assignee_ids
+
     return task_management_service.create_task(
         db,
         space_id,
         payload,
         current_user,
-        attachments=attachments,
-        assignee_ids=assignee_ids,
+        **service_kwargs,
     )
 
 
@@ -150,40 +160,6 @@ def list_tasks(
         sort=sort,
         active_sprint_only=active_sprint_only,
     )
-
-
-@router.get("/spaces/{space_id}/tasks/deleted", response_model=TaskListResponse)
-def list_deleted_tasks(
-    space_id: str,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    search: str | None = Query(default=None),
-    task_status: TaskStatus | None = Query(default=None),
-    priority: TaskPriority | None = Query(default=None),
-    sort: TaskSort = Query(default="newest"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskListResponse:
-    return task_management_service.list_deleted_tasks(
-        db,
-        space_id,
-        current_user,
-        page=page,
-        page_size=page_size,
-        search=search,
-        task_status=task_status,
-        priority=priority,
-        sort=sort,
-    )
-
-
-@router.get("/spaces/{space_id}/tasks/board", response_model=TaskBoardResponse)
-def get_task_board(
-    space_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> TaskBoardResponse:
-    return task_management_service.get_task_board(db, space_id, current_user)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskDetailResponse)

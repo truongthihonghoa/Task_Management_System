@@ -22,6 +22,7 @@ class SpaceResponse(BaseModel):
     description: Optional[str]
     owner_id: str
     status_space: str
+    task_count: int = 0
     created_at: datetime
     updated_at: datetime
     archived_at: Optional[datetime] = None
@@ -35,6 +36,7 @@ class UserSummaryResponse(BaseModel):
     full_name: str
     email: str
     status_user: str
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -86,8 +88,8 @@ class SpaceAddPeopleRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_identifier(self) -> "SpaceAddPeopleRequest":
-        if not self.user_id and not self.email and not self.name:
-            raise ValueError("Provide user_id, email, or name.")
+        if not self.user_id and not self.email:
+            raise ValueError("Provide user_id or email.")
         return self
 
 
@@ -305,11 +307,23 @@ class TaskAttachmentResponse(BaseModel):
     url: Optional[str] = None
     name: Optional[str] = None
     size: Optional[str] = None
+    usage: Optional[MediaUsage] = None
+    cloudinary_public_id: Optional[str] = None
 
     @model_validator(mode="after")
     def hydrate_frontend_fields(self) -> "TaskAttachmentResponse":
         is_image = (self.mime_type or "").startswith("image/")
         file_url = self.storage_url or (f"/media/{self.file_path}" if self.file_path else None)
+        path_parts = self.file_path.split("/") if self.file_path else []
+        if self.usage is None:
+            if "comments" in path_parts:
+                self.usage = "comment"
+            elif "descriptions" in path_parts:
+                self.usage = "description"
+            else:
+                self.usage = "attachment"
+        if self.cloudinary_public_id is None and self.storage_url and self.storage_url.startswith(("http://", "https://")):
+            self.cloudinary_public_id = self.file_path
         self.type = self.type or ("image" if is_image else "file")
         self.url = self.url or file_url
         self.previewUrl = self.previewUrl or (file_url if is_image else None)
@@ -341,6 +355,7 @@ class MediaUploadResponse(BaseModel):
     mime_type: Optional[str]
     file_size: int
     attachment_id: Optional[str] = None
+    public_id: Optional[str] = None
 
 
 class TaskCommentResponse(BaseModel):
@@ -416,16 +431,6 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-
-
-class TaskBoardResponse(BaseModel):
-    new: list[TaskListItemResponse]
-    in_progress: list[TaskListItemResponse]
-    in_testing: list[TaskListItemResponse]
-    pending_review: list[TaskListItemResponse]
-    need_revision: list[TaskListItemResponse]
-    done: list[TaskListItemResponse]
-    cancelled: list[TaskListItemResponse]
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -643,6 +648,7 @@ class UserManagementListResponse(BaseModel):
 
 class UserManagementUpdateRequest(BaseModel):
     status: UserStatus | None = None
+    role: Literal["SUPER_ADMIN", "USER"] | None = None
     is_verified: bool | None = None
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
@@ -657,6 +663,7 @@ class UserLockUpdateRequest(BaseModel):
     locked: bool
 
 class UserProfileResponse(BaseModel):
+    user_id: str
     avatar_url: str | None
     full_name: str
     email: str

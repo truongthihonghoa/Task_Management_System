@@ -3,11 +3,13 @@ from app.core.timezone import vietnam_now
 from typing import List
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.repository import space as space_repository
 from app.models.space import Space
 from app.models.space_member import SpaceMember
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.pydantic_models import (
     SpaceCreate,
@@ -111,13 +113,38 @@ def _ensure_space_name_available(
         )
 
 
-def _space_response(space: Space) -> SpaceResponse:
+def _active_task_counts_for_spaces(db: Session, space_ids: list[str]) -> dict[str, int]:
+    if not space_ids:
+        return {}
+
+    query = getattr(db, "query", None)
+    if query is None:
+        return {}
+
+    try:
+        rows = (
+            query(Task.space_id, func.count(Task.task_id))
+            .filter(Task.space_id.in_(space_ids), Task.deleted_at.is_(None))
+            .group_by(Task.space_id)
+            .all()
+        )
+    except TypeError:
+        return {}
+    return {space_id: int(task_count or 0) for space_id, task_count in rows}
+
+
+def _active_task_count_for_space(db: Session, space_id: str) -> int:
+    return _active_task_counts_for_spaces(db, [space_id]).get(space_id, 0)
+
+
+def _space_response(space: Space, *, task_count: int = 0) -> SpaceResponse:
     return SpaceResponse(
         space_id=space.space_id,
         name_space=space.name_space,
         description=space.description,
         owner_id=space.owner_id,
         status_space=space.status_space,
+        task_count=task_count,
         created_at=space.created_at,
         updated_at=space.updated_at,
         deleted_at=space.deleted_at,
@@ -175,12 +202,13 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
         status="Active",
     )
     space_repository.create_space_with_owner_member(db, space, member)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def list_spaces(db: Session, include_deleted: bool = False) -> List[SpaceResponse]:
     spaces = space_repository.list_space_records(db, include_deleted=include_deleted)
-    return [_space_response(space) for space in spaces]
+    task_counts = _active_task_counts_for_spaces(db, [space.space_id for space in spaces])
+    return [_space_response(space, task_count=task_counts.get(space.space_id, 0)) for space in spaces]
 
 
 def list_owner_trash(db: Session, owner_id: str) -> List[SpaceResponse]:
@@ -197,11 +225,13 @@ def list_owner_trash(db: Session, owner_id: str) -> List[SpaceResponse]:
         owner_id=owner_id,
         trash_cutoff=trash_cutoff,
     )
-    return [_space_response(space) for space in spaces]
+    task_counts = _active_task_counts_for_spaces(db, [space.space_id for space in spaces])
+    return [_space_response(space, task_count=task_counts.get(space.space_id, 0)) for space in spaces]
 
 
 def get_space(db: Session, space_id: str) -> SpaceResponse:
-    return _space_response(get_space_or_404(db, space_id))
+    space = get_space_or_404(db, space_id)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceResponse:
@@ -227,7 +257,7 @@ def update_space(db: Session, space_id: str, payload: SpaceUpdate) -> SpaceRespo
 
     space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def archive_space(db: Session, space_id: str) -> SpaceResponse:
@@ -246,7 +276,7 @@ def archive_space(db: Session, space_id: str) -> SpaceResponse:
     space.status_space = "Archived"
     space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def restore_space(db: Session, space_id: str) -> SpaceResponse:
@@ -279,7 +309,7 @@ def restore_space(db: Session, space_id: str) -> SpaceResponse:
     space.deleted_at = None
     space.updated_at = vietnam_now()
     space_repository.save_space(db, space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def delete_space(db: Session, space_id: str) -> SpaceResponse:
@@ -290,7 +320,7 @@ def delete_space(db: Session, space_id: str) -> SpaceResponse:
     space.deleted_at = now
     space.updated_at = now
     space_repository.save_space(db, space)
-    return _space_response(space)
+    return _space_response(space, task_count=_active_task_count_for_space(db, space.space_id))
 
 
 def list_space_members(db: Session, space_id: str) -> List[SpaceMemberResponse]:

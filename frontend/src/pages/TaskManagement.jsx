@@ -8,68 +8,47 @@ import EditSprintModal from '../components/tasks/EditSprintModal';
 import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
-import { DEMO_SPACES } from './SpaceManagement';
 import axiosClient, { API_BASE_URL } from '../api/axiosClient';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
-  { name: 'Pham Tien', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  { name: 'Hoang Hoa', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  { name: 'Trong Nghia', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  { name: 'Trang Nguyen', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
 ];
 
-const projectPeopleDirectory = [
-  { id: 'pham-tien', name: 'Pham Tien', email: 'pham.tien@example.com', initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  { id: 'hoang-hoa', name: 'Hoang Hoa', email: 'hoanghoa@example.com', initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  { id: 'trong-nghia', name: 'Trong Nghia', email: 'trongnghia@example.com', initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  { id: 'trang-nguyen', name: 'Trang Nguyen', email: 'trangnguyen@example.com', initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' }
-];
+const normalizeAvatarUrl = (avatarUrl) => {
+  if (!avatarUrl) return '';
+  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
+  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    try {
+      return `${new URL(API_BASE_URL).origin}${path}`;
+    } catch {
+      return avatarUrl;
+    }
+  }
+  return path;
+};
 
-const getApiBaseUrl = () => (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-
-const getAccessToken = () => {
-  if (typeof window === 'undefined') return null;
-  return (
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('accessToken') ||
-    localStorage.getItem('token')
-  );
+const parseNonNegativeStoryPoints = (value) => {
+  if (value === '' || value === null || value === undefined) return 0;
+  const points = Number(value);
+  return Number.isFinite(points) && points >= 0 ? points : null;
 };
 
 const addPeopleRequest = async (spaceId, person) => {
-  const token = getAccessToken();
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/spaces/${spaceId}/people`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      email: person.email,
-      name: person.name,
-    }),
+  const response = await axiosClient.post(`/spaces/${spaceId}/people`, {
+    email: person.email,
+    name: person.name,
+    ...(person.user_id || person.id?.startsWith?.('USR') ? { user_id: person.user_id || person.id } : {}),
   });
+  return response.data;
+};
 
-  if (!response.ok) {
-    let message = 'Unable to add this person.';
-    try {
-      const body = await response.json();
-      message = body.message || body.detail || message;
-    } catch {
-      // Keep fallback for non-JSON errors.
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
+const listPendingInvitationsRequest = async (spaceId) => {
+  const response = await axiosClient.get(`/spaces/${spaceId}/member-requests`);
+  return response.data || [];
 };
 
 const assigneeProfiles = {
-  'Pham Tien': { initials: 'PT', color: '#2f3650', textColor: '#FFFFFF' },
-  'Hoang Hoa': { initials: 'HH', color: '#F97316', textColor: '#FFFFFF' },
-  'Trong Nghia': { initials: 'TN', color: '#14B8A6', textColor: '#FFFFFF' },
-  'Trang Nguyen': { initials: 'TN', color: '#7C3AED', textColor: '#FFFFFF' },
   'Unassigned': { initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF' }
 };
 
@@ -89,23 +68,25 @@ const getAssigneeProfile = (assignee) => {
   };
 };
 
-const getInitialProjectPeople = (space) => {
-  const assignedPeople = availableAssignees
-    .slice(1)
-    .map(assignee => projectPeopleDirectory.find(person => person.name === assignee.name))
-    .filter(Boolean);
-
-  if (!space) return assignedPeople;
-
-  const spacePeopleIds = [space.ownerId, ...(space.memberIds || [])].filter(Boolean);
-  const spacePeople = spacePeopleIds
-    .map(id => projectPeopleDirectory.find(person => person.id === id))
-    .filter(Boolean);
-
-  return [...spacePeople, ...assignedPeople].filter((person, index, people) =>
-    people.findIndex(item => item.id === person.id) === index
+const AssigneeAvatar = ({ user = {}, sizeClass = 'w-6 h-6', textClass = 'text-[10px]', className = '' }) => {
+  const avatarUrl = user.avatarUrl || user.avatar_url || '';
+  const name = user.name || user.full_name || 'Unassigned';
+  return (
+    <span
+      className={`${sizeClass} ${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
+      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+      title={name}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        user.initials || getInitials(name)
+      )}
+    </span>
   );
 };
+
+const getInitialProjectPeople = () => [];
 
 const getNextTaskId = (tasks) => {
   const maxTaskNumber = tasks.reduce((max, task) => {
@@ -229,14 +210,18 @@ const mapApiSprint = (sprint) => ({
 
 const mapApiUserSummary = (user, index = 0) => {
   const name = user?.full_name || user?.name || user?.email || 'Unknown User';
+  const avatarUrl = normalizeAvatarUrl(user?.avatar_url || user?.avatarUrl || user?.avatar || '');
   return {
     id: user?.user_id || user?.id || '',
     user_id: user?.user_id || user?.id || '',
     name,
     email: user?.email || '',
-    initials: getInitials(name),
-    color: ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
-    textColor: '#FFFFFF',
+    initials: user?.initials || getInitials(name),
+    color: user?.color || ASSIGNEE_COLORS[index % ASSIGNEE_COLORS.length],
+    textColor: user?.textColor || '#FFFFFF',
+    avatar_url: avatarUrl,
+    avatarUrl,
+    icon: user?.icon,
   };
 };
 
@@ -247,17 +232,104 @@ const mapApiSpaceMember = (member, index = 0) => ({
   spaceMemberId: member.space_member_id,
 });
 
-const mapApiTaskAssignee = (entry, index = 0) => ({
-  entryId: entry.assignee_entry_id,
-  assignee_entry_id: entry.assignee_entry_id,
-  taskId: entry.task_id,
-  assigneeId: entry.assignee_id,
-  assignee_id: entry.assignee_id,
-  assignedAt: entry.assignee_at,
-  assignee_at: entry.assignee_at,
-  user: mapApiUserSummary(entry.assignee || { user_id: entry.assignee_id }, index),
-  raw: entry,
+const mapPendingInvitation = (request, index = 0) => ({
+  id: request.space_member_request_id,
+  email: request.requested_email || '',
+  name: request.requested_user?.full_name || request.requested_name || request.requested_email || 'Pending invitee',
+  initials: getInitials(request.requested_user?.full_name || request.requested_name || request.requested_email),
+  color: '#6B4A91',
+  textColor: '#FFFFFF',
+  status: request.status,
+  requesterName: request.requester?.full_name || request.requester?.email || 'Requester',
+  requestedAt: request.requested_at,
+  user_id: request.requested_user_id || '',
+  raw: request,
+  sortIndex: index,
 });
+
+const getPendingInvitationLabel = (status) => (
+  status === 'PENDING_OWNER' ? 'Waiting for owner approval' : 'Waiting for invitee acceptance'
+);
+
+const mapApiTaskAssignee = (entry, index = 0) => {
+  const assigneeId = entry.assignee_id || entry.assigneeId || '';
+  return {
+    entryId: entry.assignee_entry_id || entry.entryId,
+    assignee_entry_id: entry.assignee_entry_id || entry.entryId,
+    taskId: entry.task_id || entry.taskId,
+    assigneeId,
+    assignee_id: assigneeId,
+    assignedAt: entry.assignee_at || entry.assignedAt,
+    assignee_at: entry.assignee_at || entry.assignedAt,
+    user: mapApiUserSummary(entry.assignee || entry.user || { user_id: assigneeId }, index),
+    raw: entry.raw || entry,
+  };
+};
+
+const buildTaskAssigneeUpdates = (assigneeEntries = []) => {
+  const assignees = assigneeEntries.map(mapApiTaskAssignee);
+  const primaryAssignee = assignees[0] || null;
+  const assigneeNames = assignees
+    .map(entry => entry.user?.name)
+    .filter(Boolean);
+
+  return {
+    assignees,
+    assignee: assigneeNames.join(', '),
+    assigneeId: primaryAssignee?.assigneeId || '',
+  };
+};
+
+const getTaskAssigneeUsers = (task = {}) => {
+  const users = (task.assignees || [])
+    .map(entry => entry.user)
+    .filter(user => user?.user_id || user?.id || user?.name);
+
+  if (users.length > 0) return users;
+  if (task.assignee || task.assigneeId) {
+    return [{
+      id: task.assigneeId || '',
+      user_id: task.assigneeId || '',
+      name: task.assignee || '',
+      initials: getInitials(task.assignee),
+      ...getAssigneeProfile(task.assignee),
+    }];
+  }
+  return [];
+};
+
+const getCompactAssigneeName = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'Unassigned';
+  return parts[parts.length - 1];
+};
+
+const formatAssigneeSummary = (users = [], visibleCount = 2) => {
+  if (!users.length) {
+    return {
+      shortText: 'Unassigned',
+      fullText: 'Unassigned',
+    };
+  }
+
+  const names = users.map(user => user.name).filter(Boolean);
+  if (names.length <= 1) {
+    return {
+      shortText: names[0] || 'Unassigned',
+      fullText: names[0] || 'Unassigned',
+    };
+  }
+
+  const shownNames = names.slice(0, visibleCount).map(getCompactAssigneeName);
+  const remainingCount = Math.max(names.length - visibleCount, 0);
+  return {
+    shortText: `${shownNames.join(', ')}${remainingCount > 0 ? ` +${remainingCount}` : ''}`,
+    fullText: names.join(', '),
+  };
+};
+
+const taskHasAssigneeName = (task, assigneeName) =>
+  getTaskAssigneeUsers(task).some(user => user.name === assigneeName);
 
 const resolveMediaUrl = (url) => {
   if (!url) return '';
@@ -282,10 +354,11 @@ const mapApiAttachment = (attachment) => ({
 });
 
 const mapApiTask = (task) => {
-  const assignees = (task.assignees || []).map(mapApiTaskAssignee);
-  const primaryAssignee = task.primary_assignee
-    ? mapApiTaskAssignee(task.primary_assignee)
-    : assignees[0] || null;
+  const assigneeUpdates = buildTaskAssigneeUpdates(
+    task.primary_assignee && !(task.assignees || []).length
+      ? [task.primary_assignee]
+      : (task.assignees || [])
+  );
 
   return {
     id: task.task_id,
@@ -294,9 +367,9 @@ const mapApiTask = (task) => {
     sprintId: task.sprint_id,
     sprint: task.sprint?.name || task.sprint_name || '',
     title: task.title || 'Untitled task',
-    assignee: primaryAssignee?.user?.name || '',
-    assigneeId: primaryAssignee?.assigneeId || '',
-    assignees,
+    assignee: assigneeUpdates.assignee,
+    assigneeId: assigneeUpdates.assigneeId,
+    assignees: assigneeUpdates.assignees,
     pts: Number(task.story_points) || 0,
     status: TASK_STATUS_FROM_API[task.task_status] || task.task_status || 'New',
     priority: TASK_PRIORITY_FROM_API[task.priority] || task.priority || 'Medium',
@@ -315,6 +388,43 @@ const mapApiTask = (task) => {
     creator: task.creator_name || task.creator?.full_name || '',
     raw: task,
   };
+};
+
+const formatScopedTaskId = (sequence) => `TSK${String(sequence).padStart(8, '0')}`;
+
+const getTaskSequenceTime = (task) => {
+  const timestamp = Date.parse(task.created_at || task.createdAt || task.date || '');
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const assignScopedTaskDisplayIds = (tasks) => {
+  const groups = new Map();
+
+  tasks.forEach((task, originalIndex) => {
+    const key = task.spaceId || 'default';
+    const groupTasks = groups.get(key) || [];
+    groupTasks.push({ task, originalIndex });
+    groups.set(key, groupTasks);
+  });
+
+  const displayIdsByIndex = new Map();
+  groups.forEach((groupTasks) => {
+    [...groupTasks]
+      .sort((a, b) => {
+        const createdDiff = getTaskSequenceTime(a.task) - getTaskSequenceTime(b.task);
+        if (createdDiff !== 0) return createdDiff;
+        return String(a.task.id || '').localeCompare(String(b.task.id || ''));
+      })
+      .forEach((entry, index) => {
+        displayIdsByIndex.set(entry.originalIndex, formatScopedTaskId(index + 1));
+      });
+  });
+
+  return tasks.map((task, index) => ({
+    ...task,
+    displayId: displayIdsByIndex.get(index) || task.displayId || task.id,
+    rawTaskId: task.rawTaskId || task.id,
+  }));
 };
 
 const getSprintNumber = (sprintName) => {
@@ -353,10 +463,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const spaceId = spaceIdOverride || routeSpaceId;
   const isAdmin = currentRole === 'ADMIN';
-  const selectedSpace = DEMO_SPACES.find(space => space.id === spaceId);
   const [apiSpace, setApiSpace] = useState(null);
-  const projectOwnerId = selectedSpace?.ownerId;
-  const pageTitle = apiSpace?.title || selectedSpace?.title || 'Task Management';
+  const projectOwnerId = apiSpace?.ownerId || '';
+  const pageTitle = apiSpace?.title || 'Task Management';
   const [view, setView] = useState('list');
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [showToolbarStatusMenu, setShowToolbarStatusMenu] = useState(false);
@@ -374,8 +483,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const isBoardDraggingRef = useRef(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(5); // June
   const [viewYear, setViewYear] = useState(2026);
+  const dateFilterRef = useRef(null);
 
   const getDaysInMonth = (year, month) => {
     const days = [];
@@ -428,10 +539,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState('All');
+  const [selectedSummaryMemberId, setSelectedSummaryMemberId] = useState('All');
+  const [openAssigneeFilterMenu, setOpenAssigneeFilterMenu] = useState(null);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
-  const [projectPeople, setProjectPeople] = useState(() => getInitialProjectPeople(selectedSpace));
+  const [projectPeople, setProjectPeople] = useState(getInitialProjectPeople);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
   const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
   const [addPeopleFeedback, setAddPeopleFeedback] = useState('');
   const [addingPeopleEmail, setAddingPeopleEmail] = useState('');
@@ -439,11 +553,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [peopleSearch, setPeopleSearch] = useState('');
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
+  const summaryAssigneeFilterRef = useRef(null);
+  const toolbarAssigneeFilterRef = useRef(null);
   const isSpaceOwner = currentSpaceRole === 'OWNER';
   const isSpaceMember = currentSpaceRole === 'USER';
   const canModifyTasks = !isAdmin;
   const canManageTasks = isSpaceOwner;
-  const canManagePeople = isSpaceOwner || isSpaceMember;
+  const canManagePeople = !isAdmin && (isSpaceOwner || isSpaceMember);
   const canSelectTasks = canModifyTasks || canManageTasks;
   const canDirectAddPeople = isSpaceOwner;
   const projectAssigneeOptions = React.useMemo(() => [
@@ -455,8 +571,44 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       initials: person.initials || getInitials(person.name),
       color: person.color || '#5E4DB2',
       textColor: person.textColor || '#FFFFFF',
+      avatar_url: person.avatar_url || person.avatarUrl || '',
+      avatarUrl: person.avatarUrl || person.avatar_url || '',
     })),
   ], [projectPeople]);
+
+  useEffect(() => {
+    if (!openAssigneeFilterMenu) return;
+
+    const handleClickOutside = (event) => {
+      const clickedSummaryFilter = summaryAssigneeFilterRef.current?.contains(event.target);
+      const clickedToolbarFilter = toolbarAssigneeFilterRef.current?.contains(event.target);
+      if (clickedSummaryFilter || clickedToolbarFilter) return;
+      setOpenAssigneeFilterMenu(null);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openAssigneeFilterMenu]);
+
+  const handleSelectAssigneeFilter = (filterValue) => {
+    setSelectedAssigneeFilter(filterValue);
+    setOpenAssigneeFilterMenu(null);
+  };
+
+  const handleSelectSummaryMemberFilter = (memberId) => {
+    setSelectedSummaryMemberId(memberId || 'All');
+    setOpenAssigneeFilterMenu(null);
+  };
+
+  useEffect(() => {
+    if (selectedSummaryMemberId === 'All') return;
+    const hasSelectedMember = projectAssigneeOptions.some(user => (
+      (user.user_id || user.id) === selectedSummaryMemberId
+    ));
+    if (!hasSelectedMember) {
+      setSelectedSummaryMemberId('All');
+    }
+  }, [projectAssigneeOptions, selectedSummaryMemberId]);
 
   useEffect(() => {
     if (setCurrentSpaceNameForModal) {
@@ -495,7 +647,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       const remainingSprints = firstSprint
         ? orderedSprints.slice(1)
         : [];
-      const nextTasks = (taskResponse.data?.items || []).map(mapApiTask);
+      const nextTasks = assignScopedTaskDisplayIds((taskResponse.data?.items || []).map(mapApiTask));
       const nextMembers = (memberResponse.data || [])
         .filter(member => member.status === 'Active')
         .map(mapApiSpaceMember);
@@ -515,19 +667,25 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           ...firstSprint,
           dateRange: firstSprint.dateRange || 'No dates set',
         });
+        setIsSprintExpanded(firstSprint.status !== 'Completed');
       } else {
         setSprint1Data(prev => ({
           ...prev,
           id: '',
           name: 'No sprint available',
           dateRange: 'Create a sprint before adding tasks',
+          status: 'Planned',
         }));
+        setIsSprintExpanded(true);
       }
       setExtraSprints(remainingSprints.map(sprint => ({
         ...sprint,
         tasks: nextTasks.filter(task => task.sprintId === sprint.id),
       })));
-      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [sprint.id, true])));
+      setExpandedSprints(Object.fromEntries(remainingSprints.map(sprint => [
+        sprint.id,
+        sprint.status !== 'Completed',
+      ])));
     } catch (error) {
       setTasks([]);
       setApiSpace(null);
@@ -541,22 +699,55 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     loadTaskData();
   }, [loadTaskData]);
 
+  const refreshSpaceMembers = useCallback(async () => {
+    if (!spaceId || !String(spaceId).startsWith('SPC')) return;
+
+    try {
+      const [memberResponse, pendingResponse] = await Promise.all([
+        axiosClient.get(`/spaces/${spaceId}/members`),
+        listPendingInvitationsRequest(spaceId),
+      ]);
+      const nextMembers = (memberResponse.data || [])
+        .filter(member => member.status === 'Active')
+        .map(mapApiSpaceMember);
+      const nextPending = (pendingResponse || []).map(mapPendingInvitation);
+      setProjectPeople(nextMembers);
+      setPendingInvitations(nextPending);
+      setPendingPeopleEmails(nextPending.map(item => item.email.toLowerCase()).filter(Boolean));
+    } catch (error) {
+      setAddPeopleFeedback(getErrorMessage(error, 'Unable to refresh space members.'));
+    }
+  }, [spaceId]);
+
+  const handleToggleAddPeople = useCallback(() => {
+    setIsAddPeopleOpen(prev => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        setAddPeopleFeedback('');
+        void refreshSpaceMembers();
+      }
+      return nextOpen;
+    });
+  }, [refreshSpaceMembers]);
+
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
     const updatedTask = mapApiTask(response.data);
-    setTasks(prev => prev.map(task => task.id === taskId ? updatedTask : task));
+    setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === taskId ? updatedTask : task)));
     setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
     return updatedTask;
   }, []);
 
+  useEffect(() => {
+    if (!selectedTaskDetail?.id) return;
+    const latestTask = tasks.find(task => task.id === selectedTaskDetail.id);
+    if (latestTask) {
+      setSelectedTaskDetail(prev => (prev?.id === latestTask.id ? { ...prev, ...latestTask } : prev));
+    }
+  }, [selectedTaskDetail?.id, tasks]);
+
   const applyTaskAssignees = useCallback((taskId, assigneeEntries = []) => {
-    const assignees = assigneeEntries.map(mapApiTaskAssignee);
-    const primaryAssignee = assignees[0] || null;
-    const updates = {
-      assignees,
-      assignee: primaryAssignee?.user?.name || '',
-      assigneeId: primaryAssignee?.assigneeId || '',
-    };
+    const updates = buildTaskAssigneeUpdates(assigneeEntries);
 
     setTasks(prev => prev.map(task => (
       task.id === taskId ? { ...task, ...updates } : task
@@ -566,6 +757,22 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     ));
     return updates;
   }, []);
+
+  const refreshTaskAssignmentState = useCallback(async (taskId) => {
+    const [assigneeResponse, historyResponse] = await Promise.all([
+      axiosClient.get(`/tasks/${taskId}/assignees`),
+      axiosClient.get(`/tasks/${taskId}/assignment-history`),
+    ]);
+    const assigneeUpdates = applyTaskAssignees(taskId, assigneeResponse.data?.assignees || []);
+    const assignmentHistory = historyResponse.data?.history || [];
+    setTasks(prev => prev.map(task => (
+      task.id === taskId ? { ...task, ...assigneeUpdates, assignmentHistory } : task
+    )));
+    setSelectedTaskDetail(prev => (
+      prev?.id === taskId ? { ...prev, ...assigneeUpdates, assignmentHistory } : prev
+    ));
+    return { ...assigneeUpdates, assignmentHistory };
+  }, [applyTaskAssignees]);
 
   const syncTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
     const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
@@ -603,14 +810,73 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     return applyTaskAssignees(taskId, response.data?.assignees || []);
   }, [applyTaskAssignees, selectedTaskDetail, tasks]);
 
-  const filteredPeopleDirectory = projectPeopleDirectory.filter(person => {
-    const normalizedSearch = peopleSearch.trim().toLowerCase();
-    if (!normalizedSearch) return true;
-    return person.name.toLowerCase().includes(normalizedSearch) ||
-      person.email.toLowerCase().includes(normalizedSearch);
-  });
+  const addTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    if (!assigneeUserId) return refreshTaskAssignmentState(taskId);
+    const currentTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const alreadyAssigned = (currentTask?.assignees || []).some(entry => entry.assigneeId === assigneeUserId);
+    if (alreadyAssigned) return refreshTaskAssignmentState(taskId);
+
+    await axiosClient.post(`/tasks/${taskId}/assignees`, {
+      assignee_ids: [assigneeUserId],
+      reason: 'Assigned from task board',
+    });
+    return refreshTaskAssignmentState(taskId);
+  }, [refreshTaskAssignmentState, selectedTaskDetail, tasks]);
+
+  const removeTaskAssigneeRequest = useCallback(async (taskId, assigneeUserId) => {
+    if (!assigneeUserId) return;
+    await axiosClient.delete(`/tasks/${taskId}/assignees/${assigneeUserId}`, {
+      data: { reason: 'Removed from task board' },
+    });
+    return refreshTaskAssignmentState(taskId);
+  }, [refreshTaskAssignmentState]);
+
   const trimmedPeopleSearch = peopleSearch.trim();
   const canAddEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedPeopleSearch);
+  const addPeopleCandidates = React.useMemo(() => {
+    if (!canAddEmail) return [];
+
+    const email = trimmedPeopleSearch.toLowerCase();
+    const existingMember = projectPeople.find(member => member.email?.toLowerCase() === email);
+    if (existingMember) return [existingMember];
+
+    const nameFromEmail = email.split('@')[0]
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ') || email;
+
+    return [{
+      id: `email-${email.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
+      name: nameFromEmail,
+      email,
+      initials: getInitials(nameFromEmail),
+      color: '#5E4DB2',
+      textColor: '#FFFFFF',
+    }];
+  }, [canAddEmail, projectPeople, trimmedPeopleSearch]);
+  const visibleSpacePeople = React.useMemo(() => {
+    if (canAddEmail) return [];
+
+    const query = trimmedPeopleSearch.toLowerCase();
+    if (!query) return projectPeople;
+
+    return projectPeople.filter(person =>
+      person.name?.toLowerCase().includes(query) ||
+      person.email?.toLowerCase().includes(query)
+    );
+  }, [canAddEmail, projectPeople, trimmedPeopleSearch]);
+  const pendingInvitationRows = React.useMemo(() => {
+    const query = trimmedPeopleSearch.toLowerCase();
+    if (!query) return pendingInvitations;
+
+    return pendingInvitations.filter(invitation =>
+      invitation.name?.toLowerCase().includes(query) ||
+      invitation.email?.toLowerCase().includes(query) ||
+      invitation.requesterName?.toLowerCase().includes(query)
+    );
+  }, [pendingInvitations, trimmedPeopleSearch]);
+  const peoplePanelRows = canAddEmail ? addPeopleCandidates : visibleSpacePeople;
 
   const handleAddProjectPerson = async (person) => {
     if (!person?.email || addingPeopleEmail) return;
@@ -623,25 +889,43 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       if (spaceId && String(spaceId).startsWith('SPC')) {
         const result = await addPeopleRequest(spaceId, person);
         if (result.status === 'APPROVED') {
+          const approvedMember = result.member
+            ? mapApiSpaceMember(result.member, projectPeople.length)
+            : person;
           setProjectPeople(prev => {
-            if (prev.some(member => member.email?.toLowerCase() === normalizedEmail || member.id === person.id)) return prev;
-            return [...prev, person];
+            if (prev.some(member =>
+              member.email?.toLowerCase() === normalizedEmail ||
+              member.id === approvedMember.id ||
+              member.user_id === approvedMember.user_id
+            )) {
+              return prev;
+            }
+            return [...prev, approvedMember];
           });
+          setPendingPeopleEmails(prev => prev.filter(email => email !== normalizedEmail));
+          await loadTaskData();
         } else {
-          setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
+          const pendingEmail = result.request?.requested_email?.toLowerCase() || normalizedEmail;
+          setPendingPeopleEmails(prev => prev.includes(pendingEmail) ? prev : [...prev, pendingEmail]);
+          if (result.request) {
+            setPendingInvitations(prev => {
+              if (prev.some(item => item.id === result.request.space_member_request_id)) return prev;
+              return [mapPendingInvitation(result.request), ...prev];
+            });
+          }
         }
         setAddPeopleFeedback(result.message || 'Request created.');
       } else {
         setPendingPeopleEmails(prev => prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]);
         setAddPeopleFeedback(
           canDirectAddPeople
-            ? `Invitation email sent to ${person.email}. Waiting for them to accept.`
+            ? `Invitation sent to ${person.email}. Waiting for them to accept.`
             : `Approval request sent to the owner for ${person.email}.`
         );
       }
       setPeopleSearch('');
     } catch (error) {
-      setAddPeopleFeedback(error.message || 'Unable to add this person.');
+      setAddPeopleFeedback(getErrorMessage(error, 'Unable to add this person.'));
     } finally {
       setAddingPeopleEmail('');
     }
@@ -669,11 +953,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   useEffect(() => {
-    setProjectPeople(getInitialProjectPeople(selectedSpace));
+    setProjectPeople(getInitialProjectPeople());
+    setPendingInvitations([]);
     setPendingPeopleEmails([]);
     setAddPeopleFeedback('');
     setSelectedAssigneeFilter('All');
-  }, [selectedSpace?.id]);
+  }, [spaceId]);
 
   useEffect(() => {
     if (!isAddPeopleOpen) return;
@@ -692,6 +977,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isAddPeopleOpen]);
 
+  useEffect(() => {
+    if (!isDateDropdownOpen) return;
+    const handleClickOutside = (event) => {
+      if (dateFilterRef.current && !dateFilterRef.current.contains(event.target)) {
+        setIsDateDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isDateDropdownOpen]);
+
   // Sync tasks with MainLayout context for the CreateTaskModal's RichTextEditor
   useEffect(() => {
     if (setTasksForModal) {
@@ -702,10 +999,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   // Sync sprints with MainLayout for CreateTaskModal
   useEffect(() => {
     if (setSprintsForModal) {
-      setSprintsForModal([
-        { id: sprint1Data.id, name: sprint1Data.name },
-        ...extraSprints.map(s => ({ id: s.id, name: s.name }))
-      ]);
+      setSprintsForModal([sprint1Data, ...extraSprints]
+        .filter(sprint => sprint.id && sprint.status !== 'Completed')
+        .map(sprint => ({ id: sprint.id, name: sprint.name })));
     }
   }, [sprint1Data, extraSprints, setSprintsForModal]);
 
@@ -723,27 +1019,38 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setTasksError('');
 
     const sprintOptions = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
-    const selectedSprint = sprintOptions.find(sprint => sprint.name === taskData.sprint) || sprintOptions[0];
+    const createableSprintOptions = sprintOptions.filter(sprint => sprint.status !== 'Completed');
+    const defaultSprint = createableSprintOptions.find(sprint => sprint.status === 'Active')
+      || createableSprintOptions[0];
+    const selectedSprint = createableSprintOptions.find(sprint => sprint.name === taskData.sprint)
+      || defaultSprint;
     if (!selectedSprint?.id) {
-      throw new Error('This space does not have a sprint yet. Create a sprint before adding tasks.');
+      throw new Error('Start or create an available sprint before adding tasks.');
     }
 
-    const selectedAssignee = projectAssigneeOptions.find(user =>
-      user.user_id === taskData.assigneeId ||
-      user.id === taskData.assigneeId ||
-      (!taskData.assigneeId && user.name === taskData.assignee)
-    );
-    const selectedAssigneeId = selectedAssignee?.user_id || selectedAssignee?.id || '';
+    const selectedAssigneeIds = Array.from(new Set(
+      (taskData.assigneeIds || [])
+        .concat(taskData.assigneeId ? [taskData.assigneeId] : [])
+        .map(String)
+        .map(id => id.trim())
+        .filter(Boolean)
+    ));
 
+    const storyPoints = parseNonNegativeStoryPoints(taskData.storyPoints);
+    if (storyPoints === null) {
+      throw new Error('Story points must be 0 or greater.');
+    }
     const formData = new FormData();
     formData.append('title', taskData.summary.trim());
     formData.append('sprint_id', selectedSprint.id);
     formData.append('priority', TASK_PRIORITY_TO_API[taskData.priority] || 'MEDIUM');
     formData.append('task_status', TASK_STATUS_TO_API[taskData.status] || 'new');
-    formData.append('story_points', String(Number(taskData.storyPoints) || 0));
+    formData.append('story_points', String(storyPoints));
     if (taskData.description) formData.append('description', taskData.description);
     if (taskData.completed_at) formData.append('completed_at', new Date(taskData.completed_at).toISOString());
-    if (selectedAssigneeId) formData.append('assignee_ids', selectedAssigneeId);
+    selectedAssigneeIds.forEach(assigneeId => {
+      formData.append('assignee_ids', assigneeId);
+    });
     (taskData.attachments || []).forEach((attachment) => {
       if (attachment.file instanceof File) {
         formData.append('attachments', attachment.file);
@@ -752,22 +1059,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     const response = await axiosClient.post(`/spaces/${spaceId}/tasks`, formData);
     let createdTask = mapApiTask(response.data);
-    if (selectedAssigneeId && createdTask.assignees.length === 0) {
+    if (selectedAssigneeIds.length > 0 && createdTask.assignees.length === 0) {
       try {
         const assigneeResponse = await axiosClient.post(`/tasks/${createdTask.id}/assignees`, {
-          assignee_ids: [selectedAssigneeId],
+          assignee_ids: selectedAssigneeIds,
           reason: 'Assigned while creating task',
         });
-        const assignees = assigneeResponse.data?.assignees || [];
-        const assigneeUpdates = {
-          assignees: assignees.map(mapApiTaskAssignee),
-        };
-        const primaryAssignee = assigneeUpdates.assignees[0] || null;
         createdTask = {
           ...createdTask,
-          ...assigneeUpdates,
-          assignee: primaryAssignee?.user?.name || '',
-          assigneeId: primaryAssignee?.assigneeId || '',
+          ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || []),
         };
       } catch (error) {
         setTasksError(
@@ -775,7 +1075,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         );
       }
     }
-    setTasks(prev => [createdTask, ...prev]);
+    setTasks(prev => assignScopedTaskDisplayIds([createdTask, ...prev]));
 
     return createdTask;
   }, [canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
@@ -792,8 +1092,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSelectedTaskDetail(task);
     setTasksError('');
     try {
-      const response = await axiosClient.get(`/tasks/${task.id}`);
-      const detailedTask = mapApiTask(response.data);
+      const [response, assigneeResponse, historyResponse] = await Promise.all([
+        axiosClient.get(`/tasks/${task.id}`),
+        axiosClient.get(`/tasks/${task.id}/assignees`),
+        axiosClient.get(`/tasks/${task.id}/assignment-history`),
+      ]);
+      const detailedTask = {
+        ...mapApiTask(response.data),
+        ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || response.data?.assignees || []),
+        assignmentHistory: historyResponse.data?.history || response.data?.assignment_history || [],
+      };
       setSelectedTaskDetail(detailedTask);
       setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
     } catch (error) {
@@ -830,10 +1138,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const toggleAll = () => {
     if (!canSelectTasks) return;
-    if (selectedTasks.length === filteredTasks.length) {
+    if (selectableTaskIds.length === 0) return;
+    if (selectableTaskIds.every(taskId => selectedTasks.includes(taskId))) {
       setSelectedTasks([]);
     } else {
-      setSelectedTasks(filteredTasks.map(t => t.id));
+      setSelectedTasks(selectableTaskIds);
     }
   };
 
@@ -845,13 +1154,18 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
     setTasksError('');
     try {
-      await Promise.all(selectedTasks.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
-      setTasks(prev => prev.filter(t => !selectedTasks.includes(t.id)));
+      const deletableTaskIds = selectedTasks.filter(taskId => {
+        const task = tasks.find(item => item.id === taskId);
+        return task && !isTaskReadOnly(task);
+      });
+      if (deletableTaskIds.length === 0) return;
+      await Promise.all(deletableTaskIds.map(taskId => axiosClient.delete(`/tasks/${taskId}`)));
+      setTasks(prev => prev.filter(t => !deletableTaskIds.includes(t.id)));
       setExtraSprints(prev => prev.map(s => ({
         ...s,
-        tasks: s.tasks.filter(t => !selectedTasks.includes(t.id))
+        tasks: s.tasks.filter(t => !deletableTaskIds.includes(t.id))
       })));
-      if (selectedTaskDetail && selectedTasks.includes(selectedTaskDetail.id)) {
+      if (selectedTaskDetail && deletableTaskIds.includes(selectedTaskDetail.id)) {
         setSelectedTaskDetail(null);
       }
       setSelectedTasks([]);
@@ -870,7 +1184,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     setTasksError('');
     try {
-      await Promise.all(selectedTasks.map(taskId => updateTaskRequest(taskId, {
+      const editableTaskIds = selectedTasks.filter(taskId => {
+        const task = tasks.find(item => item.id === taskId);
+        return task && !isTaskReadOnly(task);
+      });
+      if (editableTaskIds.length === 0) return;
+      await Promise.all(editableTaskIds.map(taskId => updateTaskRequest(taskId, {
         task_status: TASK_STATUS_TO_API[newStatus] || 'new',
       })));
       setShowToolbarStatusMenu(false);
@@ -882,6 +1201,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const toggleTask = (id) => {
     if (!canSelectTasks) return;
+    const task = tasks.find(item => item.id === id);
+    if (!task || isTaskReadOnly(task)) return;
     setSelectedTasks(prev =>
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
     );
@@ -964,6 +1285,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+    const movingTask = tasks.find(task => task.id === draggableId);
+    if (!movingTask || isTaskReadOnly(movingTask)) return;
 
     const previousTasks = tasks;
     setTasks(prev => prev.map(task => (
@@ -984,6 +1307,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const handleDeleteTask = async (taskId) => {
+    const task = tasks.find(item => item.id === taskId);
+    if (!task || isTaskReadOnly(task)) return;
     setTasksError('');
     try {
       await axiosClient.delete(`/tasks/${taskId}`);
@@ -997,7 +1322,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   };
 
-  const handleCreateSprint = async () => {
+  const handleCreateSprint = async ({ activate = false } = {}) => {
     if (!canModifyTasks || !spaceId) return;
 
     const nextNum = getNextSprintNumber([sprint1Data, ...extraSprints]);
@@ -1012,7 +1337,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         start_date: startDate.toISOString(),
         end_date: endDate.toISOString(),
         duration_weeks: 2,
-        status: 'Planned',
+        status: activate ? 'Active' : 'Planned',
         auto_start: false,
         auto_complete: false,
       });
@@ -1097,15 +1422,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const filteredTasks = tasks.filter(task => {
     const normalizedSearch = taskSearchQuery.trim().toLowerCase();
     if (normalizedSearch) {
-      const matchesSearch = String(task.id || '').toLowerCase().includes(normalizedSearch) ||
+      const matchesSearch = String(task.displayId || '').toLowerCase().includes(normalizedSearch) ||
+        String(task.id || '').toLowerCase().includes(normalizedSearch) ||
         String(task.title || '').toLowerCase().includes(normalizedSearch);
       if (!matchesSearch) return false;
     }
 
     if (selectedAssigneeFilter && selectedAssigneeFilter !== 'All') {
       if (selectedAssigneeFilter === 'Unassigned') {
-        if (task.assignee) return false;
-      } else if (task.assignee !== selectedAssigneeFilter) {
+        if (getTaskAssigneeUsers(task).length > 0) return false;
+      } else if (!taskHasAssigneeName(task, selectedAssigneeFilter)) {
         return false;
       }
     }
@@ -1147,13 +1473,24 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     ? filteredTasks.filter(task => task.sprintId === sprint1Data.id)
     : filteredTasks;
   const displayedSprints = [sprint1Data, ...extraSprints].filter(sprint => sprint.id);
+  const hasAvailableSprint = displayedSprints.length > 0;
+  const canCreateInitialSprint = canModifyTasks && Boolean(spaceId) && !hasAvailableSprint;
+  const completedSprintIds = new Set(
+    displayedSprints.filter(sprint => sprint.status === 'Completed').map(sprint => sprint.id)
+  );
+  const isTaskReadOnly = (task) => Boolean(task?.sprintId && completedSprintIds.has(task.sprintId));
+  const selectableTaskIds = filteredTasks
+    .filter(task => !isTaskReadOnly(task))
+    .map(task => task.id);
+  const activeBoardSprint = displayedSprints.find(sprint => sprint.status === 'Active') || null;
+  const boardTasks = activeBoardSprint
+    ? filteredTasks.filter(task => task.sprintId === activeBoardSprint.id)
+    : [];
   const getTasksForSprint = (sprintId) => (
     sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
   );
   const isSprintCompleted = (sprint) => {
-    if (sprint?.status !== 'Completed') return false;
-    const sprintTasks = getTasksForSprint(sprint.id);
-    return sprintTasks.length === 0 || sprintTasks.every(task => task.status === 'Done');
+    return sprint?.status === 'Completed';
   };
   const arePreviousSprintsCompleted = (sprint) => {
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
@@ -1168,7 +1505,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const shouldShowStartSprint = (sprint) => {
     if (!sprint?.id) return false;
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
-    return sprintIndex > 0 && sprint.status !== 'Completed';
+    return sprintIndex >= 0 && sprint.status === 'Planned';
   };
   const canStartSprint = (sprint) => {
     if (!shouldShowStartSprint(sprint)) return false;
@@ -1186,8 +1523,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const getSprintAction = (sprint) => {
     if (!sprint?.id || !canModifyTasks) return null;
+    if (sprint.status === 'Completed') return null;
     const sprintIndex = displayedSprints.findIndex(item => item.id === sprint.id);
-    if (sprintIndex === 0 || (sprint.status === 'Active' && canStartSprint(sprint))) {
+    if (sprint.status === 'Active') {
       return {
         label: 'Complete sprint',
         onClick: () => openCompleteSprint(sprint),
@@ -1206,6 +1544,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
     return null;
   };
+  const boardSprintActionTarget = activeBoardSprint
+    || displayedSprints.find(sprint => canStartSprint(sprint))
+    || null;
+  const boardSprintAction = boardSprintActionTarget
+    ? getSprintAction(boardSprintActionTarget)
+    : null;
+  const sprintInfoTasks = view === 'board' ? boardTasks : primarySprintTasks;
+  const selectedTaskDetailReadOnly = selectedTaskDetail ? isTaskReadOnly(selectedTaskDetail) : false;
 
   const handleCompleteSprint = async () => {
     if (!canModifyTasks || !completeSprintTarget?.id) return;
@@ -1239,28 +1585,33 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     setTasksError('');
     const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    if (!previousTask || isTaskReadOnly(previousTask)) return;
     const nextAssigneeId = user?.user_id || user?.id || '';
-    const nextAssigneeName = nextAssigneeId ? user?.name || '' : '';
+    const currentAssignees = previousTask?.assignees || [];
+    if (nextAssigneeId && currentAssignees.some(entry => entry.assigneeId === nextAssigneeId)) {
+      return;
+    }
     const optimisticAssignee = nextAssigneeId
-      ? [{
-        entryId: `optimistic-${taskId}-${nextAssigneeId}`,
-        assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
-        taskId,
-        assigneeId: nextAssigneeId,
-        assignee_id: nextAssigneeId,
-        assignedAt: new Date().toISOString(),
-        assignee_at: new Date().toISOString(),
-        user: mapApiUserSummary(user),
-      }]
+      ? [
+        ...currentAssignees,
+        {
+          entryId: `optimistic-${taskId}-${nextAssigneeId}`,
+          assignee_entry_id: `optimistic-${taskId}-${nextAssigneeId}`,
+          taskId,
+          assigneeId: nextAssigneeId,
+          assignee_id: nextAssigneeId,
+          assignedAt: new Date().toISOString(),
+          assignee_at: new Date().toISOString(),
+          user: mapApiUserSummary(user),
+        }]
       : [];
+    const optimisticUpdates = buildTaskAssigneeUpdates(optimisticAssignee);
 
     setTasks(prev => prev.map(task => (
       task.id === taskId
         ? {
           ...task,
-          assignees: optimisticAssignee,
-          assignee: nextAssigneeName,
-          assigneeId: nextAssigneeId,
+          ...optimisticUpdates,
         }
         : task
     )));
@@ -1268,16 +1619,40 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       prev?.id === taskId
         ? {
           ...prev,
-          assignees: optimisticAssignee,
-          assignee: nextAssigneeName,
-          assigneeId: nextAssigneeId,
+          ...optimisticUpdates,
         }
         : prev
     ));
     try {
-      await syncTaskAssigneeRequest(taskId, nextAssigneeId);
+      if (!nextAssigneeId) {
+        await syncTaskAssigneeRequest(taskId, '');
+      } else {
+        await addTaskAssigneeRequest(taskId, nextAssigneeId);
+      }
     } catch (error) {
       setTasksError(getErrorMessage(error, 'Unable to update task assignee.'));
+      if (previousTask) {
+        setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
+        setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
+      }
+      loadTaskData();
+    }
+  };
+
+  const handleRemoveTaskAssignee = async (taskId, assigneeUserId) => {
+    if (!canModifyTasks || !assigneeUserId) return;
+    setTasksError('');
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail;
+    const optimisticAssignees = (previousTask?.assignees || []).filter(entry => entry.assigneeId !== assigneeUserId);
+    const optimisticUpdates = buildTaskAssigneeUpdates(optimisticAssignees);
+
+    setTasks(prev => prev.map(task => task.id === taskId ? { ...task, ...optimisticUpdates } : task));
+    setSelectedTaskDetail(prev => prev?.id === taskId ? { ...prev, ...optimisticUpdates } : prev);
+
+    try {
+      await removeTaskAssigneeRequest(taskId, assigneeUserId);
+    } catch (error) {
+      setTasksError(getErrorMessage(error, 'Unable to remove task assignee.'));
       if (previousTask) {
         setTasks(prev => prev.map(task => task.id === taskId ? previousTask : task));
         setSelectedTaskDetail(prev => prev?.id === taskId ? previousTask : prev);
@@ -1290,6 +1665,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (!canModifyTasks) return;
     const currentTask = tasks.find(task => task.id === updatedTask.id) || selectedTaskDetail;
     if (!currentTask) return;
+    if (isTaskReadOnly(currentTask)) return;
 
     const assigneeChanged = (updatedTask.assigneeId || '') !== (currentTask.assigneeId || '') || updatedTask.assignee !== currentTask.assignee;
     if (assigneeChanged) {
@@ -1305,7 +1681,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     if (updatedTask.description !== currentTask.description) updates.description = updatedTask.description || null;
     if (updatedTask.priority !== currentTask.priority) updates.priority = TASK_PRIORITY_TO_API[updatedTask.priority] || 'MEDIUM';
     if (updatedTask.status !== currentTask.status) updates.task_status = TASK_STATUS_TO_API[updatedTask.status] || 'new';
-    if (Number(updatedTask.pts) !== Number(currentTask.pts)) updates.story_points = Number(updatedTask.pts) || 0;
+    const nextStoryPoints = parseNonNegativeStoryPoints(updatedTask.pts);
+    if (nextStoryPoints !== null && Number(nextStoryPoints) !== Number(currentTask.pts)) {
+      updates.story_points = nextStoryPoints;
+    }
     const nextCompletedAt = updatedTask.completed_at || null;
     const currentCompletedAt = currentTask.completed_at || null;
     if (nextCompletedAt !== currentCompletedAt) {
@@ -1314,7 +1693,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     if (Object.keys(updates).length === 0) {
       if (assigneeChanged) return;
-      setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
+      setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === updatedTask.id ? updatedTask : task)));
       setSelectedTaskDetail(updatedTask);
       return;
     }
@@ -1332,6 +1711,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     const movingTask = tasks.find(task => task.id === taskId);
     if (!movingTask) return;
+    if (isTaskReadOnly(movingTask)) return;
 
     const displayedColumnTaskIds = filteredTasks
       .filter(task => task.status === movingTask.status)
@@ -1375,53 +1755,82 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   };
 
   const summaryRole = isAdmin ? 'SUPER_ADMIN' : (currentSpaceRole === 'OWNER' ? 'OWNER' : 'USER');
-  const spaceMemberCount = new Set(tasks.map(task => task.assignee).filter(Boolean)).size;
+  const canUseSummaryMemberFilter = summaryRole === 'SUPER_ADMIN' || summaryRole === 'OWNER';
+  const spaceMemberCount = new Set(
+    tasks.flatMap(task => getTaskAssigneeUsers(task).map(user => user.user_id || user.id || user.name)).filter(Boolean)
+  ).size;
+  const assigneeFilterMembers = projectAssigneeOptions.slice(1);
+  const selectedSummaryMember = selectedSummaryMemberId === 'All'
+    ? null
+    : assigneeFilterMembers.find(user => (user.user_id || user.id) === selectedSummaryMemberId) || null;
+  const selectedSummaryFilterMembers = selectedSummaryMemberId === 'All'
+    ? assigneeFilterMembers
+    : selectedSummaryMember ? [selectedSummaryMember] : [];
+  const summaryMemberId = !canUseSummaryMemberFilter || selectedSummaryMemberId === 'All'
+    ? null
+    : selectedSummaryMember?.user_id || selectedSummaryMember?.id || selectedSummaryMemberId;
+  const assigneeFilterAvatarClass = (user) => {
+    const isActive = selectedAssigneeFilter === 'All' || user.name === selectedAssigneeFilter;
+    return isActive
+      ? 'relative z-10 border-2 border-[#A78BFA] ring-2 ring-[#EDE9FE] shadow-sm'
+      : 'border-2 border-white opacity-70';
+  };
+  const summaryMemberAvatarClass = (user) => {
+    const isActive = selectedSummaryMemberId === 'All' || (user.user_id || user.id) === selectedSummaryMemberId;
+    return isActive
+      ? 'relative z-10 border-2 border-[#A78BFA] ring-2 ring-[#EDE9FE] shadow-sm'
+      : 'border-2 border-white opacity-70';
+  };
   const viewTabClass = (targetView) =>
     `flex items-center gap-2 px-2.5 py-1 rounded text-xs font-medium transition-colors ${view === targetView ? 'bg-[#cdddff] text-[#003d9b] shadow-sm' : 'text-gray-500 hover:bg-[#EBF0FF]'}`;
   const summaryMemberFilter = (
-    <div className="relative group">
+    <div ref={summaryAssigneeFilterRef} className="relative">
       <button
         type="button"
+        onClick={() => setOpenAssigneeFilterMenu(prev => prev === 'summary' ? null : 'summary')}
         className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-outline-variant rounded-lg hover:bg-surface-container transition-colors shadow-sm"
       >
         <div className="flex -space-x-1">
-          {(selectedAssigneeFilter === 'All' ? projectAssigneeOptions.slice(1, 4) : projectAssigneeOptions.filter(user => user.name === selectedAssigneeFilter)).map(user => (
-            <div
-              key={user.name}
-              className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-[9px] font-bold"
-              style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-            >
-              {user.initials || <span className="material-symbols-outlined text-[12px]">{user.icon}</span>}
-            </div>
+          {selectedSummaryFilterMembers.slice(0, 3).map(user => (
+            <AssigneeAvatar
+              key={user.user_id || user.id || user.name}
+              user={user}
+              sizeClass="w-5 h-5"
+              textClass="text-[9px]"
+              className={summaryMemberAvatarClass(user)}
+            />
           ))}
+          {selectedSummaryMemberId === 'All' && selectedSummaryFilterMembers.length > 3 && (
+            <span className="w-5 h-5 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[8px] font-bold text-gray-700">
+              +{selectedSummaryFilterMembers.length - 3}
+            </span>
+          )}
         </div>
         <span className="text-[11px] font-bold text-[#5e4db2]">
-          {selectedAssigneeFilter === 'All' ? 'All members' : selectedAssigneeFilter}
+          {selectedSummaryMemberId === 'All' ? 'All members' : selectedSummaryMember?.name || 'All members'}
         </span>
         <span className="material-symbols-outlined text-[#5e4db2] text-[13px]">expand_more</span>
       </button>
-      <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+      <div className={`absolute top-full right-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden transition-all duration-150 ${openAssigneeFilterMenu === 'summary' ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
         <div className="py-1">
           <button
             type="button"
-            onClick={() => setSelectedAssigneeFilter('All')}
-            className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+            onClick={() => handleSelectSummaryMemberFilter('All')}
+            className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
           >
-            All members
+            <span className="material-symbols-outlined flex h-6 w-6 items-center justify-center rounded-full bg-[#F3E8FF] text-[16px] text-[#7E22CE]">
+              groups
+            </span>
+            <span>All members</span>
           </button>
           {projectAssigneeOptions.slice(1).map(user => (
             <button
-              key={user.name}
+              key={user.user_id || user.id || user.name}
               type="button"
-              onClick={() => setSelectedAssigneeFilter(user.name)}
+              onClick={() => handleSelectSummaryMemberFilter(user.user_id || user.id)}
               className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
             >
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-              >
-                {user.initials}
-              </div>
+              <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[9px]" />
               <span>{user.name}</span>
             </button>
           ))}
@@ -1447,119 +1856,154 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <button
                   ref={addPeopleButtonRef}
                   type="button"
-                  onClick={() => setIsAddPeopleOpen(prev => !prev)}
+                  onClick={handleToggleAddPeople}
                   className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded text-[12px] font-semibold text-[#2D1B4E] hover:bg-[#f0edff] hover:border-[#5e4db2] transition-colors shadow-sm"
                 >
                   <span className="material-symbols-outlined text-[18px]">person_add</span>
                   Add people
                 </button>
                 {isAddPeopleOpen && (
-                <div
-                  ref={addPeoplePanelRef}
-                  className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
-                >
-                  <div className="p-3 border-b border-outline-variant">
-                    <div className="relative">
-                      <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
-                      <input
-                        type="text"
-                        value={peopleSearch}
-                        onChange={(event) => setPeopleSearch(event.target.value)}
-                        placeholder="Search name or email..."
-                        className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
-                      />
-                    </div>
-                    {addPeopleFeedback && (
-                      <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
-                        {addPeopleFeedback}
+                  <div
+                    ref={addPeoplePanelRef}
+                    className="absolute left-0 top-full mt-2 w-[320px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                  >
+                    <div className="p-3 border-b border-outline-variant">
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+                        <input
+                          type="text"
+                          value={peopleSearch}
+                          onChange={(event) => setPeopleSearch(event.target.value)}
+                          placeholder="Enter an email address..."
+                          className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
+                        />
                       </div>
-                    )}
-                  </div>
-                  <div className="max-h-64 overflow-y-auto py-1">
-                    {filteredPeopleDirectory.map(person => {
-                      const isAdded = projectPeople.some(member => member.id === person.id);
-                      const normalizedEmail = person.email.toLowerCase();
-                      const isPending = pendingPeopleEmails.includes(normalizedEmail);
-                      const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
-                      const isOwner = projectOwnerId === person.id;
-                      return (
-                        <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                              style={{ backgroundColor: person.color, color: person.textColor || '#111' }}
-                            >
-                              {person.initials}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
-                              <div className="text-[10px] text-outline truncate">{person.email}</div>
-                            </div>
+                      {addPeopleFeedback && (
+                        <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
+                          {addPeopleFeedback}
+                        </div>
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto py-1">
+                      {pendingInvitationRows.length > 0 && (
+                        <div className="border-b border-outline-variant pb-1">
+                          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#6E5A8A]">
+                            Pending invitations
                           </div>
-                          {isOwner ? (
-                            <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
-                              Owner
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
-                              onClick={() => handleAddProjectPerson(person)}
-                              className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
+                          {pendingInvitationRows.map(invitation => (
+                            <div key={invitation.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-[#FAF8FF]">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <AssigneeAvatar
+                                  user={invitation}
+                                  sizeClass="w-8 h-8"
+                                  textClass="text-[11px]"
+                                />
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12px] font-semibold text-[#172B4D]">{invitation.name}</div>
+                                  <div className="truncate text-[10px] text-outline">{invitation.email}</div>
+                                  <div className="truncate text-[10px] text-[#6E5A8A]">
+                                    Requested by {invitation.requesterName}
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="max-w-[112px] rounded bg-[#EEF2FF] px-2 py-1 text-right text-[10px] font-bold leading-tight text-[#003d9b]">
+                                {getPendingInvitationLabel(invitation.status)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {peoplePanelRows.map(person => {
+                        const normalizedEmail = person.email.toLowerCase();
+                        const personUserId = person.user_id || person.id || '';
+                        const isAdded = projectPeople.some(member =>
+                          member.email?.toLowerCase() === normalizedEmail ||
+                          (personUserId && (member.user_id === personUserId || member.id === personUserId))
+                        );
+                        const isPending = pendingPeopleEmails.includes(normalizedEmail);
+                        const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
+                        const isOwner = projectOwnerId && (projectOwnerId === personUserId);
+                        return (
+                          <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <AssigneeAvatar
+                                user={person}
+                                sizeClass="w-8 h-8"
+                                textClass="text-[11px]"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-semibold text-[#172B4D] truncate">{person.name}</div>
+                                <div className="text-[10px] text-outline truncate">{person.email}</div>
+                              </div>
+                            </div>
+                            {isOwner ? (
+                              <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
+                                Owner
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isAdded || isPending || Boolean(addingPeopleEmail)}
+                                onClick={() => handleAddProjectPerson(person)}
+                                className={`px-3 py-1 rounded text-[11px] font-bold transition-colors ${isAdded
                                   ? 'bg-[#E6FFF0] text-[#006D3A] cursor-default'
                                   : isPending
                                     ? 'bg-[#EEF2FF] text-[#003d9b] cursor-default'
                                     : 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
-                                }`}
-                            >
-                              {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : 'Invite'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {filteredPeopleDirectory.length === 0 && trimmedPeopleSearch && (
-                      <div className="px-3 py-3">
-                        <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
-                          <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
-                          <div className="text-[10px] text-outline">
-                            {canAddEmail ? 'Send an invitation to this email' : 'Enter a valid email address'}
+                                  }`}
+                              >
+                                {isAddingThisPerson ? 'Sending...' : isAdded ? 'Added' : isPending ? 'Pending' : canDirectAddPeople ? 'Invite' : 'Request'}
+                              </button>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPeopleSearch('')}
-                            className="px-3 py-1.5 rounded border border-outline-variant bg-white text-[11px] font-bold text-[#4B5563] hover:bg-[#F3F4F6] transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canAddEmail || Boolean(addingPeopleEmail)}
-                            onClick={handleAddEmailPerson}
-                            className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
+                        );
+                      })}
+                      {peoplePanelRows.length === 0 && trimmedPeopleSearch && (
+                        <div className="px-3 py-3">
+                          <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
+                            <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
+                            <div className="text-[10px] text-outline">
+                              {canAddEmail
+                                ? canDirectAddPeople
+                                  ? 'Send an invitation to this email'
+                                  : 'Send an approval request to the owner'
+                                : 'Enter a valid email address'}
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPeopleSearch('')}
+                              className="px-3 py-1.5 rounded border border-outline-variant bg-white text-[11px] font-bold text-[#4B5563] hover:bg-[#F3F4F6] transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canAddEmail || Boolean(addingPeopleEmail)}
+                              onClick={handleAddEmailPerson}
+                              className={`px-4 py-1.5 rounded text-[11px] font-bold transition-colors ${canAddEmail && !addingPeopleEmail
                                 ? 'bg-[#4C2B74] text-white hover:bg-[#3D225E]'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              }`}
-                          >
-                            {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : 'Invite'}
-                          </button>
+                                }`}
+                            >
+                              {addingPeopleEmail === trimmedPeopleSearch.toLowerCase() ? 'Sending...' : canDirectAddPeople ? 'Invite' : 'Request'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {filteredPeopleDirectory.length === 0 && !trimmedPeopleSearch && (
-                      <div className="px-4 py-5 text-center text-[12px] text-outline">Start typing a name or email</div>
-                    )}
+                      )}
+                      {peoplePanelRows.length === 0 && !trimmedPeopleSearch && (
+                        <div className="px-4 py-5 text-center text-[12px] text-outline">No members in this space yet</div>
+                      )}
+                    </div>
                   </div>
-                </div>
                 )}
               </div>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {view === 'summary' && summaryMemberFilter}
+        {view === 'summary' && canUseSummaryMemberFilter && summaryMemberFilter}
           <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-outline-variant">
             <button
               className={viewTabClass('summary')}
@@ -1586,7 +2030,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       </div>
 
       {view === 'summary' && (
-        <Dashboard embedded forcedRole={summaryRole} spaceMemberCount={spaceMemberCount} />
+        <Dashboard
+          embedded
+          forcedRole={summaryRole}
+          spaceId={spaceId}
+          summaryMemberId={summaryMemberId}
+          spaceMemberCount={spaceMemberCount}
+        />
       )}
 
       {tasksError && view !== 'summary' && (
@@ -1673,45 +2123,49 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             </div>
             {/* Assignee Filter */}
-            <div className="relative group">
+            <div ref={toolbarAssigneeFilterRef} className="relative">
               <button
                 type="button"
+                onClick={() => setOpenAssigneeFilterMenu(prev => prev === 'toolbar' ? null : 'toolbar')}
                 className="flex items-center ml-1 hover:opacity-70 transition-opacity"
               >
                 <div className="flex -space-x-1">
-                  {projectAssigneeOptions.slice(1).map(user => (
-                    <div
-                      key={user.name}
-                      className="w-7 h-7 rounded-full flex items-center justify-center border-2 border-gray text-[11px] font-medium"
-                      style={{ backgroundColor: user.color, color: user.textColor || '#676464' }}
-                    >
-                      {user.initials}
-                    </div>
+                  {assigneeFilterMembers.slice(0, 4).map(user => (
+                    <AssigneeAvatar
+                      key={user.user_id || user.id || user.name}
+                      user={user}
+                      sizeClass="w-7 h-7"
+                      textClass="text-[11px]"
+                      className={assigneeFilterAvatarClass(user)}
+                    />
                   ))}
+                  {assigneeFilterMembers.length > 4 && (
+                    <span className="w-7 h-7 rounded-full border-2 border-gray bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-700">
+                      +{assigneeFilterMembers.length - 4}
+                    </span>
+                  )}
                 </div>
               </button>
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+              <div className={`absolute top-full left-0 mt-2 w-56 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden transition-all duration-150 ${openAssigneeFilterMenu === 'toolbar' ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                 <div className="py-1">
                   <button
                     type="button"
-                    onClick={() => setSelectedAssigneeFilter('All')}
-                    className="w-full text-left px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
+                    onClick={() => handleSelectAssigneeFilter('All')}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
                   >
-                    All assignees
+                    <span className="material-symbols-outlined flex h-6 w-6 items-center justify-center rounded-full bg-[#F3E8FF] text-[16px] text-[#7E22CE]">
+                      groups
+                    </span>
+                    <span>All assignees</span>
                   </button>
                   {projectAssigneeOptions.map(user => (
                     <button
-                      key={user.name}
+                      key={user.user_id || user.id || user.name}
                       type="button"
-                      onClick={() => setSelectedAssigneeFilter(user.name)}
+                      onClick={() => handleSelectAssigneeFilter(user.name)}
                       className="w-full flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[#EBF0FF] transition-colors"
                     >
-                      <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
-                      >
-                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                      </div>
+                      <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[9px]" />
                       <span>{user.name}</span>
                     </button>
                   ))}
@@ -1775,20 +2229,25 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             {/* Sprint Actions */}
             {view === 'board' && (
               <div className="flex items-center gap-2">
-                {canModifyTasks && (() => {
-                  const sprintAction = getSprintAction(sprint1Data);
-                  if (!sprintAction) return null;
-                  return (
-                    <button
-                      onClick={sprintAction.onClick}
-                      disabled={sprintAction.disabled}
-                      title={sprintAction.title}
-                      className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                    >
-                      {sprintAction.label}
-                    </button>
-                  );
-                })()}
+                {canCreateInitialSprint && (
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSprint({ activate: true })}
+                    className="px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors hover:bg-[#e6e1ff]"
+                  >
+                    Start sprint
+                  </button>
+                )}
+                {canModifyTasks && boardSprintAction && (
+                  <button
+                    onClick={boardSprintAction.onClick}
+                    disabled={boardSprintAction.disabled}
+                    title={boardSprintAction.title}
+                    className={`px-4 py-1.5 bg-[#f0edff] text-[#5e4db2] rounded text-[13px] font-semibold transition-colors ${boardSprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                  >
+                    {boardSprintAction.label}
+                  </button>
+                )}
                 <button
                   ref={sprintInfoAnchorRef}
                   onClick={() => setIsSprintInfoOpen(!isSprintInfoOpen)}
@@ -1800,8 +2259,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             )}
 
             {/* Date Filter */}
-            <div className="relative group">
-              <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm">
+            <div ref={dateFilterRef} className="relative">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsDateDropdownOpen(open => !open);
+                }}
+                aria-expanded={isDateDropdownOpen}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm"
+              >
                 <span className="material-symbols-outlined text-[#5e4db2] text-[16px]">calendar_month</span>
                 <span className="text-[11px] font-bold text-[#5e4db2]">
                   {selectedDate
@@ -1811,88 +2278,94 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </button>
 
               {/* Calendar Dropdown */}
-              <div className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl hidden group-hover:block z-50 overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewMonth(m => {
-                            if (m === 0) {
-                              setViewYear(y => y - 1);
-                              return 11;
-                            }
-                            return m - 1;
-                          });
-                        }}
-                        className="p-1 hover:bg-gray-100 rounded"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewMonth(m => {
-                            if (m === 11) {
-                              setViewYear(y => y + 1);
-                              return 0;
-                            }
-                            return m + 1;
-                          });
-                        }}
-                        className="p-1 hover:bg-gray-100 rounded"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                      <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-1">
-                    {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
-                      if (day === null) {
-                        return <div key={`empty-${i}`} className="h-7 w-7" />;
-                      }
-                      const isSelected = selectedDate &&
-                        selectedDate.getDate() === day &&
-                        selectedDate.getMonth() === viewMonth &&
-                        selectedDate.getFullYear() === viewYear;
-                      const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
-                      return (
+              {isDateDropdownOpen && (
+                <div
+                  className="absolute top-full right-0 mt-2 w-[280px] bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[12px] font-bold text-[#5e4db2]">{monthNames[viewMonth]} {viewYear}</span>
+                      <div className="flex gap-1">
                         <button
-                          key={day}
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isSelected) {
-                              setSelectedDate(null);
-                            } else {
-                              setSelectedDate(new Date(viewYear, viewMonth, day));
-                            }
+                            setViewMonth(m => {
+                              if (m === 0) {
+                                setViewYear(y => y - 1);
+                                return 11;
+                              }
+                              return m - 1;
+                            });
                           }}
-                          className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
-                            ? 'bg-[#5e4db2] text-white font-bold'
-                            : isToday
-                              ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
-                              : 'hover:bg-surface-container text-on-surface'
-                            }`}
+                          className="p-1 hover:bg-gray-100 rounded"
                         >
-                          {day}
+                          <span className="material-symbols-outlined text-[16px]">chevron_left</span>
                         </button>
-                      );
-                    })}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setViewMonth(m => {
+                              if (m === 11) {
+                                setViewYear(y => y + 1);
+                                return 0;
+                              }
+                              return m + 1;
+                            });
+                          }}
+                          className="p-1 hover:bg-gray-100 rounded"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                        <span key={day} className="text-[10px] font-bold text-outline uppercase">{day}</span>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1">
+                      {getDaysInMonth(viewYear, viewMonth).map((day, i) => {
+                        if (day === null) {
+                          return <div key={`empty-${i}`} className="h-7 w-7" />;
+                        }
+                        const isSelected = selectedDate &&
+                          selectedDate.getDate() === day &&
+                          selectedDate.getMonth() === viewMonth &&
+                          selectedDate.getFullYear() === viewYear;
+                        const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isSelected) {
+                                setSelectedDate(null);
+                              } else {
+                                setSelectedDate(new Date(viewYear, viewMonth, day));
+                              }
+                              setIsDateDropdownOpen(false);
+                            }}
+                            className={`h-7 w-7 flex items-center justify-center rounded-lg text-[10px] transition-colors ${isSelected
+                              ? 'bg-[#5e4db2] text-white font-bold'
+                              : isToday
+                                ? 'border border-[#5e4db2] text-[#5e4db2] font-semibold'
+                                : 'hover:bg-surface-container text-on-surface'
+                              }`}
+                          >
+                            {day}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -1907,13 +2380,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <KanbanColumn
                   key={status}
                   title={status}
-                  tasks={filteredTasks.filter(t => t.status === status)}
+                  tasks={boardTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
-                  onCreateTask={canModifyTasks && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
+                  onCreateTask={canModifyTasks && hasAvailableSprint && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
                   onOpenDetail={handleOpenTaskDetail}
                   onMoveTask={handleMoveTaskWithinStatus}
                   onPatchTask={updateTaskRequest}
                   onUpdateAssignee={handleUpdateAssignee}
+                  onRemoveAssignee={handleRemoveTaskAssignee}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
                   canModifyTasks={canModifyTasks}
@@ -1932,11 +2406,11 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
             <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
               <div className="flex items-center gap-3">
-                {canSelectTasks && (
+                {canSelectTasks && sprint1Data.status !== 'Completed' && (
                   <input
                     type="checkbox"
                     className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
-                    checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
+                    checked={selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId))}
                     onChange={toggleAll}
                   />
                 )}
@@ -1970,6 +2444,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     {primarySprintTasks.filter(t => t.status === 'Done').length}
                   </span>
                 </div>
+                {canCreateInitialSprint && (
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSprint({ activate: true })}
+                    className="px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm hover:bg-[#e6e1ff]"
+                  >
+                    Start sprint
+                  </button>
+                )}
                 {canModifyTasks && (() => {
                   const sprintAction = getSprintAction(sprint1Data);
                   if (!sprintAction) return null;
@@ -1985,39 +2468,39 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   );
                 })()}
                 {/* Sprint 1 ... dropdown menu */}
-                {canModifyTasks && (
-                <div className="relative" data-sprint-menu>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
-                    className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">more_horiz</span>
-                  </button>
-                  {openSprintMenuId === 'sprint-1' && (
-                    <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
-                      {canStartSprint(sprint1Data) && (
+                {canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
+                  <div className="relative" data-sprint-menu>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
+                      className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                    </button>
+                    {openSprintMenuId === 'sprint-1' && (
+                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                        {canStartSprint(sprint1Data) && (
+                          <button
+                            onClick={() => handleActivateSprint(sprint1Data.id)}
+                            className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                          >
+                            Start sprint
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleActivateSprint(sprint1Data.id)}
+                          onClick={() => handleOpenEditSprint(sprint1Data)}
                           className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
                         >
-                          Start sprint
+                          Edit sprint
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleOpenEditSprint(sprint1Data)}
-                        className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
-                      >
-                        Edit sprint
-                      </button>
-                      <button
-                        onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
-                        className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
-                      >
-                        Delete sprint
-                      </button>
-                    </div>
-                  )}
-                </div>
+                        <button
+                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
+                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                        >
+                          Delete sprint
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -2028,12 +2511,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
                     <tr className="text-[11px] text-outline uppercase tracking-wider">
                       <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                      <th className="px-3 py-3 font-bold text-center">Points</th>
                       <th className="px-6 py-3 font-bold">Title</th>
                       <th className="px-6 py-3 font-bold">Assignee</th>
                       <th className="px-6 py-3 font-bold text-center">Priority</th>
                       <th className="px-6 py-3 font-bold">Status</th>
                       <th className="px-6 py-3 font-bold">Completed</th>
-                      {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                      {canManageTasks && sprint1Data.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
@@ -2041,9 +2525,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       <TaskRow
                         key={task.id}
                         {...task}
-                        isAdmin={canManageTasks}
-                        canSelect={canSelectTasks}
-                        canModifyTasks={canModifyTasks}
+                        isAdmin={canManageTasks && sprint1Data.status !== 'Completed'}
+                        canSelect={canSelectTasks && sprint1Data.status !== 'Completed'}
+                        canModifyTasks={canModifyTasks && sprint1Data.status !== 'Completed'}
                         isSelected={selectedTasks.includes(task.id)}
                         isAnySelected={selectedTasks.length > 0}
                         onToggle={() => toggleTask(task.id)}
@@ -2051,6 +2535,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         onDelete={() => setTaskToDelete(task)}
                         assigneeOptions={projectAssigneeOptions}
                         onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                        onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
                       />
                     ))}
                   </tbody>
@@ -2058,7 +2543,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               </div>
             )}
             {/* + Create button below Sprint 1 table */}
-            {isSprintExpanded && canModifyTasks && (
+            {isSprintExpanded && canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
               <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
                 <button
                   onClick={() => {
@@ -2078,167 +2563,169 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
           {extraSprints.map((sprint) => {
             const extraSprintTasks = filteredTasks.filter(task => task.sprintId === sprint.id);
             return (
-            <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
-              {/* Sprint Header */}
-              <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
-                <div className="flex items-center gap-3">
-                  {canSelectTasks && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
-                  <span
-                    className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                    style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                    onClick={() => toggleSprintExpanded(sprint.id)}
-                  >
-                    expand_more
-                  </span>
-                  <div className="flex items-center gap-1.5 cursor-pointer hover:bg-slate-100/80 px-2 py-0.5 rounded transition-all select-none">
-                    <span className="text-[12px] font-bold text-on-surface">{sprint.name}</span>
-                    <span className="text-[11px] text-outline">{sprint.dateRange}</span>
-                    <span className="material-symbols-outlined text-[14px] text-outline">info</span>
-                  </div>
-                  <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex gap-1">
-                    <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
-                      {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
-                      {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
-                      {extraSprintTasks.filter(t => t.status === 'Done').length}
-                    </span>
-                  </div>
-                  {canModifyTasks && (() => {
-                    const sprintAction = getSprintAction(sprint);
-                    if (!sprintAction) return null;
-                    return (
-                      <button
-                        onClick={sprintAction.onClick}
-                        disabled={sprintAction.disabled}
-                        title={sprintAction.title}
-                        className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
-                      >
-                        {sprintAction.label}
-                      </button>
-                    );
-                  })()}
-                  {/* Extra sprint ... dropdown menu */}
-                  {canModifyTasks && (
-                  <div className="relative" data-sprint-menu>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
-                      className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+              <div key={sprint.id} className="mt-4 bg-white border border-outline-variant rounded-lg overflow-hidden shadow-sm">
+                {/* Sprint Header */}
+                <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
+                  <div className="flex items-center gap-3">
+                    {canSelectTasks && sprint.status !== 'Completed' && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
+                    <span
+                      className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                      style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                      onClick={() => toggleSprintExpanded(sprint.id)}
                     >
-                      <span className="material-symbols-outlined text-[18px]">more_horiz</span>
-                    </button>
-                    {openSprintMenuId === sprint.id && (
-                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
-                        {shouldShowStartSprint(sprint) && (
-                          <button
-                            disabled={!canStartSprint(sprint)}
-                            title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
-                            onClick={() => {
-                              if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
-                            }}
-                            className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
-                          >
-                            Start sprint
-                          </button>
+                      expand_more
+                    </span>
+                    <div className="flex items-center gap-1.5 cursor-pointer hover:bg-slate-100/80 px-2 py-0.5 rounded transition-all select-none">
+                      <span className="text-[12px] font-bold text-on-surface">{sprint.name}</span>
+                      <span className="text-[11px] text-outline">{sprint.dateRange}</span>
+                      <span className="material-symbols-outlined text-[14px] text-outline">info</span>
+                    </div>
+                    <span className="text-[11px] text-outline">({extraSprintTasks.length} work items)</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex gap-1">
+                      <span className="px-1.5 py-0.5 bg-gray-200 text-[10px] font-bold rounded text-outline">
+                        {extraSprintTasks.filter(t => t.status === 'New' || (isSpaceOwner && t.status === 'Cancelled')).length}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-[#ADC4FF] text-[10px] font-bold rounded text-[#003d9b]">
+                        {extraSprintTasks.filter(t => ['In Progress', 'In Testing', 'Pending Review', 'Need Revision'].includes(t.status)).length}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-[#C2FFD9] text-[10px] font-bold rounded text-[#006D3A]">
+                        {extraSprintTasks.filter(t => t.status === 'Done').length}
+                      </span>
+                    </div>
+                    {canModifyTasks && (() => {
+                      const sprintAction = getSprintAction(sprint);
+                      if (!sprintAction) return null;
+                      return (
+                        <button
+                          onClick={sprintAction.onClick}
+                          disabled={sprintAction.disabled}
+                          title={sprintAction.title}
+                          className={`px-3 py-1 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded text-[11px] font-bold transition-colors shadow-sm ${sprintAction.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#e6e1ff]'}`}
+                        >
+                          {sprintAction.label}
+                        </button>
+                      );
+                    })()}
+                    {/* Extra sprint ... dropdown menu */}
+                    {canModifyTasks && sprint.status !== 'Completed' && (
+                      <div className="relative" data-sprint-menu>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
+                          className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                        </button>
+                        {openSprintMenuId === sprint.id && (
+                          <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                            {shouldShowStartSprint(sprint) && (
+                              <button
+                                disabled={!canStartSprint(sprint)}
+                                title={canStartSprint(sprint) ? undefined : 'Complete the previous sprint before starting this sprint.'}
+                                onClick={() => {
+                                  if (canStartSprint(sprint)) handleActivateSprint(sprint.id);
+                                }}
+                                className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${canStartSprint(sprint) ? 'text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b]' : 'text-outline opacity-50 cursor-not-allowed'}`}
+                              >
+                                Start sprint
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenEditSprint(sprint)}
+                              className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
+                            >
+                              Edit sprint
+                            </button>
+                            <button
+                              onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
+                              className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                            >
+                              Delete sprint
+                            </button>
+                          </div>
                         )}
-                        <button
-                          onClick={() => handleOpenEditSprint(sprint)}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-on-surface hover:bg-[#EBF0FF] hover:text-[#003d9b] transition-colors"
-                        >
-                          Edit sprint
-                        </button>
-                        <button
-                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
-                        >
-                          Delete sprint
-                        </button>
                       </div>
                     )}
                   </div>
-                  )}
                 </div>
+
+                {/* Sprint Body */}
+                {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
+                  <div className="max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
+                        <tr className="text-[11px] text-outline uppercase tracking-wider">
+                          <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                          <th className="px-3 py-3 font-bold text-center">Points</th>
+                          <th className="px-6 py-3 font-bold">Title</th>
+                          <th className="px-6 py-3 font-bold">Assignee</th>
+                          <th className="px-6 py-3 font-bold text-center">Priority</th>
+                          <th className="px-6 py-3 font-bold">Status</th>
+                          <th className="px-6 py-3 font-bold">Completed</th>
+                          {canManageTasks && sprint.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {extraSprintTasks.map(task => (
+                          <TaskRow
+                            key={task.id}
+                            {...task}
+                            isAdmin={canManageTasks && sprint.status !== 'Completed'}
+                            canSelect={canSelectTasks && sprint.status !== 'Completed'}
+                            canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
+                            isSelected={selectedTasks.includes(task.id)}
+                            isAnySelected={selectedTasks.length > 0}
+                            onToggle={() => toggleTask(task.id)}
+                            onOpenDetail={() => handleOpenTaskDetail(task)}
+                            onDelete={() => {
+                              setTaskToDelete(task);
+                            }}
+                            assigneeOptions={projectAssigneeOptions}
+                            onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                            onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Sprint Body - Empty State */}
+                {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
+                  <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
+                    <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
+                    <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
+                  </div>
+                )}
+
+                {/* + Create button below sprint body */}
+                {expandedSprints[sprint.id] && canModifyTasks && sprint.status !== 'Completed' && (
+                  <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
+                    <button
+                      onClick={() => {
+                        if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint.name);
+                        setShowCreateModal && setShowCreateModal(true);
+                      }}
+                      className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
+                    >
+                      <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
+                      <span className="text-[12px] font-medium">Create task</span>
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {/* Sprint Body */}
-              {expandedSprints[sprint.id] && extraSprintTasks.length > 0 && (
-                <div className="max-h-[500px] overflow-y-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
-                      <tr className="text-[11px] text-outline uppercase tracking-wider">
-                        <th className="px-2 py-3 font-bold text-center">Task ID</th>
-                        <th className="px-6 py-3 font-bold">Title</th>
-                        <th className="px-6 py-3 font-bold">Assignee</th>
-                        <th className="px-6 py-3 font-bold text-center">Priority</th>
-                        <th className="px-6 py-3 font-bold">Status</th>
-                        <th className="px-6 py-3 font-bold">Completed</th>
-                        {canManageTasks && <th className="px-6 py-3 font-bold text-center">Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant">
-                      {extraSprintTasks.map(task => (
-                        <TaskRow
-                          key={task.id}
-                          {...task}
-                          isAdmin={canManageTasks}
-                          canSelect={canSelectTasks}
-                          canModifyTasks={canModifyTasks}
-                          isSelected={selectedTasks.includes(task.id)}
-                          isAnySelected={selectedTasks.length > 0}
-                          onToggle={() => toggleTask(task.id)}
-                          onOpenDetail={() => handleOpenTaskDetail(task)}
-                          onDelete={() => {
-                            setTaskToDelete(task);
-                          }}
-                          assigneeOptions={projectAssigneeOptions}
-                          onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Sprint Body - Empty State */}
-              {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
-                <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
-                  <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
-                  <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
-                </div>
-              )}
-
-              {/* + Create button below sprint body */}
-              {expandedSprints[sprint.id] && canModifyTasks && (
-                <div className="px-4 py-2 border-t border-outline-variant/30 bg-white">
-                  <button
-                    onClick={() => {
-                      if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(sprint.name);
-                      setShowCreateModal && setShowCreateModal(true);
-                    }}
-                    className="flex items-center gap-1.5 text-outline hover:text-[#5e4db2] transition-colors group"
-                  >
-                    <span className="material-symbols-outlined text-[18px] group-hover:scale-110 transition-transform">add</span>
-                    <span className="text-[12px] font-medium">Create task</span>
-                  </button>
-                </div>
-              )}
-            </div>
             );
           })}
 
           {/* CREATE SPRINT BUTTON */}
           {canModifyTasks && <div className="mt-4 flex justify-end" id="backlog-section">
             <button
-              onClick={handleCreateSprint}
+              onClick={() => handleCreateSprint({ activate: !hasAvailableSprint })}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#f0edff] text-[#5e4db2] border border-[#e6e1ff] rounded-lg text-[12px] font-bold hover:bg-[#e6e1ff] hover:shadow-md transition-all shadow-sm"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
-              Create Sprint
+              {hasAvailableSprint ? 'Create Sprint' : 'Start sprint'}
             </button>
           </div>}
         </div>
@@ -2257,7 +2744,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   onClick={toggleAll}
                   className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
-                  {selectedTasks.length === filteredTasks.length && filteredTasks.length > 0 ? 'Unselect all' : 'Select all'}
+                  {selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId)) ? 'Unselect all' : 'Select all'}
                 </button>
                 {canModifyTasks && (
                   <div className="relative">
@@ -2312,8 +2799,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         isOpen={isSprintInfoOpen}
         onClose={() => setIsSprintInfoOpen(false)}
         anchorRef={sprintInfoAnchorRef}
-        completedTasksCount={tasks.filter(t => t.status === 'Done').length}
-        openTasksCount={tasks.filter(t => t.status !== 'Done').length}
+        completedTasksCount={sprintInfoTasks.filter(t => t.status === 'Done').length}
+        openTasksCount={sprintInfoTasks.filter(t => t.status !== 'Done').length}
       />
 
       <CompleteSprintModal
@@ -2385,7 +2872,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         currentRole={currentRole}
         currentSpaceRole={currentSpaceRole}
         currentUser={currentUser}
+        readOnly={selectedTaskDetailReadOnly}
         onUpdateTask={handleUpdateTask}
+        onAddAssignee={(taskId, user) => handleUpdateAssignee(taskId, user)}
+        onRemoveAssignee={handleRemoveTaskAssignee}
       />
 
       <DeleteTaskModal
@@ -2398,7 +2888,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 }
 
-function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, onRemoveAssignee, color = 'outline', currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const headerClass = `bg-[#E0E8FF] border-[#ADC4FF] ${title === 'Need Revision' ? 'text-[#BA1A1A]' :
     title === 'Done' ? 'text-[#006D3A]' :
       title === 'Cancelled' ? 'text-[#475467]' :
@@ -2419,7 +2909,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
             style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
           >
             {tasks.map((task, index) => (
-              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
+              <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} onRemoveAssignee={onRemoveAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
             ))}
             {provided.placeholder}
           </div>
@@ -2438,8 +2928,9 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
   );
 }
 
-function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
+function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask, onPatchTask, onUpdateAssignee, onRemoveAssignee, currentRole, canModifyTasks = true, canUseCancelledStatus = false, assigneeOptions = availableAssignees }) {
   const { id, title, date, pts, priority, status, attachments = [] } = task;
+  const visibleTaskId = task.displayId || id;
   const previewImage = attachments.find(att => att.type === 'image' && att.previewUrl)?.previewUrl;
   const [hasPreviewImageError, setHasPreviewImageError] = React.useState(false);
   const isOverdue = isTaskOverdue(task.completed_at || date, status);
@@ -2455,8 +2946,11 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
     : isDueToday
       ? DUE_TODAY_BORDER_CLASS
       : '';
+  const normalizedPts = Number.isFinite(Number(pts)) ? Number(pts) : 0;
+  const [isTitleEditing, setIsTitleEditing] = React.useState(false);
+  const [tempTitle, setTempTitle] = React.useState(title || '');
   const [isEditing, setIsEditing] = React.useState(false);
-  const [tempPts, setTempPts] = React.useState(pts);
+  const [tempPts, setTempPts] = React.useState(normalizedPts);
   const [showMenu, setShowMenu] = React.useState(false);
   const [showAssigneeMenu, setShowAssigneeMenu] = React.useState(false);
   const [showMoveSubMenu, setShowMoveSubMenu] = React.useState(false);
@@ -2464,17 +2958,68 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   const [menuPos, setMenuPos] = React.useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+  const titleInputRef = useRef(null);
+  const pointsEditorRef = useRef(null);
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
 
   const statuses = canUseCancelledStatus
     ? ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled']
     : ['New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'];
-  const assigneeProfile = assigneeOptions.find(user => user.name === task.assignee || user.user_id === task.assigneeId) || getAssigneeProfile(task.assignee);
+
+  const assignedUsers = getTaskAssigneeUsers(task);
+  const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
+  const unassignedProfile = getAssigneeProfile('');
+
+  const savePointsValue = React.useCallback(async (value) => {
+    const nextPts = parseNonNegativeStoryPoints(value);
+    if (nextPts === null) {
+      setTempPts(normalizedPts);
+      setIsEditing(false);
+      return;
+    }
+    setTempPts(nextPts);
+    try {
+      if (nextPts !== normalizedPts) {
+        await onPatchTask?.(id, { story_points: nextPts });
+      }
+    } finally {
+      setIsEditing(false);
+    }
+  }, [id, normalizedPts, onPatchTask]);
 
   useEffect(() => {
     setHasPreviewImageError(false);
   }, [previewImage]);
+
+  useEffect(() => {
+    if (!isTitleEditing) {
+      setTempTitle(title || '');
+    }
+  }, [isTitleEditing, title]);
+
+  useEffect(() => {
+    if (!isTitleEditing) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isTitleEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setTempPts(normalizedPts);
+    }
+  }, [isEditing, normalizedPts]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const handleClickOutside = (e) => {
+      if (pointsEditorRef.current && !pointsEditorRef.current.contains(e.target)) {
+        void savePointsValue(tempPts);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isEditing, savePointsValue, tempPts]);
 
   // Đóng menu khi click ra ngoài
   useEffect(() => {
@@ -2527,6 +3072,65 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
     setShowMoveSubMenu(false);
   };
 
+  const handleOpenTitleEditor = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    setShowMenu(false);
+    setShowAssigneeMenu(false);
+    setTempTitle(title || '');
+    setIsTitleEditing(true);
+  };
+
+  const handleCancelTitleEdit = (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setTempTitle(title || '');
+    setIsTitleEditing(false);
+  };
+
+  const handleSaveTitleEdit = async (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const nextTitle = tempTitle.trim();
+    if (!nextTitle) {
+      setTempTitle(title || '');
+      setIsTitleEditing(false);
+      return;
+    }
+
+    try {
+      if (nextTitle !== title) {
+        await onPatchTask?.(id, { title: nextTitle });
+      }
+    } finally {
+      setIsTitleEditing(false);
+    }
+  };
+
+  const handleOpenPointsEditor = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canModifyTasks) return;
+    setShowMenu(false);
+    setShowAssigneeMenu(false);
+    setTempPts(normalizedPts);
+    setIsEditing(true);
+  };
+
+  const handleCancelPointsEdit = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTempPts(normalizedPts);
+    setIsEditing(false);
+  };
+
+  const handleSavePointsEdit = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await savePointsValue(tempPts);
+  };
+
   return (
     <Draggable draggableId={id} index={index} isDragDisabled={!canModifyTasks}>
       {(provided, snapshot) => (
@@ -2537,15 +3141,48 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           style={{ ...provided.draggableProps.style }}
           className={`relative bg-white p-2.5 border border-outline-variant rounded shadow-sm hover:bg-white transition-all group ${taskCardStateClass} ${status === 'Cancelled' ? 'opacity-40' : 'group-hover:text-[#1E40AF]'} ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] z-50' : ''}`}
           onClick={(e) => {
-            if (e.defaultPrevented) return;
+            if (e.defaultPrevented || isTitleEditing || isEditing) return;
             onOpenDetail && onOpenDetail(task);
           }}
         >
           <div className="flex justify-between items-start mb-2 gap-2">
-            <div className={`text-[11px] leading-snug flex items-center gap-1.5 flex-wrap ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
-              {title}
-              {canModifyTasks && (
-                <span className="material-symbols-outlined text-[14px] text-outline opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-primary">edit</span>
+            <div className={`min-w-0 flex-1 text-[11px] leading-snug flex items-center gap-1.5 ${status === 'Cancelled' ? 'font-normal text-outline' : 'font-medium text-[#003d9b] group-hover:text-blue-700 text-on-surface'}`}>
+              {isTitleEditing ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={tempTitle}
+                  onChange={(event) => setTempTitle(event.target.value)}
+                  onBlur={handleSaveTitleEdit}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      handleSaveTitleEdit(event);
+                    }
+                    if (event.key === 'Escape') {
+                      handleCancelTitleEdit(event);
+                    }
+                  }}
+                  className="h-7 min-w-0 flex-1 rounded border border-primary bg-white px-2 text-[11px] font-semibold text-[#003d9b] outline-none shadow-sm"
+                />
+              ) : (
+                <>
+                  <span className="min-w-0 break-words">{title}</span>
+                  {canModifyTasks && (
+                    <button
+                      type="button"
+                      onClick={handleOpenTitleEditor}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-outline opacity-0 transition-opacity hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+                      aria-label={`Edit title for ${id}`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">edit</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
             {canModifyTasks && <div>
@@ -2677,43 +3314,53 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           ) : null}
           <div className="flex justify-between items-center mt-auto">
             <div className="flex items-center gap-2">
-              <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{id}</span>
-              {!isEditing ? (
-                <span
-                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : ''}`}
-                  onClick={() => { if (canModifyTasks) setIsEditing(true); }}
+              <span className={`text-[10px] text-outline font-bold uppercase ${status === 'Done' ? 'line-through' : ''}`}>{visibleTaskId}</span>
+              <div
+                ref={pointsEditorRef}
+                className="relative flex items-center"
+                onMouseDown={(event) => {
+                  if (canModifyTasks) event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  if (canModifyTasks) event.stopPropagation();
+                }}
+              >
+                <button
+                  type="button"
+                  className={`px-1 py-0.5 bg-surface-container rounded-sm text-[9px] font-bold text-outline leading-none ${canModifyTasks ? 'cursor-pointer hover:bg-primary/10 hover:text-primary' : 'cursor-default'}`}
+                  onClick={handleOpenPointsEditor}
+                  aria-label={`Edit story points for ${id}`}
+                  disabled={!canModifyTasks}
                 >
-                  {pts} pts
-                </span>
-              ) : (
-                <div className="flex flex-col gap-1 bg-white border border-primary rounded p-1 shadow-lg absolute z-20 -translate-y-2 translate-x-12">
-                  <input
-                    type="number"
-                    className="w-12 h-6 text-[11px] border border-outline-variant rounded px-1 outline-none focus:border-primary"
-                    value={tempPts}
-                    onChange={(e) => setTempPts(parseInt(e.target.value))}
-                    autoFocus
-                  />
-                  <div className="flex justify-between border-t border-outline-variant pt-1 mt-1">
-                    <button
-                      className="hover:bg-green-100 rounded p-0.5"
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        try {
-                          await onPatchTask?.(id, { story_points: Number(tempPts) || 0 });
-                        } finally {
-                          setIsEditing(false);
+                  {normalizedPts} pts
+                </button>
+                {isEditing && (
+                  <div
+                    className="absolute left-0 top-full z-30 mt-2 flex w-[56px] flex-col rounded-md border border-primary bg-white p-1 shadow-xl"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="h-7 w-full rounded border border-outline-variant px-1.5 text-[11px] outline-none focus:border-primary"
+                      value={tempPts}
+                      onChange={(e) => setTempPts(e.target.value)}
+                      onFocus={(event) => event.target.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          handleSavePointsEdit(event);
+                        }
+                        if (event.key === 'Escape') {
+                          handleCancelPointsEdit(event);
                         }
                       }}
-                    >
-                      <span className="material-symbols-outlined text-[14px] text-green-600">done</span>
-                    </button>
-                    <button className="hover:bg-red-100 rounded p-0.5" onClick={(event) => { event.stopPropagation(); setIsEditing(false); setTempPts(pts); }}>
-                      <span className="material-symbols-outlined text-[14px] text-red-600">close</span>
-                    </button>
+                      autoFocus
+                    />
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 relative">
               {priority === 'High' ? (
@@ -2723,45 +3370,91 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
               ) : (
                 <span className="material-symbols-outlined text-[#4C2B74] text-[20px] font-bold">keyboard_arrow_down</span>
               )}
-              <button
-                ref={assigneeBtnRef}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!canModifyTasks) return;
-                  setShowAssigneeMenu(prev => !prev);
-                }}
-                className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                style={{ backgroundColor: assigneeProfile.color, color: assigneeProfile.textColor || '#111' }}
-              >
-                {assigneeProfile.initials || <span className="material-symbols-outlined">person</span>}
-              </button>
+              <div className="relative flex -space-x-1">
+                {assignedUsers.length > 0 ? assignedUsers.slice(0, 2).map(user => {
+                  const userId = user.user_id || user.id;
+                  return (
+                    <div key={userId || user.name} className="relative group/avatar">
+                      <button
+                        ref={assignedUsers[0] === user ? assigneeBtnRef : undefined}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canModifyTasks) return;
+                          setShowAssigneeMenu(prev => !prev);
+                        }}
+                        className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                        style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                      >
+                        {(user.avatarUrl || user.avatar_url) ? (
+                          <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                        ) : (
+                          user.initials || getInitials(user.name)
+                        )}
+                      </button>
+                      {canModifyTasks && userId && (
+                        <button
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            await onRemoveAssignee?.(id, userId);
+                          }}
+                          className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[10px] font-bold leading-none text-slate-500 shadow-sm hover:bg-slate-200 group-hover/avatar:flex"
+                          aria-label={`Remove ${user.name}`}
+                        >
+                          x
+                        </button>
+                      )}
+                    </div>
+                  );
+                }) : (
+                  <button
+                    ref={assigneeBtnRef}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canModifyTasks) return;
+                      setShowAssigneeMenu(prev => !prev);
+                    }}
+                    className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                    style={{ backgroundColor: unassignedProfile.color, color: unassignedProfile.textColor || '#111' }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">person</span>
+                  </button>
+                )}
+                {assignedUsers.length > 2 && (
+                  <div className="w-6 h-6 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-700">
+                    +{assignedUsers.length - 2}
+                  </div>
+                )}
+              </div>
               {showAssigneeMenu && (
                 <div
                   ref={assigneeMenuRef}
                   className="absolute right-0 top-full mt-2 w-40 bg-white border border-outline-variant rounded-xl shadow-2xl z-50 overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {assigneeOptions.map(user => (
-                    <button
-                      key={user.name}
-                      type="button"
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        setShowAssigneeMenu(false);
-                        await onUpdateAssignee?.(id, user);
-                      }}
-                      className="w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left hover:bg-[#EBF0FF] transition-colors"
-                    >
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                  {assigneeOptions.map(user => {
+                    const userId = user.user_id || user.id || '';
+                    const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
+                    return (
+                      <button
+                        key={user.name}
+                        type="button"
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          setShowAssigneeMenu(false);
+                          await onUpdateAssignee?.(id, user);
+                        }}
+                        disabled={Boolean(isAssigned)}
+                        className={`w-full px-3 py-2 flex items-center gap-2 text-[11px] text-left transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
                       >
-                        {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                      </div>
-                      <span>{user.name}</span>
-                    </button>
-                  ))}
+                        <AssigneeAvatar user={user} sizeClass="w-7 h-7" textClass="text-[10px]" />
+                        <span>{user.name}</span>
+                        {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2772,7 +3465,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   );
 }
 
-function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+  const visibleTaskId = displayId || id;
   const isOverdue = isTaskOverdue(completed_at || date, status);
   const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;
@@ -2789,6 +3483,8 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
   const [assigneeMenuPos, setAssigneeMenuPos] = useState({ top: 0, left: 0 });
   const assigneeBtnRef = useRef(null);
   const assigneeMenuRef = useRef(null);
+  const assignedUsers = getTaskAssigneeUsers({ assignee, assignees, assigneeId });
+  const assigneeSummary = formatAssigneeSummary(assignedUsers, 2);
 
   const toggleAssigneeMenu = (event) => {
     event.stopPropagation();
@@ -2842,15 +3538,19 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
               }}
             />
           )}
-          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{id}</span>
-          <span className="px-1 py-0.5 bg-surface-container rounded text-[9px] font-bold text-outline">{pts}</span>
+          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{visibleTaskId}</span>
         </div>
+      </td>
+      <td className="px-3 py-2 text-center">
+        <span className="inline-flex min-w-8 items-center justify-center rounded bg-surface-container px-2 py-0.5 text-[10px] font-bold text-outline">
+          {pts} pts
+        </span>
       </td>
       <td className={`px-4 py-2 font-semibold text-[11px] ${isSelected ? 'text-blue-700' : 'text-on-surface'}`}>{title}</td>
       <td className="px-4 py-2">
         <div className="relative inline-flex items-center">
           {(() => {
-            const profile = assigneeOptions.find(user => user.name === assignee) || getAssigneeProfile(assignee);
+            const profile = getAssigneeProfile('');
             return (
               <div className="relative">
                 <button
@@ -2859,13 +3559,46 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                   onClick={toggleAssigneeMenu}
                   className={`flex items-center gap-2 rounded-xl bg-white px-2 py-1 text-[11px] transition-colors ${canModifyTasks ? 'hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                 >
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                    style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
-                  >
-                    {profile.initials}
-                  </div>
-                  <span>{assignee || 'Unassigned'}</span>
+                  {assignedUsers.length > 0 ? (
+                    <>
+                      <div className="flex -space-x-1">
+                        {assignedUsers.slice(0, 4).map(user => {
+                          const userId = user.user_id || user.id;
+                          return (
+                            <span
+                              key={userId || user.name}
+                              className="relative group/avatar inline-flex h-5 w-5 items-center justify-center overflow-visible"
+                              title={user.name}
+                            >
+                              <span
+                                className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
+                                style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                              >
+                                {(user.avatarUrl || user.avatar_url) ? (
+                                  <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  user.initials || getInitials(user.name)
+                                )}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <span className="inline-flex max-w-[180px]">
+                        <span className="truncate">{assigneeSummary.shortText}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
+                      >
+                        {profile.initials}
+                      </div>
+                      <span>Unassigned</span>
+                    </>
+                  )}
                 </button>
                 {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
@@ -2874,26 +3607,27 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
                     className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {assigneeOptions.map(user => (
-                      <button
-                        key={user.name}
-                      type="button"
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          setShowAssigneeMenu(false);
-                          await onUpdateAssignee?.(user);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] hover:bg-[#EBF0FF] transition-colors"
-                      >
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                          style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                    {assigneeOptions.map(user => {
+                      const userId = user.user_id || user.id || '';
+                      const isAssigned = userId && assignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
+                      return (
+                        <button
+                          key={user.name}
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            setShowAssigneeMenu(false);
+                            await onUpdateAssignee?.(user);
+                          }}
+                          disabled={Boolean(isAssigned)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : 'hover:bg-[#EBF0FF]'}`}
                         >
-                          {user.initials || <span className="material-symbols-outlined">{user.icon}</span>}
-                        </div>
-                        <span>{user.name}</span>
-                      </button>
-                    ))}
+                          <AssigneeAvatar user={user} sizeClass="w-6 h-6" textClass="text-[10px]" />
+                          <span>{user.name}</span>
+                          {isAssigned && <span className="ml-auto text-[10px] font-bold">Added</span>}
+                        </button>
+                      );
+                    })}
                   </div>,
                   document.body
                 )}
@@ -2931,4 +3665,7 @@ function TaskRow({ id, title, assignee, pts, status, date, completed_at, is_over
     </tr>
   );
 }
+
+
+
 

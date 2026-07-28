@@ -59,6 +59,13 @@ function restoreSelection(range) {
   sel.addRange(range);
 }
 
+function escapeHtmlAttribute(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /**
  * Compute portal position (fixed) from a trigger element.
@@ -154,7 +161,7 @@ function PortalDialog({ onClose, children }) {
 // ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
-export default function RichTextEditor({ value, onChange, placeholder, tasks = [], onUploadFile }) {
+export default function RichTextEditor({ value, onChange, placeholder, tasks = [], onUploadFile, uploadUsage = 'attachment' }) {
   const editorRef     = useRef(null);
   const savedRangeRef = useRef(null);
   const rootRef       = useRef(null);
@@ -327,13 +334,17 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
   };
 
 
-  const insertImage = (customUrl = null, customAlt = null) => {
+  const insertImage = (customUrl = null, customAlt = null, options = {}) => {
     const finalUrl = customUrl || imageUrl;
     const finalAlt = customAlt || imageAlt;
     if (!finalUrl) return;
     restoreSelection(savedRangeRef.current);
     editorRef.current?.focus();
-    const html = `<img src="${finalUrl}" alt="${finalAlt || 'image'}" class="rte-image" />`;
+    const safeUrl = escapeHtmlAttribute(finalUrl);
+    const safeLabel = escapeHtmlAttribute(finalAlt || 'file');
+    const html = options.asLink
+      ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="rte-link">${safeLabel}</a>&nbsp;`
+      : `<img src="${safeUrl}" alt="${safeLabel || 'image'}" class="rte-image" />`;
     try { document.execCommand('insertHTML', false, html); } catch (_) {}
     notifyChange();
     setShowImage(false);
@@ -815,6 +826,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           onInsert={insertImage}
           onClose={() => setShowImage(false)}
           onUploadFile={onUploadFile}
+          uploadUsage={uploadUsage}
         />
       )}
     </div>
@@ -1087,24 +1099,46 @@ function ImageDialog({
   imageUrl, setImageUrl,
   imageAlt, setImageAlt,
   onInsert, onClose,
-  onUploadFile
+  onUploadFile,
+  uploadUsage = 'attachment'
 }) {
   const [activeTab, setActiveTab] = useState('file'); // 'file' or 'link'
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
 
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (!file) return;
+
+    setUploadError('');
+    if (onUploadFile) {
+      setIsUploading(true);
+      try {
+        const uploaded = await onUploadFile(file, uploadUsage);
+        const fileUrl = uploaded?.url || uploaded?.file_url || uploaded?.storage_url || uploaded?.previewUrl;
+        if (!fileUrl) throw new Error('Upload response did not include a file URL.');
+
+        const isImage = uploaded?.type === 'image' || file.type.startsWith('image/');
+        onInsert(fileUrl, uploaded?.name || uploaded?.file_name || file.name, { asLink: !isImage });
+      } catch (error) {
+        setUploadError(error?.message || 'Unable to upload file.');
+      } finally {
+        setIsUploading(false);
+        e.target.value = '';
+      }
+      return;
+    }
+
+    if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const base64 = ev.target.result;
-        if (onUploadFile) {
-          onUploadFile(file);
-        }
-        onInsert(base64, file.name);
+        onInsert(ev.target.result, file.name);
       };
       reader.readAsDataURL(file);
+    } else {
+      setUploadError('File uploads are unavailable here.');
     }
   };
 
@@ -1144,10 +1178,10 @@ function ImageDialog({
                   type="file"
                   ref={fileInputRef}
                   style={{ display: 'none' }}
-                  accept="*/*"
+                  accept="image/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   onChange={handleFileChange}
                 />
-                <button className="rte-upload-btn" onClick={triggerUpload}>
+                <button className="rte-upload-btn" onClick={triggerUpload} disabled={isUploading}>
                   <span className="rte-upload-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1155,8 +1189,13 @@ function ImageDialog({
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                   </span>
-                  Upload file
+                  {isUploading ? 'Uploading...' : 'Upload file'}
                 </button>
+                {uploadError && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: '#DE350B', fontWeight: 600 }}>
+                    {uploadError}
+                  </div>
+                )}
               </div>
               <div className="rte-dialog-actions" style={{ marginTop: 16 }}>
                 <button className="rte-dialog-cancel" onClick={onClose}>Cancel</button>
