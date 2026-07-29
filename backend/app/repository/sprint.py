@@ -76,7 +76,7 @@ def count_incomplete_tasks_by_sprint(db: Session, sprint_id: str) -> int:
         .filter(
             Task.sprint_id == sprint_id,
             Task.deleted_at.is_(None),
-            Task.task_status != "done",
+            Task.task_status.notin_(["done", "cancelled"]),
         )
         .count()
     )

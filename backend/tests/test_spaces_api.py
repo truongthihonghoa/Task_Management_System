@@ -196,7 +196,7 @@ def test_complete_space_rejects_unfinished_work_and_pending_invites():
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == (
-        "Cannot complete space: 2 task(s) are not done, "
+        "Cannot complete space: 2 task(s) are not done or cancelled, "
         "1 sprint(s) are not completed, "
         "1 member invitation(s) are still pending."
     )
@@ -226,7 +226,7 @@ def test_archive_space_checks_completion_requirements(monkeypatch):
             self.committed = True
 
     def reject_completion(*_args):
-        raise HTTPException(status_code=400, detail="Cannot complete space: 1 task(s) are not done.")
+        raise HTTPException(status_code=400, detail="Cannot complete space: 1 task(s) are not done or cancelled.")
 
     db = FakeDB()
     monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: active_space)
@@ -235,7 +235,7 @@ def test_archive_space_checks_completion_requirements(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         space_repository.archive_space(db, active_space.space_id, current_user=owner)
 
-    assert exc_info.value.detail == "Cannot complete space: 1 task(s) are not done."
+    assert exc_info.value.detail == "Cannot complete space: 1 task(s) are not done or cancelled."
     assert active_space.status_space == "Active"
     assert db.committed is False
 

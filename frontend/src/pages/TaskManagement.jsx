@@ -48,6 +48,16 @@ const listPendingInvitationsRequest = async (spaceId) => {
   return response.data || [];
 };
 
+const removeSpacePersonTargetRequest = async (spaceId, targetType, targetId) => {
+  const response = await axiosClient.delete(`/spaces/${spaceId}/people`, {
+    params: {
+      target_type: targetType,
+      target_id: targetId,
+    },
+  });
+  return response.data;
+};
+
 const assigneeProfiles = {
   'Unassigned': { initials: 'UN', color: '#8e8f90', textColor: '#FFFFFF' }
 };
@@ -551,6 +561,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [addingPeopleEmail, setAddingPeopleEmail] = useState('');
   const [isAddPeopleOpen, setIsAddPeopleOpen] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState('');
+  const [isPeopleManageMenuOpen, setIsPeopleManageMenuOpen] = useState(false);
+  const [isRemovingPeopleMode, setIsRemovingPeopleMode] = useState(false);
+  const [selectedPeopleRemovalIds, setSelectedPeopleRemovalIds] = useState([]);
+  const [isRemovingPeople, setIsRemovingPeople] = useState(false);
   const addPeopleButtonRef = useRef(null);
   const addPeoplePanelRef = useRef(null);
   const summaryAssigneeFilterRef = useRef(null);
@@ -562,6 +576,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const canManagePeople = !isAdmin && (isSpaceOwner || isSpaceMember);
   const canSelectTasks = canModifyTasks || canManageTasks;
   const canDirectAddPeople = isSpaceOwner;
+  const canRemoveSpacePeople = isSpaceOwner;
   const projectAssigneeOptions = React.useMemo(() => [
     { ...availableAssignees[0], id: '', user_id: '' },
     ...projectPeople.map(person => ({
@@ -725,6 +740,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       if (nextOpen) {
         setAddPeopleFeedback('');
         void refreshSpaceMembers();
+      } else {
+        setIsPeopleManageMenuOpen(false);
+        setIsRemovingPeopleMode(false);
+        setSelectedPeopleRemovalIds([]);
       }
       return nextOpen;
     });
@@ -876,7 +895,54 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       invitation.requesterName?.toLowerCase().includes(query)
     );
   }, [pendingInvitations, trimmedPeopleSearch]);
-  const peoplePanelRows = canAddEmail ? addPeopleCandidates : visibleSpacePeople;
+  const peoplePanelRows = isRemovingPeopleMode ? visibleSpacePeople : canAddEmail ? addPeopleCandidates : visibleSpacePeople;
+  const selectedPeopleRemovalCount = selectedPeopleRemovalIds.length;
+  const togglePeopleRemovalSelection = (itemKey) => {
+    setSelectedPeopleRemovalIds(prev => (
+      prev.includes(itemKey)
+        ? prev.filter(id => id !== itemKey)
+        : [...prev, itemKey]
+    ));
+  };
+
+  const enterRemovePeopleMode = () => {
+    if (!canRemoveSpacePeople) return;
+    setIsPeopleManageMenuOpen(false);
+    setIsRemovingPeopleMode(true);
+    setSelectedPeopleRemovalIds([]);
+    setAddPeopleFeedback('');
+  };
+
+  const exitRemovePeopleMode = () => {
+    if (isRemovingPeople) return;
+    setIsRemovingPeopleMode(false);
+    setSelectedPeopleRemovalIds([]);
+    setAddPeopleFeedback('');
+  };
+
+  const handleRemoveSelectedPeople = async () => {
+    if (!canRemoveSpacePeople || !spaceId || selectedPeopleRemovalIds.length === 0 || isRemovingPeople) return;
+
+    setIsRemovingPeople(true);
+    setAddPeopleFeedback('');
+
+    try {
+      await Promise.all(selectedPeopleRemovalIds.map(itemId => {
+        const [targetType, targetId] = itemId.split(':');
+        return removeSpacePersonTargetRequest(spaceId, targetType, targetId);
+      }));
+
+      setAddPeopleFeedback(`Removed ${selectedPeopleRemovalIds.length} selected item(s).`);
+      setSelectedPeopleRemovalIds([]);
+      setIsRemovingPeopleMode(false);
+      await refreshSpaceMembers();
+      await loadTaskData();
+    } catch (error) {
+      setAddPeopleFeedback(getErrorMessage(error, 'Unable to remove selected people.'));
+    } finally {
+      setIsRemovingPeople(false);
+    }
+  };
 
   const handleAddProjectPerson = async (person) => {
     if (!person?.email || addingPeopleEmail) return;
@@ -957,6 +1023,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setPendingInvitations([]);
     setPendingPeopleEmails([]);
     setAddPeopleFeedback('');
+    setIsPeopleManageMenuOpen(false);
+    setIsRemovingPeopleMode(false);
+    setSelectedPeopleRemovalIds([]);
     setSelectedAssigneeFilter('All');
   }, [spaceId]);
 
@@ -970,6 +1039,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         !addPeopleButtonRef.current.contains(event.target)
       ) {
         setIsAddPeopleOpen(false);
+        setIsPeopleManageMenuOpen(false);
+        setIsRemovingPeopleMode(false);
+        setSelectedPeopleRemovalIds([]);
       }
     };
 
@@ -1875,9 +1947,39 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           value={peopleSearch}
                           onChange={(event) => setPeopleSearch(event.target.value)}
                           placeholder="Enter an email address..."
-                          className="w-full pl-9 pr-3 py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]"
+                          className={`w-full pl-9 ${canRemoveSpacePeople ? 'pr-10' : 'pr-3'} py-2 bg-white border border-outline-variant rounded text-[12px] outline-none focus:ring-2 focus:ring-[#5E4DB2]/30 focus:border-[#5E4DB2]`}
                         />
+                        {canRemoveSpacePeople && (
+                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                            <button
+                              type="button"
+                              onClick={() => setIsPeopleManageMenuOpen(prev => !prev)}
+                              className="flex h-7 w-7 items-center justify-center rounded text-[#5E4DB2] transition-colors hover:bg-[#F0EDFF]"
+                              aria-label="Manage space people"
+                              title="Manage space people"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                            </button>
+                            {isPeopleManageMenuOpen && (
+                              <div className="absolute right-0 top-full z-10 mt-1 w-32 overflow-hidden rounded-lg border border-outline-variant bg-white py-1 shadow-xl">
+                                <button
+                                  type="button"
+                                  onClick={enterRemovePeopleMode}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-semibold text-red-600 transition-colors hover:bg-red-50"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">person_remove</span>
+                                  Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+                      {isRemovingPeopleMode && (
+                        <div className="mt-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-[11px] font-medium text-orange-800">
+                          Tick members or pending invitations you want to remove. The owner cannot be removed.
+                        </div>
+                      )}
                       {addPeopleFeedback && (
                         <div className="mt-2 rounded-lg bg-[#F7F8FC] px-3 py-2 text-[11px] font-medium text-[#4B5563]">
                           {addPeopleFeedback}
@@ -1893,6 +1995,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           {pendingInvitationRows.map(invitation => (
                             <div key={invitation.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-[#FAF8FF]">
                               <div className="flex min-w-0 items-center gap-3">
+                                {isRemovingPeopleMode && (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedPeopleRemovalIds.includes(`request:${invitation.id}`)}
+                                    onChange={() => togglePeopleRemovalSelection(`request:${invitation.id}`)}
+                                    className="h-4 w-4 shrink-0 cursor-pointer accent-[#5E4DB2]"
+                                  />
+                                )}
                                 <AssigneeAvatar
                                   user={invitation}
                                   sizeClass="w-8 h-8"
@@ -1923,9 +2033,23 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                         const isPending = pendingPeopleEmails.includes(normalizedEmail);
                         const isAddingThisPerson = addingPeopleEmail === normalizedEmail;
                         const isOwner = projectOwnerId && (projectOwnerId === personUserId);
+                        const memberRemovalKey = person.spaceMemberId ? `member:${person.spaceMemberId}` : '';
+                        const canSelectForRemoval = isRemovingPeopleMode && !isOwner && Boolean(memberRemovalKey);
                         return (
                           <div key={person.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-[#F7F8FC] transition-colors">
                             <div className="flex items-center gap-3 min-w-0">
+                              {isRemovingPeopleMode && (
+                                canSelectForRemoval ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedPeopleRemovalIds.includes(memberRemovalKey)}
+                                    onChange={() => togglePeopleRemovalSelection(memberRemovalKey)}
+                                    className="h-4 w-4 shrink-0 cursor-pointer accent-[#5E4DB2]"
+                                  />
+                                ) : (
+                                  <span className="h-4 w-4 shrink-0" />
+                                )
+                              )}
                               <AssigneeAvatar
                                 user={person}
                                 sizeClass="w-8 h-8"
@@ -1939,6 +2063,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                             {isOwner ? (
                               <span className="px-3 py-1 rounded bg-[#FFF4E5] text-[#9A5B00] text-[11px] font-bold">
                                 Owner
+                              </span>
+                            ) : isRemovingPeopleMode ? (
+                              <span className="px-3 py-1 rounded bg-[#F3F4F6] text-[#4B5563] text-[11px] font-bold">
+                                Added
                               </span>
                             ) : (
                               <button
@@ -1958,7 +2086,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           </div>
                         );
                       })}
-                      {peoplePanelRows.length === 0 && trimmedPeopleSearch && (
+                      {peoplePanelRows.length === 0 && trimmedPeopleSearch && !isRemovingPeopleMode && (
                         <div className="px-3 py-3">
                           <div className="mb-3 rounded-lg bg-[#F7F8FC] px-3 py-2">
                             <div className="text-[12px] font-semibold text-[#172B4D] truncate">{trimmedPeopleSearch}</div>
@@ -1992,10 +2120,41 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           </div>
                         </div>
                       )}
-                      {peoplePanelRows.length === 0 && !trimmedPeopleSearch && (
-                        <div className="px-4 py-5 text-center text-[12px] text-outline">No members in this space yet</div>
+                      {peoplePanelRows.length === 0 && !trimmedPeopleSearch && pendingInvitationRows.length === 0 && (
+                        <div className="px-4 py-5 text-center text-[12px] text-outline">
+                          {isRemovingPeopleMode ? 'No removable people in this space' : 'No members in this space yet'}
+                        </div>
                       )}
                     </div>
+                    {isRemovingPeopleMode && (
+                      <div className="flex items-center justify-between gap-2 border-t border-outline-variant bg-[#FAFBFC] px-3 py-2">
+                        <span className="text-[11px] font-semibold text-[#4B5563]">
+                          {selectedPeopleRemovalCount} selected
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={exitRemovePeopleMode}
+                            disabled={isRemovingPeople}
+                            className="rounded border border-outline-variant bg-white px-3 py-1.5 text-[11px] font-bold text-[#4B5563] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRemoveSelectedPeople}
+                            disabled={selectedPeopleRemovalCount === 0 || isRemovingPeople}
+                            className={`rounded px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                              selectedPeopleRemovalCount > 0 && !isRemovingPeople
+                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                : 'cursor-not-allowed bg-gray-200 text-gray-400'
+                            }`}
+                          >
+                            {isRemovingPeople ? 'Removing...' : 'Remove selected'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2802,16 +2961,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         isOpen={isSprintInfoOpen}
         onClose={() => setIsSprintInfoOpen(false)}
         anchorRef={sprintInfoAnchorRef}
-        completedTasksCount={sprintInfoTasks.filter(t => t.status === 'Done').length}
-        openTasksCount={sprintInfoTasks.filter(t => t.status !== 'Done').length}
+        completedTasksCount={sprintInfoTasks.filter(t => ['Done', 'Cancelled'].includes(t.status)).length}
+        openTasksCount={sprintInfoTasks.filter(t => !['Done', 'Cancelled'].includes(t.status)).length}
       />
 
       <CompleteSprintModal
         isOpen={isCompleteSprintOpen}
         onClose={() => { setIsCompleteSprintOpen(false); setCompleteSprintTarget(null); }}
         sprintName={completeSprintTarget?.name || sprint1Data.name}
-        completedTasksCount={completeSprintTasks.filter(t => t.status === 'Done').length}
-        openTasksCount={completeSprintTasks.filter(t => t.status !== 'Done').length}
+        completedTasksCount={completeSprintTasks.filter(t => ['Done', 'Cancelled'].includes(t.status)).length}
+        openTasksCount={completeSprintTasks.filter(t => !['Done', 'Cancelled'].includes(t.status)).length}
         onComplete={handleCompleteSprint}
       />
 

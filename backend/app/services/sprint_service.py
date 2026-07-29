@@ -291,7 +291,7 @@ def complete_sprint(db: Session, sprint_id: str, current_user: User) -> SprintRe
     if incomplete_task_count:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Sprint can only be completed when all tasks are done",
+            detail="Sprint can only be completed when all tasks are done or cancelled",
         )
 
     now = vietnam_now()

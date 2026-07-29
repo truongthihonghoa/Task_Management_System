@@ -28,7 +28,7 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
         
         <div className="p-6">
           <div className="flex flex-col gap-4 text-[13px] text-on-surface-variant leading-relaxed">
-            <p>This sprint can only be completed when every issue is marked as Done.</p>
+            <p>This sprint can only be completed when every issue is marked as Done or Cancelled.</p>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-lg flex flex-col items-center">
                 <span className="text-2xl font-bold text-green-700">{completedTasksCount}</span>
@@ -47,7 +47,7 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
                   <div>
                     <p className="font-bold text-orange-900">Sprint cannot be completed yet.</p>
                     <p className="mt-1 text-[12px] leading-relaxed">
-                      Move all open issues to Done before completing this sprint.
+                      Move all open issues to Done or Cancelled before completing this sprint.
                     </p>
                   </div>
                 </div>
@@ -59,7 +59,7 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
                   <div>
                     <p className="font-bold text-slate-800">Ready to complete.</p>
                     <p className="mt-1 text-[12px] leading-relaxed">
-                      All issues are Done. Completing this sprint will mark it as Completed.
+                      All issues are Done or Cancelled. Completing this sprint will mark it as Completed.
                     </p>
                   </div>
                 </div>
