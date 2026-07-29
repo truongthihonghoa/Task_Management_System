@@ -438,8 +438,10 @@ def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
     assert calls[0][1]["resource_type"] == "image"
 
 
-def test_create_user_audit_log_stores_expected_fields():
+def test_create_user_audit_log_stores_expected_fields(monkeypatch):
     db = FakeDb()
+    expected_now = datetime(2026, 7, 28, 14, 30, 0)
+    monkeypatch.setattr(user_repository, "vietnam_now", lambda: expected_now)
 
     audit_log = user_repository.create_user_audit_log(
         db,
@@ -457,6 +459,7 @@ def test_create_user_audit_log_stores_expected_fields():
     assert audit_log.entity_id == "USR00000002"
     assert audit_log.payload["status"] == "Active"
     assert audit_log.payload["ip_address"] == "127.0.0.1"
+    assert audit_log.created_at == expected_now
 
 
 @pytest.mark.parametrize(

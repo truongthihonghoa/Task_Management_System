@@ -271,6 +271,7 @@ def create_audit_log(
         label_title=label_title,
         entity_id=entity_id,
         payload=payload,
+        created_at=vietnam_now(),
     )
     db.add(audit_log)
     return audit_log

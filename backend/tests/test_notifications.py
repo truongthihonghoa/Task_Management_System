@@ -105,9 +105,13 @@ class RecordingQuery:
 
 class RecordingDb:
     def __init__(self):
+        self.added = []
         self.statements = []
         self.queries = []
         self.flushed = 0
+
+    def add(self, value):
+        self.added.append(value)
 
     def execute(self, statement):
         self.statements.append(statement)
@@ -322,6 +326,26 @@ def test_notification_repository_visible_operations_apply_thirty_day_window(monk
 
     assert statements_and_criteria
     assert all("notifications.created_at >= " in value for value in statements_and_criteria)
+
+
+def test_create_notification_defaults_to_vietnam_timestamp(monkeypatch):
+    expected_now = datetime(2026, 7, 28, 15, 45, 0)
+    db = RecordingDb()
+    monkeypatch.setattr(notification_repository, "vietnam_now", lambda: expected_now)
+
+    notification = notification_repository.create_notification(
+        db,
+        user_id="USR00000001",
+        type="system_alert",
+        title="System alert",
+        message="Check system status.",
+        audience="SUPER_ADMIN",
+        is_read=False,
+        read_at=None,
+    )
+
+    assert notification.created_at == expected_now
+    assert db.flushed == 1
 
 
 def test_notification_retention_purge_deletes_older_than_six_months_and_commits(monkeypatch):

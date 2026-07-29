@@ -116,6 +116,7 @@ def list_notifications(
 
 
 def create_notification(db: Session, **values) -> Notification:
+    values.setdefault("created_at", vietnam_now())
     notification = Notification(**values)
     db.add(notification)
     db.flush()
