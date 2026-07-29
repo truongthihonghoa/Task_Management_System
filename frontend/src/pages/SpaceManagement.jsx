@@ -166,7 +166,7 @@ const getSpaceCompletionReadiness = async (spaceId) => {
     axiosClient.get(`/spaces/${spaceId}/member-requests`),
   ]);
 
-  const incompleteTasksCount = tasks.filter(task => task.task_status !== 'done').length;
+  const incompleteTasksCount = tasks.filter(task => !['done', 'cancelled'].includes(task.task_status)).length;
   const incompleteSprintsCount = (sprintsResponse.data || []).filter(sprint => (
     sprint.status !== 'Completed' && sprint.status !== 'Deleted'
   )).length;
@@ -461,9 +461,9 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const completionBlockers = completeSpaceReadiness
     ? [
         {
-          label: 'Tasks not Done',
+          label: 'Tasks not Done/Cancelled',
           count: completeSpaceReadiness.incompleteTasksCount,
-          helper: 'All tasks in this space must be Done.',
+          helper: 'All tasks in this space must be Done or Cancelled.',
         },
         {
           label: 'Sprints not Completed',
@@ -899,7 +899,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                           <div>
                             <p className="font-bold text-emerald-900">Ready to complete.</p>
                             <p className="mt-1 text-[12px] leading-relaxed">
-                              All tasks are Done, all sprints are Completed, and no invitations are pending.
+                              All tasks are Done or Cancelled, all sprints are Completed, and no invitations are pending.
                             </p>
                           </div>
                         </div>

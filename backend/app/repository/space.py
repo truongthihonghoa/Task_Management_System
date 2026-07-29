@@ -212,7 +212,7 @@ def _ensure_space_completion_requirements(db: Session, space_id: str) -> None:
         .filter(
             Task.space_id == space_id,
             Task.deleted_at.is_(None),
-            Task.task_status != "done",
+            Task.task_status.notin_(["done", "cancelled"]),
         )
         .scalar()
         or 0
@@ -239,7 +239,7 @@ def _ensure_space_completion_requirements(db: Session, space_id: str) -> None:
 
     blockers = []
     if unfinished_task_count:
-        blockers.append(f"{unfinished_task_count} task(s) are not done")
+        blockers.append(f"{unfinished_task_count} task(s) are not done or cancelled")
     if incomplete_sprint_count:
         blockers.append(f"{incomplete_sprint_count} sprint(s) are not completed")
     if pending_invitation_count:
@@ -1065,11 +1065,49 @@ def list_space_members(db: Session, space_id: str, current_user: User | None = N
 
     members = (
         db.query(SpaceMember)
-        .filter(SpaceMember.space_id == space_id)
+        .filter(
+            SpaceMember.space_id == space_id,
+            SpaceMember.status == "Active",
+            SpaceMember.removed_at.is_(None),
+        )
         .order_by(SpaceMember.joined_at.asc())
         .all()
     )
     return [_space_member_response(member) for member in members]
+
+
+def remove_space_member(
+    db: Session,
+    space_id: str,
+    space_member_id: str,
+    current_user: User,
+) -> SpaceMemberResponse:
+    space = get_space_or_404(db, space_id)
+    _ensure_space_active(space)
+    _ensure_space_owner(space, current_user)
+
+    member = (
+        db.query(SpaceMember)
+        .filter(
+            SpaceMember.space_id == space_id,
+            SpaceMember.space_member_id == space_member_id,
+        )
+        .first()
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Space member not found",
+        )
+    if member.user_id == space.owner_id or member.role == "OWNER":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space owner cannot be removed",
+        )
+    response = _space_member_response(member)
+    db.delete(member)
+    db.commit()
+    return response
 
 
 def list_pending_space_member_requests(
@@ -1100,6 +1138,71 @@ def list_pending_space_member_requests(
 
     requests = query.order_by(SpaceMemberRequest.requested_at.desc()).all()
     return [_space_member_request_response(request) for request in requests]
+
+
+def cancel_space_member_request(
+    db: Session,
+    space_id: str,
+    request_id: str,
+    current_user: User,
+) -> SpaceMemberRequestResponse:
+    space = get_space_or_404(db, space_id)
+    _ensure_space_active(space)
+    _ensure_space_owner(space, current_user)
+
+    member_request = (
+        db.query(SpaceMemberRequest)
+        .filter(
+            SpaceMemberRequest.space_id == space_id,
+            SpaceMemberRequest.space_member_request_id == request_id,
+        )
+        .first()
+    )
+    if member_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member invitation not found",
+        )
+    if member_request.status not in ("PENDING_OWNER", "PENDING_INVITEE"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Member invitation is already handled",
+        )
+
+    response = _space_member_request_response(member_request)
+    db.delete(member_request)
+    db.commit()
+    return response
+
+
+def remove_space_people_target(
+    db: Session,
+    space_id: str,
+    *,
+    target_type: str,
+    target_id: str,
+    current_user: User,
+) -> dict[str, str]:
+    if target_type == "member":
+        removed_member = remove_space_member(db, space_id, target_id, current_user)
+        return {
+            "status": "REMOVED",
+            "target_type": "member",
+            "target_id": removed_member.space_member_id,
+            "message": "Space member removed.",
+        }
+    if target_type == "request":
+        cancelled_request = cancel_space_member_request(db, space_id, target_id, current_user)
+        return {
+            "status": "REMOVED",
+            "target_type": "request",
+            "target_id": cancelled_request.space_member_request_id,
+            "message": "Pending invitation removed.",
+        }
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="target_type must be member or request",
+    )
 
 
 def add_people_to_space(

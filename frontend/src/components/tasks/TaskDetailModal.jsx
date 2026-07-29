@@ -238,6 +238,13 @@ export default function TaskDetailModal({
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [assignHistory, setAssignHistory] = useState([]);
 
+  const toggleFieldDropdown = (field) => {
+    setIsStatusOpen(prev => (field === 'status' ? !prev : false));
+    setIsPriorityOpen(prev => (field === 'priority' ? !prev : false));
+    setIsCompletedOpen(prev => (field === 'completed' ? !prev : false));
+    setIsCreatedOpen(prev => (field === 'created' ? !prev : false));
+  };
+
   const availableAssignees = assigneeOptions;
   const localAssignedUsers = useMemo(() => {
     const users = (localTask.assignees || [])
@@ -1689,7 +1696,7 @@ export default function TaskDetailModal({
                   <div
                     className={`status-custom-trigger ${canEditTaskContent ? '' : 'cursor-default opacity-90'}`}
                     style={{ padding: '4px 10px', border: '1px solid #DFE1E6', borderRadius: '4px', background: 'white' }}
-                    onClick={() => { if (canEditTaskContent) setIsStatusOpen(!isStatusOpen); }}
+                    onClick={() => { if (canEditTaskContent) toggleFieldDropdown('status'); }}
                   >
                     <span className={`status-badge-pill ${(localTask?.status || '') === 'Need Revision' ? 'badge-revision' :
                       (localTask?.status || '') === 'Done' ? 'badge-done' :
@@ -1738,7 +1745,7 @@ export default function TaskDetailModal({
                   <div
                     className={`priority-custom-trigger ${canManageAdminFields ? '' : 'cursor-default opacity-90'}`}
                     style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #DFE1E6' }}
-                    onClick={() => { if (canManageAdminFields) setIsPriorityOpen(!isPriorityOpen); }}
+                    onClick={() => { if (canManageAdminFields) toggleFieldDropdown('priority'); }}
                   >
                     <div className="flex items-center gap-2">
                       {localTask.priority === 'High' ? (
@@ -1858,7 +1865,7 @@ export default function TaskDetailModal({
                       color: completedDateColor,
                       backgroundColor: completedDateBackground
                     }}
-                    onClick={() => { if (canManageAdminFields) setIsCompletedOpen(!isCompletedOpen); }}
+                    onClick={() => { if (canManageAdminFields) toggleFieldDropdown('completed'); }}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '14px', color: completedDateIconColor }}>calendar_today</span>
                     {completedDateLabel}
@@ -1993,7 +2000,7 @@ export default function TaskDetailModal({
                     <span
                       className={`transition-colors ${canManageAdminFields ? 'cursor-pointer hover:text-[#4C2B74]' : 'opacity-80 cursor-default'}`}
                       style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}
-                      onClick={() => { if (canManageAdminFields) setIsCreatedOpen(!isCreatedOpen); }}
+                      onClick={() => { if (canManageAdminFields) toggleFieldDropdown('created'); }}
                     >
                       {localTask.createdAt || 'Jun 20, 2026'}
                     </span>

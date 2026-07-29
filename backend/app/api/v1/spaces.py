@@ -205,6 +205,23 @@ def list_pending_space_member_requests(
     return space_crud.list_pending_space_member_requests(db, space_id, current_user=current_user)
 
 
+@router.delete("/{space_id}/people")
+def remove_space_people_target(
+    space_id: str,
+    target_type: str = Query(..., pattern="^(member|request)$"),
+    target_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return space_crud.remove_space_people_target(
+        db,
+        space_id,
+        target_type=target_type,
+        target_id=target_id,
+        current_user=current_user,
+    )
+
+
 @router.post("/{space_id}/people", response_model=SpaceAddPeopleResponse)
 def add_people_to_space(
     space_id: str,
