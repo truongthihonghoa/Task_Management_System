@@ -893,7 +893,7 @@ def test_dashboard_rejects_unsupported_date_range(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         dashboard_service.get_recent_activities(FakeDb(), make_user(), date_range="last_365_days")
 
-    assert exc_info.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert exc_info.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_recent_activities_viewed_and_assign_history_tabs(monkeypatch):

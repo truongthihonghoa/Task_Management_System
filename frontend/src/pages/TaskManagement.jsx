@@ -484,8 +484,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
-  const [viewMonth, setViewMonth] = useState(5); // June
-  const [viewYear, setViewYear] = useState(2026);
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
   const dateFilterRef = useRef(null);
 
   const getDaysInMonth = (year, month) => {
@@ -2337,7 +2337,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           selectedDate.getDate() === day &&
                           selectedDate.getMonth() === viewMonth &&
                           selectedDate.getFullYear() === viewYear;
-                        const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                        const today = new Date();
+                        const isToday = day === today.getDate() &&
+                          viewMonth === today.getMonth() &&
+                          viewYear === today.getFullYear();
                         return (
                           <button
                             key={day}

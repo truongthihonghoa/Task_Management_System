@@ -120,7 +120,7 @@ def get_preferences(db: Session, user: User) -> MainLayoutPreferencesResponse:
 def update_language(db: Session, *, user: User, language: str) -> MainLayoutPreferencesResponse:
     if language not in SUPPORTED_LANGUAGES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"message": "Unsupported language.", "supported_languages": sorted(SUPPORTED_LANGUAGES)},
         )
 

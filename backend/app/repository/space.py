@@ -206,6 +206,52 @@ def _active_task_count_for_space(db: Session, space_id: str) -> int:
     return _active_task_counts_for_spaces(db, [space_id]).get(space_id, 0)
 
 
+def _ensure_space_completion_requirements(db: Session, space_id: str) -> None:
+    unfinished_task_count = (
+        db.query(func.count(Task.task_id))
+        .filter(
+            Task.space_id == space_id,
+            Task.deleted_at.is_(None),
+            Task.task_status != "done",
+        )
+        .scalar()
+        or 0
+    )
+    incomplete_sprint_count = (
+        db.query(func.count(Sprint.sprint_id))
+        .filter(
+            Sprint.space_id == space_id,
+            Sprint.status != "Completed",
+            Sprint.status != "Deleted",
+        )
+        .scalar()
+        or 0
+    )
+    pending_invitation_count = (
+        db.query(func.count(SpaceMemberRequest.space_member_request_id))
+        .filter(
+            SpaceMemberRequest.space_id == space_id,
+            SpaceMemberRequest.status.in_(["PENDING_OWNER", "PENDING_INVITEE"]),
+        )
+        .scalar()
+        or 0
+    )
+
+    blockers = []
+    if unfinished_task_count:
+        blockers.append(f"{unfinished_task_count} task(s) are not done")
+    if incomplete_sprint_count:
+        blockers.append(f"{incomplete_sprint_count} sprint(s) are not completed")
+    if pending_invitation_count:
+        blockers.append(f"{pending_invitation_count} member invitation(s) are still pending")
+
+    if blockers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot complete space: {', '.join(blockers)}.",
+        )
+
+
 def _space_response(space: Space, *, task_count: int = 0) -> SpaceResponse:
     return SpaceResponse(
         space_id=space.space_id,
@@ -743,6 +789,7 @@ def archive_space(db: Session, space_id: str, current_user: User | None = None) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot archive deleted space",
         )
+    _ensure_space_completion_requirements(db, space.space_id)
 
     now = vietnam_now()
     space.status_space = "Archived"

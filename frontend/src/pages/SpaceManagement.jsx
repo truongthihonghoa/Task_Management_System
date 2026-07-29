@@ -133,6 +133,55 @@ const completeSpaceRequest = async (spaceId) => {
   return mapApiSpace(response.data);
 };
 
+const listAllSpaceTasksRequest = async (spaceId) => {
+  const pageSize = 100;
+  const firstResponse = await axiosClient.get(`/spaces/${spaceId}/tasks`, {
+    params: { page: 1, page_size: pageSize, active_sprint_only: false },
+  });
+  const firstPage = firstResponse.data;
+  const items = [...(firstPage.items || [])];
+  const total = firstPage.total || items.length;
+  const totalPages = Math.ceil(total / pageSize);
+
+  if (totalPages > 1) {
+    const remainingResponses = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) => (
+        axiosClient.get(`/spaces/${spaceId}/tasks`, {
+          params: { page: index + 2, page_size: pageSize, active_sprint_only: false },
+        })
+      ))
+    );
+    remainingResponses.forEach(response => {
+      items.push(...(response.data.items || []));
+    });
+  }
+
+  return items;
+};
+
+const getSpaceCompletionReadiness = async (spaceId) => {
+  const [tasks, sprintsResponse, pendingRequestsResponse] = await Promise.all([
+    listAllSpaceTasksRequest(spaceId),
+    axiosClient.get(`/spaces/${spaceId}/sprints`),
+    axiosClient.get(`/spaces/${spaceId}/member-requests`),
+  ]);
+
+  const incompleteTasksCount = tasks.filter(task => task.task_status !== 'done').length;
+  const incompleteSprintsCount = (sprintsResponse.data || []).filter(sprint => (
+    sprint.status !== 'Completed' && sprint.status !== 'Deleted'
+  )).length;
+  const pendingInvitationsCount = (pendingRequestsResponse.data || []).filter(request => (
+    request.status === 'PENDING_OWNER' || request.status === 'PENDING_INVITEE'
+  )).length;
+
+  return {
+    incompleteTasksCount,
+    incompleteSprintsCount,
+    pendingInvitationsCount,
+    isReady: incompleteTasksCount === 0 && incompleteSprintsCount === 0 && pendingInvitationsCount === 0,
+  };
+};
+
 const unarchiveSpaceRequest = async (spaceId) => {
   const response = await axiosClient.post(`/spaces/${spaceId}/unarchive`);
   return mapApiSpace(response.data);
@@ -163,6 +212,8 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [spaceToComplete, setSpaceToComplete] = useState(null);
   const [isCompletingSpace, setIsCompletingSpace] = useState(false);
   const [completeSpaceError, setCompleteSpaceError] = useState('');
+  const [completeSpaceReadiness, setCompleteSpaceReadiness] = useState(null);
+  const [isLoadingCompleteSpaceReadiness, setIsLoadingCompleteSpaceReadiness] = useState(false);
   const [spaceAction, setSpaceAction] = useState(null);
   const [isSpaceActionSubmitting, setIsSpaceActionSubmitting] = useState(false);
   const [spaceActionError, setSpaceActionError] = useState('');
@@ -174,8 +225,8 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [spaceDetailSelection, setSpaceDetailSelection] = useState(null);
   const datePickerRef = useRef(null);
   const canCreateSpace = currentRole === 'USER' && !isSuperAdmin && Boolean(currentUserId);
-  const [viewMonth, setViewMonth] = useState(5); // June
-  const [viewYear, setViewYear] = useState(2026);
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
  
   const getDaysInMonth = (year, month) => {
     const days = [];
@@ -282,19 +333,35 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
     return updatedSpace;
   };
 
-  const openCompleteSpaceModal = (space) => {
+  const openCompleteSpaceModal = async (space) => {
     setCompleteSpaceError('');
+    setCompleteSpaceReadiness(null);
     setSpaceToComplete(space);
+    setIsLoadingCompleteSpaceReadiness(true);
+    try {
+      const readiness = await getSpaceCompletionReadiness(space.id);
+      setCompleteSpaceReadiness(readiness);
+    } catch (error) {
+      setCompleteSpaceError(getErrorMessage(error, 'Unable to check whether this space is ready to complete.'));
+    } finally {
+      setIsLoadingCompleteSpaceReadiness(false);
+    }
   };
 
   const closeCompleteSpaceModal = () => {
     if (isCompletingSpace) return;
     setSpaceToComplete(null);
     setCompleteSpaceError('');
+    setCompleteSpaceReadiness(null);
+    setIsLoadingCompleteSpaceReadiness(false);
   };
 
   const handleCompleteSpace = async () => {
     if (!spaceToComplete) return;
+    if (!completeSpaceReadiness?.isReady) {
+      setCompleteSpaceError('Complete the required items before completing this space.');
+      return;
+    }
 
     setIsCompletingSpace(true);
     setCompleteSpaceError('');
@@ -390,6 +457,29 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
       window.lucide.createIcons();
     }
   }, []);
+
+  const completionBlockers = completeSpaceReadiness
+    ? [
+        {
+          label: 'Tasks not Done',
+          count: completeSpaceReadiness.incompleteTasksCount,
+          helper: 'All tasks in this space must be Done.',
+        },
+        {
+          label: 'Sprints not Completed',
+          count: completeSpaceReadiness.incompleteSprintsCount,
+          helper: 'All sprints in this space must be Completed.',
+        },
+        {
+          label: 'Pending invitations',
+          count: completeSpaceReadiness.pendingInvitationsCount,
+          helper: 'No member invitations can still be pending.',
+        },
+      ]
+    : [];
+  const canSubmitCompleteSpace = Boolean(completeSpaceReadiness?.isReady) &&
+    !isLoadingCompleteSpaceReadiness &&
+    !isCompletingSpace;
  
   return (
     <div className="px-6 pb-6 pt-10 bg-[#F5F7FA] min-h-full">
@@ -517,7 +607,10 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
                       selectedDate.getDate() === day &&
                       selectedDate.getMonth() === viewMonth &&
                       selectedDate.getFullYear() === viewYear;
-                    const isToday = day === 24 && viewMonth === 5 && viewYear === 2026;
+                    const today = new Date();
+                    const isToday = day === today.getDate() &&
+                      viewMonth === today.getMonth() &&
+                      viewYear === today.getFullYear();
                     return (
                       <button
                         key={day}
@@ -757,9 +850,87 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
             </div>
 
             <div className="px-6 py-5">
-              <p className="text-[13px] leading-relaxed text-on-surface-variant">
-                Are you sure you want to complete <span className="font-bold text-on-surface">{spaceToComplete.title}</span>? This space will be archived and its tasks will become read-only.
-              </p>
+              <div className="flex flex-col gap-4 text-[13px] leading-relaxed text-on-surface-variant">
+                <p>
+                  Complete <span className="font-bold text-on-surface">{spaceToComplete.title}</span> only when the space is ready to be archived.
+                </p>
+
+                {isLoadingCompleteSpaceReadiness ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined text-[20px] leading-none text-slate-600">hourglass_top</span>
+                      <p className="font-bold text-slate-800">Checking completion requirements...</p>
+                    </div>
+                  </div>
+                ) : completeSpaceReadiness ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      {completionBlockers.map(item => {
+                        const hasBlocker = item.count > 0;
+                        return (
+                          <div
+                            key={item.label}
+                            className={`rounded-lg border p-3 text-center ${
+                              hasBlocker
+                                ? 'border-orange-100 bg-orange-50'
+                                : 'border-emerald-100 bg-emerald-50'
+                            }`}
+                            title={item.helper}
+                          >
+                            <span className={`block text-xl font-bold ${
+                              hasBlocker ? 'text-orange-700' : 'text-green-700'
+                            }`}>
+                              {item.count}
+                            </span>
+                            <span className={`mt-1 block text-[10px] font-bold uppercase leading-tight ${
+                              hasBlocker ? 'text-orange-600' : 'text-green-600'
+                            }`}>
+                              {item.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {completeSpaceReadiness.isReady ? (
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-emerald-800">
+                        <div className="flex gap-3">
+                          <span className="material-symbols-outlined text-[20px] leading-none text-emerald-600">check_circle</span>
+                          <div>
+                            <p className="font-bold text-emerald-900">Ready to complete.</p>
+                            <p className="mt-1 text-[12px] leading-relaxed">
+                              All tasks are Done, all sprints are Completed, and no invitations are pending.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-orange-800">
+                        <div className="flex gap-3">
+                          <span className="material-symbols-outlined text-[20px] leading-none text-orange-600">error</span>
+                          <div>
+                            <p className="font-bold text-orange-900">Space cannot be completed yet.</p>
+                            <p className="mt-1 text-[12px] leading-relaxed">
+                              Finish the remaining tasks, complete every sprint, and resolve pending invitations before completing this space.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-red-700">
+                    <div className="flex gap-3">
+                      <span className="material-symbols-outlined text-[20px] leading-none text-red-600">error</span>
+                      <p className="font-bold">Unable to check completion requirements.</p>
+                    </div>
+                  </div>
+                )}
+
+                <p>
+                  When completed, this space will be archived and its tasks will become read-only.
+                </p>
+              </div>
 
               {completeSpaceError && (
                 <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] font-medium text-red-700">
@@ -780,10 +951,18 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
               <button
                 type="button"
                 onClick={handleCompleteSpace}
-                disabled={isCompletingSpace}
-                className="rounded-lg bg-[#5e4db2] px-5 py-2 text-[13px] font-bold text-white shadow-md transition-all hover:bg-[#4d3e9c] active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={!canSubmitCompleteSpace}
+                className={`rounded-lg px-5 py-2 text-[13px] font-bold shadow-md transition-all active:scale-95 ${
+                  canSubmitCompleteSpace
+                    ? 'bg-[#5e4db2] text-white hover:bg-[#4d3e9c]'
+                    : 'cursor-not-allowed bg-gray-200 text-gray-500 shadow-none'
+                }`}
               >
-                {isCompletingSpace ? 'Completing...' : 'Complete Space'}
+                {isCompletingSpace
+                  ? 'Completing...'
+                  : isLoadingCompleteSpaceReadiness
+                    ? 'Checking...'
+                    : 'Complete Space'}
               </button>
             </div>
           </div>

@@ -257,10 +257,10 @@ export default function TaskDetailModal({
     return [];
   }, [localTask]);
 
-  const [completedMonth, setCompletedMonth] = useState(5);
-  const [completedYear, setCompletedYear] = useState(2026);
-  const [createdMonth, setCreatedMonth] = useState(5);
-  const [createdYear, setCreatedYear] = useState(2026);
+  const [completedMonth, setCompletedMonth] = useState(() => new Date().getMonth());
+  const [completedYear, setCompletedYear] = useState(() => new Date().getFullYear());
+  const [createdMonth, setCreatedMonth] = useState(() => new Date().getMonth());
+  const [createdYear, setCreatedYear] = useState(() => new Date().getFullYear());
   const uploadInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const [replaceTargetId, setReplaceTargetId] = useState(null);
@@ -1938,7 +1938,10 @@ export default function TaskDetailModal({
                                 d.getMonth() === completedMonth &&
                                 d.getFullYear() === completedYear;
                             })();
-                            const isToday = day === 24 && completedMonth === 5 && completedYear === 2026;
+                            const today = new Date();
+                            const isToday = day === today.getDate() &&
+                              completedMonth === today.getMonth() &&
+                              completedYear === today.getFullYear();
                             return (
                               <div
                                 key={i}
@@ -2067,7 +2070,10 @@ export default function TaskDetailModal({
                                   d.getMonth() === createdMonth &&
                                   d.getFullYear() === createdYear;
                               })();
-                              const isToday = day === 24 && createdMonth === 5 && createdYear === 2026;
+                              const today = new Date();
+                              const isToday = day === today.getDate() &&
+                                createdMonth === today.getMonth() &&
+                                createdYear === today.getFullYear();
                               return (
                                 <div
                                   key={i}

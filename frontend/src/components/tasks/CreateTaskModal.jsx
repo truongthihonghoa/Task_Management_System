@@ -8,10 +8,10 @@ const monthNames = [
 ];
 
 const parseDateValue = (value) => {
-  if (!value) return new Date(2026, 5, 1);
+  if (!value) return new Date();
 
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? new Date(2026, 5, 1) : date;
+  return Number.isNaN(date.getTime()) ? new Date() : date;
 };
 
 const formatDateValue = (year, month, day) => {
@@ -625,9 +625,13 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                 onClick={() => setIsPriorityOpen(!isPriorityOpen)}
               >
                 <div className="flex items-center gap-2">
-                  {formData.priority === 'Medium' && <span className="material-symbols-outlined text-orange-500 text-[18px]">keyboard_double_arrow_up</span>}
-                  {formData.priority === 'High' && <span className="material-symbols-outlined text-red-500 text-[18px]">keyboard_arrow_up</span>}
-                  {formData.priority === 'Low' && <span className="material-symbols-outlined text-blue-500 text-[18px]">keyboard_arrow_down</span>}
+                  {formData.priority === 'High' ? (
+                    <span className="material-symbols-outlined text-[18px]" style={{ color: '#DE350B' }}>keyboard_arrow_up</span>
+                  ) : formData.priority === 'Medium' ? (
+                    <span className="text-[18px] leading-none font-bold" style={{ color: '#FF8B00' }}>=</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px]" style={{ color: '#4C2B74' }}>keyboard_arrow_down</span>
+                  )}
                   <span className="text-sm">{formData.priority}</span>
                 </div>
                 <i data-lucide="chevron-down" className="w-4 h-4 text-gray-500"></i>
@@ -636,9 +640,9 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
               {isPriorityOpen && (
                 <div className="priority-custom-dropdown">
                   {[
-                    { label: 'Medium', icon: 'keyboard_double_arrow_up', color: 'text-orange-500' },
-                    { label: 'High', icon: 'keyboard_arrow_up', color: 'text-red-500' },
-                    { label: 'Low', icon: 'keyboard_arrow_down', color: 'text-blue-500' }
+                    { label: 'High', icon: 'keyboard_arrow_up', color: '#DE350B' },
+                    { label: 'Medium', icon: '=', color: '#FF8B00' },
+                    { label: 'Low', icon: 'keyboard_arrow_down', color: '#4C2B74' }
                   ].map(p => (
                     <div 
                       key={p.label} 
@@ -648,7 +652,11 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                         setIsPriorityOpen(false);
                       }}
                     >
-                      <span className={`material-symbols-outlined ${p.color} text-[18px]`}>{p.icon}</span>
+                      {p.label === 'Medium' ? (
+                        <span className="text-[18px] leading-none font-bold" style={{ color: p.color }}>{p.icon}</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-[18px]" style={{ color: p.color }}>{p.icon}</span>
+                      )}
                       <span className="text-sm">{p.label}</span>
                     </div>
                   ))}
