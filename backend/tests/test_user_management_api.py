@@ -383,11 +383,19 @@ def test_user_response_never_exposes_password_hash():
 def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path):
     user = make_user(avatar_url=None)
     db = FakeDb(users=[user])
+
     file = SimpleNamespace(
         filename="avatar.png",
         content_type="image/png",
         file=BytesIO(b"fake image content"),
     )
+
+    monkeypatch.setattr(
+        user_service.storage_service,
+        "is_cloudinary_enabled",
+        lambda: False,
+    )
+
     monkeypatch.setattr(user_service, "MEDIA_ROOT", tmp_path)
 
     avatar_url = user_service.update_user_avatar(db, user.user_id, file)
@@ -397,8 +405,7 @@ def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path
     assert user.avatar_url == avatar_url
     assert db.flushes == 1
     assert (tmp_path / avatar_url.removeprefix("/media/")).exists()
-
-
+    
 def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
     user = make_user(avatar_url=None)
     db = FakeDb(users=[user])

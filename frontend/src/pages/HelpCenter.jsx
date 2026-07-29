@@ -1,8 +1,6 @@
 import React, { useEffect } from 'react';
 import AIChatSection from '../components/help/AIChatSection';
 import GuideSection from '../components/help/GuideSection';
-import FAQSection from '../components/help/FAQSection';
-import SupportSidebar from '../components/help/SupportSidebar';
 
 const HelpCenter = () => {
   useEffect(() => {
@@ -23,7 +21,6 @@ const HelpCenter = () => {
         <div className="w-full lg:w-[90%] space-y-6">
           <AIChatSection />
           <GuideSection />
-          <FAQSection />
         </div>
       </div>
     </div>

@@ -250,7 +250,6 @@ export const EN_TO_VI = {
   "Understanding your workspace.": "Hiểu workspace của bạn.",
   "Task Management": "Quản lý công việc",
   "Create and manage tasks effectively.": "Tạo và quản lý công việc hiệu quả.",
-  "Frequently Asked Questions": "Câu hỏi thường gặp",
   "Need More Help?": "Cần thêm trợ giúp?",
   "Administrator Email": "Email quản trị viên",
   "Office Hours": "Giờ làm việc",
