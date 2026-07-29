@@ -390,7 +390,7 @@ def _date_range_bounds(date_range: str | None) -> tuple[datetime | None, datetim
     if normalized in {"last_6_months", "last_6_month", "last_180_days", "last_180"}:
         return now - timedelta(days=183), now
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="Unsupported date_range. Use all_time, today, yesterday, last_7_days, last_30_days, last_90_days, or last_6_months.",
     )
 

@@ -41,6 +41,7 @@ def create_user_audit_log(
         label_title="USER",
         entity_id=entity_id,
         payload=audit_payload or None,
+        created_at=vietnam_now(),
     )
     db.add(audit_log)
     return audit_log

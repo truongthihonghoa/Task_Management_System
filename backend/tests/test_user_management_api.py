@@ -383,11 +383,19 @@ def test_user_response_never_exposes_password_hash():
 def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path):
     user = make_user(avatar_url=None)
     db = FakeDb(users=[user])
+
     file = SimpleNamespace(
         filename="avatar.png",
         content_type="image/png",
         file=BytesIO(b"fake image content"),
     )
+
+    monkeypatch.setattr(
+        user_service.storage_service,
+        "is_cloudinary_enabled",
+        lambda: False,
+    )
+
     monkeypatch.setattr(user_service, "MEDIA_ROOT", tmp_path)
 
     avatar_url = user_service.update_user_avatar(db, user.user_id, file)
@@ -397,8 +405,7 @@ def test_update_user_avatar_saves_public_media_url_to_user(monkeypatch, tmp_path
     assert user.avatar_url == avatar_url
     assert db.flushes == 1
     assert (tmp_path / avatar_url.removeprefix("/media/")).exists()
-
-
+    
 def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
     user = make_user(avatar_url=None)
     db = FakeDb(users=[user])
@@ -431,8 +438,10 @@ def test_update_user_avatar_uses_cloudinary_when_enabled(monkeypatch):
     assert calls[0][1]["resource_type"] == "image"
 
 
-def test_create_user_audit_log_stores_expected_fields():
+def test_create_user_audit_log_stores_expected_fields(monkeypatch):
     db = FakeDb()
+    expected_now = datetime(2026, 7, 28, 14, 30, 0)
+    monkeypatch.setattr(user_repository, "vietnam_now", lambda: expected_now)
 
     audit_log = user_repository.create_user_audit_log(
         db,
@@ -450,6 +459,7 @@ def test_create_user_audit_log_stores_expected_fields():
     assert audit_log.entity_id == "USR00000002"
     assert audit_log.payload["status"] == "Active"
     assert audit_log.payload["ip_address"] == "127.0.0.1"
+    assert audit_log.created_at == expected_now
 
 
 @pytest.mark.parametrize(

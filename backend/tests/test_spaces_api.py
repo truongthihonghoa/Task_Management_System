@@ -173,6 +173,73 @@ def test_archived_space_is_read_only():
     assert service_exc.value.detail == "Space is archived"
 
 
+def test_complete_space_rejects_unfinished_work_and_pending_invites():
+    class FakeCountQuery:
+        def __init__(self, value):
+            self.value = value
+
+        def filter(self, *_args):
+            return self
+
+        def scalar(self):
+            return self.value
+
+    class FakeDB:
+        def __init__(self):
+            self.counts = iter([2, 1, 1])
+
+        def query(self, *_args):
+            return FakeCountQuery(next(self.counts))
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_repository._ensure_space_completion_requirements(FakeDB(), "SPC00000002")
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        "Cannot complete space: 2 task(s) are not done or cancelled, "
+        "1 sprint(s) are not completed, "
+        "1 member invitation(s) are still pending."
+    )
+
+
+def test_archive_space_checks_completion_requirements(monkeypatch):
+    created_at = datetime(2026, 7, 1, 9, 0, 0)
+    owner = SimpleNamespace(user_id="USR00000003")
+    active_space = SimpleNamespace(
+        space_id="SPC00000002",
+        name_space="Product Team",
+        description="Active project",
+        owner_id=owner.user_id,
+        status_space="Active",
+        created_at=created_at,
+        updated_at=created_at,
+        archived_at=None,
+        reopen_until=None,
+        deleted_at=None,
+    )
+
+    class FakeDB:
+        def __init__(self):
+            self.committed = False
+
+        def commit(self):
+            self.committed = True
+
+    def reject_completion(*_args):
+        raise HTTPException(status_code=400, detail="Cannot complete space: 1 task(s) are not done or cancelled.")
+
+    db = FakeDB()
+    monkeypatch.setattr(space_repository, "get_space_or_404", lambda _db, _space_id: active_space)
+    monkeypatch.setattr(space_repository, "_ensure_space_completion_requirements", reject_completion)
+
+    with pytest.raises(HTTPException) as exc_info:
+        space_repository.archive_space(db, active_space.space_id, current_user=owner)
+
+    assert exc_info.value.detail == "Cannot complete space: 1 task(s) are not done or cancelled."
+    assert active_space.status_space == "Active"
+    assert db.committed is False
+
+
 def test_delete_space_allows_archived_space_for_owner(monkeypatch):
     created_at = datetime(2026, 7, 1, 9, 0, 0)
     owner = SimpleNamespace(user_id="USR00000003")

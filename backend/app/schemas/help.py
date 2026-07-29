@@ -58,7 +58,7 @@ class AIChatMessage(BaseModel):
 class AIChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     current_space_id: Optional[str] = Field(default=None, max_length=15)
-    history: List[AIChatMessage] = Field(default_factory=list, max_items=10)
+    history: List[AIChatMessage] = Field(default_factory=list, max_length=10)
 
 
 class AIChatResponse(BaseModel):
