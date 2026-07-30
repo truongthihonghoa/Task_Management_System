@@ -14,6 +14,7 @@ const NotificationItem = ({
     isMenuOpen = false,
     onMenuToggle,
     onMenuClose,
+    showFullTimestamp = false,
 }) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -325,7 +326,7 @@ const NotificationItem = ({
                     </h4>
                     <div className="relative ml-2 flex items-center gap-1">
                         <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
-                            {notification.created_at}
+                            {showFullTimestamp ? (notification.created_at_full || notification.created_at) : notification.created_at}
                         </span>
                         <button
                             type="button"

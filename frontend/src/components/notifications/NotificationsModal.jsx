@@ -4,6 +4,30 @@ import { Search, BellOff, X } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
 
+const buildNotificationSearchText = (notification) => [
+  notification.title,
+  notification.message,
+  notification.type,
+  notification.audience,
+  notification.role,
+  notification.task_name,
+  notification.task_title,
+  notification.space_name,
+  notification.space,
+  notification.sprint_name,
+  notification.triggered_by_name,
+  notification.triggered_by_email,
+  notification.target_user,
+  notification.target_user_email,
+  notification.target_user_id,
+  notification.task_id,
+  notification.space_id,
+  notification.audit_log_id,
+  notification.new_status,
+  notification.new_priority,
+  notification.priority,
+].filter(Boolean).join(' ').toLowerCase();
+
 const NotificationsModal = ({
   isOpen,
   onClose,
@@ -35,14 +59,11 @@ const NotificationsModal = ({
       (filter === 'Unread' && !n.is_read) ||
       (filter === 'Read' && n.is_read);
 
-    const taskName = n.task_name || '';
-    const triggeredBy = n.triggered_by_name || '';
-    const targetUser = n.target_user || '';
+    const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
     const matchesSearch =
-      taskName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      triggeredBy.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      targetUser.toLowerCase().includes(searchQuery.toLowerCase());
+      !normalizedSearchQuery ||
+      buildNotificationSearchText(n).includes(normalizedSearchQuery);
 
     return matchesFilter && matchesSearch;
   });
@@ -155,6 +176,7 @@ const NotificationsModal = ({
                   notification={notification}
                   onClick={handleNotificationClick}
                   onDelete={onDeleteNotification}
+                  showFullTimestamp
                   isMenuOpen={openActionMenuId === notification.NOTI_id}
                   onMenuToggle={(notificationId) => {
                     setOpenActionMenuId((currentId) => (
