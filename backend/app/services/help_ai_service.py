@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import unicodedata
+import re
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.repository import help as help_repository
-from app.repository import help_ai as help_ai_repository
 from app.schemas.help import AIChatRequest, AIChatResponse
-
 
 SYSTEM_BEHAVIOR = """
 You are TaskFlow AI, an assistant for the TaskFlow project management system.
@@ -33,7 +32,33 @@ PROMPT_INJECTION_PATTERNS = (
     "update users",
 )
 
-VIETNAMESE_ASCII_HINTS = ("toi", "ban", "cua", "duoc", "cong viec", "thong bao", "bao nhieu")
+VIETNAMESE_ASCII_HINTS = ("toi", "ban", "cua", "duoc", "cong viec", "thong bao", "bao nhieu", "lam sao", "huong dan", "giup")
+
+STOP_WORDS = {"is", "am", "are", "do", "does", "did", "how", "what", "where", "when", "why", "to", "the", "a", "an", "of", "and", "in", "on", "for", "with", "about", "can", "could", "would", "should", "i", "you", "he", "she", "it", "we", "they", "my", "your", "lam", "sao", "nhu", "the", "nao", "co", "the", "duoc", "khong", "la", "gi", "de", "cho"}
+
+SYNONYMS = {
+    "start": "getting-started",
+    "begin": "getting-started",
+    "bat dau": "getting-started",
+    "dang nhap": "login",
+    "dang ky": "register",
+    "permission": "permissions",
+    "role": "roles",
+    "quyen": "permissions",
+    "vai tro": "roles",
+    "dashboard": "overview",
+    "tong quan": "overview",
+    "tim kiem": "search",
+    "task": "tasks",
+    "cong viec": "tasks",
+    "sprint": "sprints",
+    "binh luan": "comment",
+    "attachment": "attachments",
+}
+
+BROAD_INTENT_KEYWORDS = {"what", "how", "guide", "overview", "huong dan", "la gi", "tong quan"}
+
+MIN_CONFIDENCE = 5
 
 
 def answer_chat(db: Session, request: AIChatRequest, current_user: User) -> AIChatResponse:
@@ -42,63 +67,35 @@ def answer_chat(db: Session, request: AIChatRequest, current_user: User) -> AICh
     normalized = _normalize_for_match(raw_normalized)
     language = _detect_language(raw_normalized, normalized)
 
+    # Greeting handling
+    GREETING_KEYWORDS = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "xin chào", "chào", "chào bạn"}
+    if normalized in GREETING_KEYWORDS:
+        return AIChatResponse(reply=_text(language, "greeting"))
+
+    if len(request.message) > 500:
+        return AIChatResponse(reply=_text(language, "input_too_long"))
+
+    # System data question handling
+    SYSTEM_DATA_KEYWORDS = {"task", "tasks", "space", "spaces", "notification", "notifications", "sprint", "assigned", "overdue", "pending", "active"}
+    if any(word in normalized for word in SYSTEM_DATA_KEYWORDS) and ("my" in normalized or "i " in normalized or "i am" in normalized):
+        return AIChatResponse(reply=_text(language, "system_data"))
+
     if _is_prompt_injection(normalized):
         return AIChatResponse(reply=_text(language, "prompt_injection"))
 
-    current_space_id = request.current_space_id.strip() if request.current_space_id else None
-    if current_space_id:
-        _ensure_space_permission(db, current_space_id=current_space_id, current_user=current_user)
-
-    if _asks_for_notifications(normalized):
-        notifications = help_ai_repository.list_notifications(
-            db,
-            user_id=current_user.user_id,
-            space_id=current_space_id,
-            unread_only="unread" in normalized or "chua doc" in normalized,
-            limit=10,
-        )
-        return AIChatResponse(reply=_format_notifications(language, notifications))
-
-    if _asks_for_completed_count(normalized):
-        count = help_ai_repository.count_completed_tasks(
-            db,
-            user_id=current_user.user_id,
-            space_id=current_space_id,
-        )
-        return AIChatResponse(reply=_format_completed_count(language, count, bool(current_space_id)))
-
-    if _asks_for_assigned_tasks(normalized):
-        tasks = help_ai_repository.list_assigned_tasks(
-            db,
-            user_id=current_user.user_id,
-            space_id=current_space_id,
-            limit=10,
-        )
-        return AIChatResponse(reply=_format_tasks(language, tasks))
-
-    docs_answer = _answer_from_guides(language, normalized)
+    # Retrieve answer from the guides
+    best_score, docs_answer = _answer_from_guides(language, normalized)
     if docs_answer:
+        docs_answer = _safe_truncate(docs_answer, 1500)
         return AIChatResponse(reply=docs_answer)
 
-    if _asks_for_database_data(normalized):
-        return AIChatResponse(reply=_text(language, "unsupported_data"))
+    if best_score == 0:
+        return AIChatResponse(reply=_text(language, "no_guide"))
 
-    return AIChatResponse(reply=_text(language, "fallback"))
+    if best_score < MIN_CONFIDENCE:
+        return AIChatResponse(reply=_text(language, "no_guide"))
 
-
-def _ensure_space_permission(db: Session, *, current_space_id: str, current_user: User) -> None:
-    if current_user.role == "SUPER_ADMIN":
-        return
-    membership = help_ai_repository.get_active_space_membership(
-        db,
-        space_id=current_space_id,
-        user_id=current_user.user_id,
-    )
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"message": "You do not have permission to access this Space."},
-        )
+    return AIChatResponse(reply=_text(language, "no_guide"))
 
 
 def _normalize_for_match(message: str) -> str:
@@ -116,116 +113,146 @@ def _is_prompt_injection(normalized_message: str) -> bool:
     return any(pattern in normalized_message for pattern in PROMPT_INJECTION_PATTERNS)
 
 
-def _asks_for_notifications(normalized_message: str) -> bool:
-    return "notification" in normalized_message or "thong bao" in normalized_message
+def _normalize_for_search(normalized_message: str) -> list[str]:
+    words = re.findall(r'\b\w+\b', normalized_message)
+    keywords = []
+    for w in words:
+        if len(w) > 2 and w not in STOP_WORDS:
+            if w.endswith('s') and len(w) > 3 and not w.endswith('ss'):
+                w = w[:-1]
+            if w in SYNONYMS:
+                w = SYNONYMS[w]
+            keywords.append(w)
+    for syn_key, syn_val in SYNONYMS.items():
+        if " " in syn_key and syn_key in normalized_message:
+            keywords.append(syn_val)
+    if not keywords:
+        keywords = words
+    return keywords
 
 
-def _asks_for_completed_count(normalized_message: str) -> bool:
-    return (
-        ("how many" in normalized_message or "count" in normalized_message or "bao nhieu" in normalized_message)
-        and ("completed" in normalized_message or "done" in normalized_message or "hoan thanh" in normalized_message)
-        and ("task" in normalized_message or "cong viec" in normalized_message)
-    )
+def _strip_markdown(text: str) -> str:
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'#+\s+', '', text)
+    return text.strip()
 
 
-def _asks_for_assigned_tasks(normalized_message: str) -> bool:
-    assigned_words = ("assigned", "my task", "tasks do i have", "task cua toi", "cong viec cua toi", "duoc giao")
-    return any(word in normalized_message for word in assigned_words)
+def _answer_from_guides(language: str, normalized_message: str) -> tuple[int, str | None]:
+    keywords = _normalize_for_search(normalized_message)
+    if not keywords:
+        return 0, None
+
+    is_broad = any(kw in normalized_message for kw in BROAD_INTENT_KEYWORDS) or len(keywords) <= 2
+
+    guide_scores = []
+    section_scores = []
+
+    for guide_slug, guide in help_repository._GUIDE_DETAILS.items():
+        g_title = guide["title"].lower()
+        g_intro = guide["introduction"].lower()
+        g_score = 0
+        for kw in keywords:
+            if kw in g_title:
+                g_score += 5
+            if kw in guide_slug:
+                g_score += 3
+            if kw in g_intro:
+                g_score += 1
+        if g_score > 0:
+            guide_scores.append((g_score, guide))
+        for section in guide.get("sections", []):
+            s_title = section["title"].lower()
+            s_content = section["content"].lower()
+            s_score = 0
+            for kw in keywords:
+                if kw in s_title:
+                    s_score += 4
+                if kw in s_content:
+                    s_score += 1
+            if s_score > 0:
+                section_scores.append((s_score, guide, section))
+
+    guide_scores.sort(key=lambda x: x[0], reverse=True)
+    section_scores.sort(key=lambda x: x[0], reverse=True)
+
+    max_score = 0
+    if guide_scores:
+        max_score = max(max_score, guide_scores[0][0])
+    if section_scores:
+        max_score = max(max_score, section_scores[0][0])
+
+    if not guide_scores and not section_scores:
+        return 0, None
+
+    best_guide = guide_scores[0] if guide_scores else None
+    best_sections = section_scores[:3] if section_scores else []
+
+    if is_broad and best_guide and (not best_sections or best_guide[0] >= best_sections[0][0]):
+        guide = best_guide[1]
+        intro_str = "Tổng quan về" if language == "vi" else "Here is an overview of"
+        out = f"{intro_str} {guide['title']}:\n\n{_strip_markdown(guide['introduction'])}\n\n"
+        for sec in guide.get("sections", [])[:2]:
+            out += _format_section(sec) + "\n\n"
+        return max_score, out.strip()
+
+    if best_sections:
+        top_score = best_sections[0][0]
+        sections_to_use = [s for s in best_sections if s[0] >= top_score * 0.5]
+        intro_phrases = []
+        body = ""
+        for score, guide, section in sections_to_use:
+            intro_phrases.append(f"{guide['title']} ({section['title']})")
+            body += _format_section(section) + "\n\n"
+        intro_start = "Dưới đây là thông tin về" if language == "vi" else "Here is information regarding"
+        intro_list = ", ".join(intro_phrases)
+        out = f"{intro_start} {intro_list}:\n\n{body}"
+        return max_score, out.strip()
+
+    return max_score, None
 
 
-def _asks_for_database_data(normalized_message: str) -> bool:
-    data_words = (
-        "show", "list", "how many", "which sprint", "highest", "overdue", "today", "database",
-        "hien thi", "liet ke", "bao nhieu", "qua han", "hom nay",
-    )
-    taskflow_words = ("task", "sprint", "space", "notification", "cong viec", "thong bao")
-    return any(word in normalized_message for word in data_words) and any(
-        word in normalized_message for word in taskflow_words
-    )
+def _format_section(section: dict) -> str:
+    content = _strip_markdown(section['content'])
+    content = re.sub(r'^\s*-\s+', '• ', content, flags=re.MULTILINE)
+    out = f"{section['title']}:\n{content}"
+    if section.get("steps"):
+        steps_text = "\n\n".join(f"{s['step']}. {s['title']}\n   {_strip_markdown(s['description'])}" for s in section["steps"])
+        out += f"\n\n{steps_text}"
+    return out
 
 
-def _answer_from_guides(language: str, normalized_message: str) -> str | None:
-    guide_keywords = {
-        "getting-started": ("start", "begin", "account", "login", "register", "bat dau", "dang nhap", "dang ky"),
-        "user-permissions": ("permission", "role", "owner", "member", "super admin", "quyen", "vai tro"),
-        "dashboard-overview": ("dashboard", "overview", "metric", "search", "tong quan", "tim kiem"),
-        "task-management": ("task", "sprint", "kanban", "assignee", "comment", "attachment", "cong viec", "binh luan"),
-    }
-    matched_slug = next(
-        (
-            slug
-            for slug, keywords in guide_keywords.items()
-            if any(keyword in normalized_message for keyword in keywords)
-        ),
-        None,
-    )
-    if not matched_slug:
-        return None
-
-    guide = help_repository.get_guide_by_slug(matched_slug)
-    if not guide:
-        return None
-
-    lines = [f"{guide['title']}: {guide['introduction']}"]
-    for section in guide.get("sections", [])[:2]:
-        first_line = section["content"].splitlines()[0]
-        lines.append(f"- {section['title']}: {first_line}")
-    return "\n".join(lines)
-
-
-def _format_notifications(language: str, notifications: list) -> str:
-    if not notifications:
-        return _text(language, "no_notifications")
-    heading = "\u0054\u0068\u00f4\u006e\u0067 \u0062\u00e1\u006f \u0067\u1ea7\u006e \u0111\u00e2\u0079 \u0063\u1ee7\u0061 \u0062\u1ea1\u006e:" if language == "vi" else "Your recent notifications:"
-    lines = [heading]
-    for notification in notifications:
-        if language == "vi":
-            state = "\u0063\u0068\u01b0\u0061 \u0111\u1ecdc" if not notification.is_read else "\u0111\u00e3 \u0111\u1ecdc"
-        else:
-            state = "unread" if not notification.is_read else "read"
-        lines.append(f"- {notification.title} ({state})")
-    return "\n".join(lines)
-
-
-def _format_completed_count(language: str, count: int, scoped_to_space: bool) -> str:
-    if language == "vi":
-        scope = "\u0074\u0072\u006f\u006e\u0067 Space \u0068\u0069\u1ec7\u006e \u0074\u1ea1\u0069" if scoped_to_space else "\u0074\u0072\u00ea\u006e \u0063\u00e1\u0063 Space \u0062\u1ea1\u006e \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f"
-        return f"\u0042\u1ea1\u006e \u0063\u00f3 {count} Task \u0111\u00e3 \u0068\u006f\u00e0\u006e \u0074\u0068\u00e0\u006e\u0068 {scope}."
-    scope = "in the current Space" if scoped_to_space else "across Spaces assigned to you"
-    return f"You have {count} completed Task(s) {scope}."
-
-
-def _format_tasks(language: str, tasks: list) -> str:
-    if not tasks:
-        return _text(language, "no_tasks")
-    heading = "\u0043\u00e1\u0063 Task \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f \u0063\u0068\u006f \u0062\u1ea1\u006e \u0067\u1ea7\u006e \u0111\u00e2\u0079:" if language == "vi" else "Recent Tasks assigned to you:"
-    lines = [heading]
-    for task in tasks:
-        lines.append(f"- {task.task_id}: {task.title} ({task.task_status})")
-    return "\n".join(lines)
+def _safe_truncate(text: str, max_length: int = 1500) -> str:
+    if len(text) <= max_length:
+        return text
+    truncated = text[:max_length - 3]
+    last_space = truncated.rfind(' ')
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    return truncated + "..."
 
 
 def _text(language: str, key: str) -> str:
     translations = {
         "prompt_injection": {
             "en": "I cannot follow requests that try to bypass TaskFlow security, privacy, or authorization rules.",
-            "vi": "\u0054\u00f4\u0069 \u006b\u0068\u00f4\u006e\u0067 \u0074\u0068\u1ec3 \u0074\u0068\u1ef1\u0063 \u0068\u0069\u1ec7\u006e \u0079\u00ea\u0075 \u0063\u1ea7\u0075 \u0063\u1ed1 \u0067\u1eaf\u006e\u0067 \u0062\u1ecf \u0071\u0075\u0061 \u0063\u00e1\u0063 \u0071\u0075\u0079 \u0074\u1eaf\u0063 \u0062\u1ea3\u006f \u006d\u1ead\u0074, \u0071\u0075\u0079\u1ec1\u006e \u0074\u0072\u0075\u0079 \u0063\u1ead\u0070 \u0068\u006f\u1eb7\u0063 \u0071\u0075\u0079\u1ec1\u006e \u0072\u0069\u00ea\u006e\u0067 \u0074\u01b0 \u0063\u1ee7\u0061 TaskFlow.",
+            "vi": "Tôi không thể thực hiện yêu cầu cố gắng bỏ qua các quy tắc bảo mật, quyền truy cập hoặc quyền riêng tư của TaskFlow.",
         },
-        "unsupported_data": {
-            "en": "I do not have enough available information to answer that safely. I can help with your assigned Tasks, completed Task counts, Notifications, and TaskFlow workflow questions.",
-            "vi": "\u0054\u00f4\u0069 \u0063\u0068\u01b0\u0061 \u0063\u00f3 \u0111\u1ee7 \u0074\u0068\u00f4\u006e\u0067 \u0074\u0069\u006e \u006b\u0068\u1ea3 \u0064\u1ee5\u006e\u0067 \u0111\u1ec3 \u0074\u0072\u1ea3 \u006c\u1eddi \u0061\u006e \u0074\u006f\u00e0\u006e. \u0054\u00f4\u0069 \u0063\u00f3 \u0074\u0068\u1ec3 \u0068\u1ed7 \u0074\u0072\u1ee3 Task \u0111\u01b0\u1ee3\u0063 \u0067\u0069\u0061\u006f \u0063\u0068\u006f \u0062\u1ea1\u006e, \u0073\u1ed1 Task \u0111\u00e3 \u0068\u006f\u00e0\u006e \u0074\u0068\u00e0\u006e\u0068, Notification \u0076\u00e0 \u0063\u00e1\u0063 \u0063\u00e2\u0075 \u0068\u1ecfi \u0076\u1ec1 \u0071\u0075\u0079 \u0074\u0072\u00ec\u006e\u0068 TaskFlow.",
+        "no_guide": {
+            "en": "Sorry, I couldn't find any relevant information in the TaskFlow user guide.",
+            "vi": "Xin lỗi, tôi không tìm thấy thông tin phù hợp trong hướng dẫn sử dụng TaskFlow.",
         },
-        "fallback": {
-            "en": "I can help with TaskFlow workflows such as Tasks, Sprint, Space, Dashboard, Notification, Kanban, roles, and basic progress questions.",
-            "vi": "\u0054\u00f4\u0069 \u0063\u00f3 \u0074\u0068\u1ec3 \u0068\u1ed7 \u0074\u0072\u1ee3 \u0063\u00e1\u0063 \u0071\u0075\u0079 \u0074\u0072\u00ec\u006e\u0068 TaskFlow \u006e\u0068\u01b0 Task, Sprint, Space, Dashboard, Notification, Kanban, \u0076\u0061\u0069 \u0074\u0072\u00f2 \u0076\u00e0 \u0063\u00e1\u0063 \u0063\u00e2\u0075 \u0068\u1ecfi \u0074\u0069\u1ebf\u006e \u0111\u1ed9 \u0063\u01a1 \u0062\u1ea3\u006e.",
+        "input_too_long": {
+            "en": "The number of characters exceeds the maximum allowed limit characters.",
+            "vi": "Số lượng ký tự đã vượt quá giới hạn cho phép ",
         },
-        "no_notifications": {
-            "en": "No matching Notifications were found.",
-            "vi": "\u004b\u0068\u00f4\u006e\u0067 \u0074\u00ec\u006d \u0074\u0068\u1ea5\u0079 Notification \u0070\u0068\u00f9 \u0068\u1ee3\u0070.",
+        "greeting": {
+            "en": "Hello! How can I assist you with TaskFlow today?",
+            "vi": "Xin chào! Tôi có thể giúp bạn với TaskFlow như thế nào?",
         },
-        "no_tasks": {
-            "en": "No matching Tasks were found.",
-            "vi": "\u004b\u0068\u00f4\u006e\u0067 \u0074\u00ec\u006d \u0074\u0068\u1ea5\u0079 Task \u0070\u0068\u00f9 \u0068\u1ee3\u0070.",
+        "system_data": {
+            "en": "Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.",
+            "vi": "Xin lỗi, tôi hiện không thể truy cập dữ liệu thời gian thực hoặc thông tin cá nhân trong hệ thống TaskFlow. Tôi chỉ có thể hỗ trợ các câu hỏi về hướng dẫn sử dụng và các tính năng của hệ thống.",
         },
     }
     return translations[key][language]

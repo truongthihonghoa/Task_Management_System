@@ -81,6 +81,11 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     return auth_service.reset_password(db, payload.email, payload.token, payload.password)
 
 
+@router.get("/verify-reset-token", response_model=MessageResponse, status_code=200)
+def verify_reset_token(email: str, token: str, db: Session = Depends(get_db)) -> MessageResponse:
+    return auth_service.verify_reset_token(db, email, token)
+
+
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     return auth_service.register(db, payload)

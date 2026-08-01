@@ -86,6 +86,14 @@ export async function resetPassword({ email, token, password, confirmPassword })
   return response.data;
 }
 
+export async function verifyResetToken({ email, token }) {
+  const response = await axiosClient.get('/auth/verify-reset-token', {
+    params: { email, token },
+    skipAuthRefresh: true,
+  });
+  return response.data;
+}
+
 export async function checkEmail(email) {
   const response = await axiosClient.post(
     '/auth/check-email',
