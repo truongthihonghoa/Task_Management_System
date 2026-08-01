@@ -1,5 +1,21 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Bell,
+  CheckSquare,
+  ChevronDown,
+  Circle,
+  ClipboardList,
+  FolderKanban,
+  HelpCircle,
+  LayoutGrid,
+  Menu,
+  Plus,
+  Search,
+  SearchX,
+  Settings,
+  Users,
+} from 'lucide-react';
 import taskflowLogo from '../../assets/taskflow-logo.png';
 import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
@@ -28,6 +44,13 @@ const NOTIFICATION_POLL_INTERVAL_MS = 25000;
 const SEARCH_DEBOUNCE_MS = 120;
 const RECENT_SEARCH_DEBOUNCE_MS = 0;
 const EMPTY_SEARCH_RESULTS = { spaces: [], tasks: [], users: [] };
+const LAYOUT_ICON_COMPONENTS = {
+  'layout-grid': LayoutGrid,
+  'clipboard-list': ClipboardList,
+  users: Users,
+  'help-circle': HelpCircle,
+  settings: Settings,
+};
 
 const copyLayoutQueryParams = (search) => {
   const currentParams = new URLSearchParams(search);
@@ -56,22 +79,56 @@ function formatNotificationTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
 
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  if (diffMinutes < 1) return 'Just now';
-  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+  const time = new Intl.DateTimeFormat('en', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (left, right) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
 
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  if (sameDay(date, today) || sameDay(date, yesterday)) return time;
 
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-
-  return new Intl.DateTimeFormat('en', {
+  const day = new Intl.DateTimeFormat('en', {
     month: 'short',
     day: '2-digit',
+    year: 'numeric',
   }).format(date);
+  return `${day} ${time}`;
+}
+
+function formatNotificationFullTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const time = new Intl.DateTimeFormat('en', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (left, right) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+
+  if (sameDay(date, today)) return `Today, ${time}`;
+  if (sameDay(date, yesterday)) return `Yesterday, ${time}`;
+
+  const day = new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  }).format(date);
+  return `${day} ${time}`;
 }
 
 function notificationGroup(value) {
@@ -119,6 +176,7 @@ function mapNotification(notification) {
     triggered_by_initials: getInitials(actorName),
     is_read: notification.is_read,
     created_at: formatNotificationTime(notification.created_at),
+    created_at_full: formatNotificationFullTime(notification.created_at),
     created_at_raw: notification.created_at,
     group: notificationGroup(notification.created_at),
     audience: notification.audience,
@@ -693,16 +751,16 @@ export default function MainLayout() {
 <nav className="flex-1 px-3 space-y-1 mt-4">
   {primaryNavigationItems.map((item) => {
     const isActive = item.match(location.pathname);
+    const NavigationIcon = LAYOUT_ICON_COMPONENTS[item.icon] || Circle;
 
     const linkContent = (
       <>
         <div className="flex items-center min-w-0">
-          <i
+          <NavigationIcon
             className={`w-5 h-5 mr-3 shrink-0 ${
               isActive ? 'text-[#2D1B4E]' : ''
             }`}
-            data-lucide={item.icon}
-          ></i>
+          />
 
           <span
             className={`text-sm ${
@@ -761,6 +819,7 @@ export default function MainLayout() {
 >
   {supportNavigationItems.map((item) => {
     const isActive = item.match(location.pathname);
+    const NavigationIcon = LAYOUT_ICON_COMPONENTS[item.icon] || Circle;
 
     return isActive ? (
       <div
@@ -777,10 +836,9 @@ export default function MainLayout() {
             handleDashboardLinkClick(event, item.path)
           }
         >
-          <i
+          <NavigationIcon
             className="w-5 h-5 mr-3 text-[#2D1B4E]"
-            data-lucide={item.icon}
-          ></i>
+          />
 
           <span className="text-sm font-bold">
             {item.label}
@@ -797,10 +855,9 @@ export default function MainLayout() {
           handleDashboardLinkClick(event, item.path)
         }
       >
-        <i
+        <NavigationIcon
           className="w-5 h-5 mr-3"
-          data-lucide={item.icon}
-        ></i>
+        />
 
         <span className="text-sm font-medium">
           {item.label}
@@ -825,12 +882,12 @@ export default function MainLayout() {
               className="p-2 mr-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               title={isSidebarOpen ? "Thu gọn menu" : "Mở rộng menu"}
             >
-              <i className="w-5 h-5" data-lucide="menu"></i>
+              <Menu className="w-5 h-5" />
             </button>
 
             <div className="relative w-full" ref={searchRef}>
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <i className="h-4 w-4 text-gray-400" data-lucide="search"></i>
+                <Search className="h-4 w-4 text-gray-400" />
               </div>
               <input
                 className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-200 focus:border-gray-300"
@@ -887,7 +944,7 @@ export default function MainLayout() {
                             className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#F0EDFF] border border-purple-100 flex items-center justify-center shrink-0">
-                              <i className="w-4 h-4 text-[#4C2B74]" data-lucide="folder-kanban"></i>
+                              <FolderKanban className="w-4 h-4 text-[#4C2B74]" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 min-w-0">
@@ -934,7 +991,7 @@ export default function MainLayout() {
                             className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[#FAF8FF] transition-colors cursor-pointer"
                           >
                             <div className="w-9 h-9 rounded-lg bg-[#EEF2FF] border border-blue-100 flex items-center justify-center shrink-0">
-                              <i className="w-4 h-4 text-[#4C2B74]" data-lucide="check-square"></i>
+                              <CheckSquare className="w-4 h-4 text-[#4C2B74]" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 min-w-0">
@@ -1010,7 +1067,7 @@ export default function MainLayout() {
                     {!isSearchLoading && !hasSearchResults && (
                       <div className="px-6 py-10 text-center">
                         <div className="w-12 h-12 mx-auto rounded-full bg-gray-50 flex items-center justify-center mb-3">
-                          <i className="w-5 h-5 text-gray-300" data-lucide="search-x"></i>
+                          <SearchX className="w-5 h-5 text-gray-300" />
                         </div>
                         <p className="text-sm font-bold text-gray-700">No results found</p>
                         <p className="text-xs text-gray-400 mt-1">
@@ -1042,7 +1099,7 @@ export default function MainLayout() {
                 onClick={() => setShowCreateModal(true)}
                 className="bg-[#2D1B4E] text-white px-4 py-2 rounded-lg flex items-center text-sm font-semibold hover:bg-opacity-90 transition-all font-['Inter']"
               >
-                <i className="w-4 h-4 mr-2" data-lucide="plus"></i>
+                <Plus className="w-4 h-4 mr-2" />
                 Create Task
               </button>
             )}
@@ -1062,10 +1119,7 @@ export default function MainLayout() {
                     {language === "en" ? "EN" : "VI"}
                 </span>
 
-                <i
-                    className="w-4 h-4 text-gray-500"
-                    data-lucide="chevron-down"
-                ></i>
+                <ChevronDown className="w-4 h-4 text-gray-500" />
             </button>
             {showApps && (
               <div
@@ -1105,7 +1159,7 @@ export default function MainLayout() {
                 className="relative text-gray-500 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                 title="View notifications"
               >
-                <i className="w-6 h-6" data-lucide="bell"></i>
+                <Bell className="w-6 h-6" />
                 {unreadCount > 0 && (
                   <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#EF4444] rounded-full border-2 border-white"></span>
                 )}

@@ -11,6 +11,7 @@ import {
   getSuperAdminRecentActivities,
 } from '../api/dashboardApi';
 import { API_BASE_URL } from '../api/axiosClient';
+import { useAuth } from '../context/AuthContext';
 
 const getLayoutQueryString = (search) => {
   const currentParams = new URLSearchParams(search);
@@ -78,16 +79,27 @@ const formatDateTime = (value) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+const formatShortDate = (value, uppercase = false) => {
+  const date = normalizeDate(value);
+  if (!date) return uppercase ? 'RECENT' : 'Recent';
+  const label = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  }).format(date);
+  return uppercase ? label.toUpperCase() : label;
+};
+
 const groupFromDate = (value, uppercase = false) => {
   const date = normalizeDate(value);
-  if (!date) return uppercase ? 'IN THE LAST WEEK' : 'In the last week';
+  if (!date) return uppercase ? 'RECENT' : 'Recent';
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const daysAgo = Math.floor((startOfToday - startOfDate) / 86400000);
   if (daysAgo <= 0) return uppercase ? 'TODAY' : 'Today';
   if (daysAgo === 1) return uppercase ? 'YESTERDAY' : 'Yesterday';
-  return uppercase ? 'IN THE LAST WEEK' : 'In the last week';
+  return formatShortDate(date, uppercase);
 };
 
 const formatRelativeTime = (value) => {
@@ -238,6 +250,15 @@ const AUDIT_DATE_RANGE_OPTIONS = [
   { value: "Last 6 months", label: "Last 6 months" },
 ];
 
+const ACTIVITY_DATE_OPTIONS = [
+  "All Dates",
+  "Today",
+  "Yesterday",
+  "Last 7 days",
+  "Last 30 days",
+  "Last 90 days",
+];
+
 const auditEventKey = (value = '') => String(value)
   .trim()
   .toLowerCase()
@@ -260,6 +281,113 @@ const matchesAuditDateRange = (value, range) => {
   const days = daysByRange[range];
   if (!days) return true;
   return date.getTime() >= Date.now() - (days * 24 * 60 * 60 * 1000);
+};
+
+const matchesActivityDateRange = (value, range) => {
+  if (range === "All Dates") return true;
+  const date = normalizeDate(value);
+  if (!date) return false;
+  if (range === "Today") return groupFromDate(value) === "Today";
+  if (range === "Yesterday") return groupFromDate(value) === "Yesterday";
+
+  const daysByRange = {
+    "Last 7 days": 7,
+    "Last 30 days": 30,
+    "Last 90 days": 90,
+  };
+  const days = daysByRange[range];
+  if (!days) return true;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const from = new Date(startOfToday);
+  from.setDate(startOfToday.getDate() - (days - 1));
+  return date.getTime() >= from.getTime();
+};
+
+const groupActivitiesByDate = (items = []) => items.reduce((groups, item) => {
+  const heading = item.group || groupFromDate(item.createdAt, true);
+  const existingGroup = groups.find((group) => group.heading === heading);
+  if (existingGroup) {
+    existingGroup.items.push(item);
+  } else {
+    groups.push({ heading, items: [item] });
+  }
+  return groups;
+}, []);
+
+const dedupeLatestViewedItems = (items = []) => {
+  const latestByTarget = new Map();
+
+  items.forEach((item) => {
+    const targetKey = item.targetId || item.target || item.title || item.subtitle;
+    if (!targetKey) return;
+    const date = normalizeDate(item.createdAt);
+    const dayKey = date
+      ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+      : item.group || 'unknown-day';
+    const key = `${item.type || 'item'}:${targetKey}:${dayKey}`;
+    const current = latestByTarget.get(key);
+    const currentTime = normalizeDate(current?.createdAt)?.getTime() || 0;
+    const nextTime = date?.getTime() || 0;
+    if (!current || nextTime >= currentTime) {
+      latestByTarget.set(key, item);
+    }
+  });
+
+  return Array.from(latestByTarget.values()).sort((a, b) => (
+    (normalizeDate(b.createdAt)?.getTime() || 0) - (normalizeDate(a.createdAt)?.getTime() || 0)
+  ));
+};
+
+const getAssignmentPersonKey = (person) => (
+  person?.user_id ||
+  person?.id ||
+  person?.email ||
+  person?.full_name ||
+  person?.name ||
+  ''
+);
+
+const buildAssignmentHistoryTimeline = (items = []) => {
+  const assigneesByTask = new Map();
+  const chronological = [...items].sort((a, b) => (
+    (normalizeDate(a.createdAt)?.getTime() || 0) - (normalizeDate(b.createdAt)?.getTime() || 0)
+  ));
+
+  const mapped = chronological.map((item) => {
+    const taskKey = item.task_id || item.task_title || item.assignment_history_id;
+    const current = new Map(assigneesByTask.get(taskKey) || []);
+    const previousKey = getAssignmentPersonKey(item.previous_assignee);
+    const nextKey = getAssignmentPersonKey(item.new_assignee);
+    const hasPrevious = Boolean(previousKey);
+    const hasNext = Boolean(nextKey);
+
+    if ((hasPrevious && !current.has(previousKey)) && (!hasNext || hasPrevious)) {
+      current.set(previousKey, item.previous_assignee);
+    }
+
+    const beforeAssignees = Array.from(current.values());
+
+    if (hasPrevious && !hasNext) {
+      current.delete(previousKey);
+    } else if (!hasPrevious && hasNext) {
+      current.set(nextKey, item.new_assignee);
+    } else if (hasPrevious && hasNext) {
+      current.delete(previousKey);
+      current.set(nextKey, item.new_assignee);
+    }
+
+    assigneesByTask.set(taskKey, current);
+    return {
+      ...item,
+      before_assignees: beforeAssignees,
+      after_assignees: Array.from(current.values()),
+    };
+  });
+
+  return mapped.sort((a, b) => (
+    (normalizeDate(b.createdAt)?.getTime() || 0) - (normalizeDate(a.createdAt)?.getTime() || 0)
+  ));
 };
 
 const toApiAuditEventType = (value) => {
@@ -445,6 +573,8 @@ const mapAuditActivity = (log) => {
   const label = normalizeAuditLabelTitle(log?.label_title, log?.action);
   return {
     actionKey: log?.action || '',
+    userId: log?.user?.user_id || '',
+    userEmail: log?.user?.email || '',
     user: user.full_name,
     initials: user.initials,
     avatarColor: user.color,
@@ -473,6 +603,7 @@ const mapRecentActivityTask = (activity, uppercaseGroup = true, { showSpaceConte
     status: activity?.status || '',
     group: groupFromDate(activity?.created_at, uppercaseGroup),
     time: formatRelativeTime(activity?.created_at),
+    createdAt: activity?.created_at,
     assignees,
     icon: activity?.target_type === 'space' ? 'folder' : activity?.target_type === 'user' ? 'group' : 'check_box',
     type: activity?.target_type || 'task',
@@ -500,6 +631,8 @@ const mapRecentActivityPreview = (activity) => {
   const label = normalizeAuditLabelTitle(activity?.label_title || activity?.target_type, activity?.action);
   const status = activity?.status || label;
   return {
+    userId: activity?.user?.user_id || activity?.user_id || '',
+    userEmail: activity?.user?.email || activity?.user_email || '',
     user: user.full_name,
     initials: user.initials,
     avatarColor: user.color,
@@ -534,8 +667,28 @@ const mapAssignmentHistory = (history, { showSpaceContext = true } = {}) => {
     status: history?.change_status || 'done',
     group: groupFromDate(history?.changed_at, true),
     changed_at: formatDateTime(history?.changed_at),
+    createdAt: history?.changed_at,
     space_id: history?.space_id,
   };
+};
+
+const getActivityDisplayUser = (activity, authUser) => {
+  const activityUserId = activity?.userId || '';
+  const authUserId = authUser?.user_id || authUser?.id || '';
+  const activityEmail = String(activity?.userEmail || '').toLowerCase();
+  const authEmail = String(authUser?.email || '').toLowerCase();
+  const activityName = String(activity?.user || '').trim();
+  const authName = String(authUser?.full_name || authUser?.name || '').trim();
+
+  if (
+    (activityUserId && authUserId && activityUserId === authUserId) ||
+    (activityEmail && authEmail && activityEmail === authEmail) ||
+    (activityName && authName && activityName === authName)
+  ) {
+    return 'You';
+  }
+
+  return activity?.user || 'System';
 };
 
 const fetchSuperAdminDashboardBundle = async ({ spaceId } = {}) => {
@@ -579,6 +732,46 @@ const assignmentStatusStyles = {
 
 const formatAssignmentStatus = (status = "") => status.replace(/_/g, " ").toUpperCase();
 
+const getAssignmentChangeMeta = (task) => {
+  const hasPrevious = Boolean(task?.previous_assignee);
+  const hasNext = Boolean(task?.new_assignee);
+  if (hasPrevious && !hasNext) {
+    return {
+      label: "Removed",
+      detail: "Removed from task board",
+      className: "bg-red-50 text-red-700 border-red-100",
+      icon: "person_remove",
+    };
+  }
+  if (!hasPrevious && hasNext) {
+    return {
+      label: "Added",
+      detail: "Assigned from task board",
+      className: "bg-green-50 text-green-700 border-green-100",
+      icon: "person_add",
+    };
+  }
+  return {
+    label: "Replaced",
+    detail: "Updated from task board",
+    className: "bg-purple-50 text-[#4C2B74] border-purple-100",
+    icon: "swap_horiz",
+  };
+};
+
+const getAssignmentReasonText = (task, meta) => {
+  const reason = String(task?.reason || '').trim();
+  if (!reason) return meta.detail;
+  return reason;
+};
+
+const getAssignmentReasonTone = (label = '') => {
+  const key = String(label).toLowerCase();
+  if (key === 'removed') return 'text-red-600';
+  if (key === 'added') return 'text-green-600';
+  return 'text-[#4C2B74]';
+};
+
 // Reusable Sub-components for cleaner structure
 const UserAvatar = ({
   user,
@@ -603,6 +796,79 @@ const UserAvatar = ({
   );
 };
 
+const AssignmentPersonPill = ({ person, muted = false }) => {
+  const displayPerson = person || {
+    full_name: "Unassigned",
+    initials: "U",
+    color: "#DB2777",
+  };
+  const name = displayPerson.full_name || displayPerson.name || displayPerson.email || "Unassigned";
+  return (
+    <span
+      className={`inline-flex min-w-0 max-w-[170px] items-center gap-2 rounded-lg border px-2 py-1.5 ${
+        muted
+          ? "border-gray-100 bg-gray-50 text-[#5e636e]"
+          : "border-[#eee7f7] bg-white text-[#170338] shadow-sm"
+      }`}
+      title={name}
+    >
+      <UserAvatar user={displayPerson} sizeClass="w-6 h-6" textClass="text-[8px]" className="shadow-sm" />
+      <span className="truncate text-[12px] font-bold">{name}</span>
+    </span>
+  );
+};
+
+const AssignmentPeopleList = ({ people = [], muted = false }) => {
+  const normalizedPeople = people.length ? people : [null];
+  const visiblePeople = normalizedPeople.slice(0, 3);
+  const hiddenPeople = normalizedPeople.slice(3);
+  const hiddenNames = hiddenPeople
+    .map((person) => person?.full_name || person?.name || person?.email || "Unassigned")
+    .join(", ");
+
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+      {visiblePeople.map((person, index) => (
+        <AssignmentPersonPill
+          key={getAssignmentPersonKey(person) || `unassigned-${index}`}
+          person={person}
+          muted={muted || !person}
+        />
+      ))}
+      {hiddenPeople.length > 0 && (
+        <span
+          className="inline-flex h-8 items-center rounded-lg border border-[#eee7f7] bg-white px-2 text-[11px] font-black text-[#4C2B74] shadow-sm"
+          title={hiddenNames}
+        >
+          +{hiddenPeople.length}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const AssignmentChangeSummary = ({ task }) => {
+  const meta = getAssignmentChangeMeta(task);
+  const reasonText = getAssignmentReasonText(task, meta);
+  const [reasonLead, ...reasonRestParts] = reasonText.split(/\s+/);
+  const reasonRest = reasonRestParts.join(' ');
+  const beforeAssignees = task.before_assignees || (task.previous_assignee ? [task.previous_assignee] : []);
+  const afterAssignees = task.after_assignees || (task.new_assignee ? [task.new_assignee] : []);
+  return (
+    <div className="min-w-0 max-w-[620px] space-y-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <AssignmentPeopleList people={beforeAssignees} muted={beforeAssignees.length === 0} />
+        <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-[#8a8f98]">to</span>
+        <AssignmentPeopleList people={afterAssignees} muted={afterAssignees.length === 0} />
+      </div>
+      <p className="line-clamp-1 text-[11px] font-medium text-[#5e636e]">
+        <span className={`font-black ${getAssignmentReasonTone(meta.label)}`}>{reasonLead}</span>
+        {reasonRest && <span> {reasonRest}</span>}
+      </p>
+    </div>
+  );
+};
+
 const StatCard = ({ icon, label, value, colorClass, gradientClass, delay, compact = false }) => (
   <div className={`${gradientClass} ${compact ? 'px-5 py-4 rounded-2xl gap-3.5 min-h-[86px]' : 'p-6 rounded-2xl gap-4'} border border-white shadow-sm flex items-center interactive-card animate-card min-w-0`} style={{ animationDelay: delay }}>
     <div className={`${compact ? 'w-11 h-11 rounded-xl' : 'w-12 h-12 rounded-xl'} bg-white/70 flex items-center justify-center ${colorClass} shadow-sm ring-1 ring-white/70 shrink-0`}>
@@ -615,51 +881,54 @@ const StatCard = ({ icon, label, value, colorClass, gradientClass, delay, compac
   </div>
 );
 
-const ActivityItem = ({ activity, isCompact = true }) => (
-  <div className="flex gap-4 group">
-    <div
-      className={`rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border border-white shadow-sm ${isCompact ? 'w-10 h-10' : 'w-10 h-10 rounded-full'}`}
-      style={{ backgroundColor: activity.avatarColor, color: activity.textColor }}
-    >
-      {activity.avatarUrl ? (
-        <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full rounded-xl object-cover" />
-      ) : (
-        activity.initials
-      )}
-    </div>
-    <div className="flex-1">
-      <div className={`flex flex-wrap items-center gap-x-1 behavior-relaxed ${isCompact ? 'text-[13px]' : 'text-[13px]'}`}>
-        <span className={`font-bold ${isCompact ? 'text-[#170338]' : 'text-[#4C2B74] hover:underline cursor-pointer'}`}>{activity.user}</span>
-        {!isCompact && <span className="text-[#5e636e] mx-1.5">{activity.action}</span>}
-        {isCompact && <span className="text-[#5e636e] mx-1">{activity.action}</span>}
-        <span className={`status-pill px-2 py-0.5 rounded ${isCompact ? 'rounded-full text-[9px]' : 'text-[10px]'} ${activity.statusColor} font-bold uppercase border whitespace-nowrap`}>
-          {activity.status}
-        </span>
-        {activity.target && (
-          <>
-            <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
-            {!isCompact ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
-                <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
-              </span>
-            ) : (
-              <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
-                {activity.target}
-              </span>
-            )}
-          </>
+const ActivityItem = ({ activity, isCompact = true, authUser = null }) => {
+  const displayUser = getActivityDisplayUser(activity, authUser);
+  return (
+    <div className="flex gap-4 group">
+      <div
+        className={`rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border border-white shadow-sm ${isCompact ? 'w-10 h-10' : 'w-10 h-10 rounded-full'}`}
+        style={{ backgroundColor: activity.avatarColor, color: activity.textColor }}
+      >
+        {activity.avatarUrl ? (
+          <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full rounded-xl object-cover" />
+        ) : (
+          activity.initials
         )}
       </div>
-      <p className="text-[11px] text-[#5e636e] mt-0.5">{activity.time}</p>
+      <div className="flex-1">
+        <div className={`flex flex-wrap items-center gap-x-1 behavior-relaxed ${isCompact ? 'text-[13px]' : 'text-[13px]'}`}>
+          <span className={`font-bold ${isCompact ? 'text-[#170338]' : 'text-[#4C2B74] hover:underline cursor-pointer'}`}>{displayUser}</span>
+          {!isCompact && <span className="text-[#5e636e] mx-1.5">{activity.action}</span>}
+          {isCompact && <span className="text-[#5e636e] mx-1">{activity.action}</span>}
+          <span className={`status-pill px-2 py-0.5 rounded ${isCompact ? 'rounded-full text-[9px]' : 'text-[10px]'} ${activity.statusColor} font-bold uppercase border whitespace-nowrap`}>
+            {activity.status}
+          </span>
+          {activity.target && (
+            <>
+              <span className="text-[#5e636e] mx-1">{isCompact ? 'on' : 'on'}</span>
+              {!isCompact ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer">
+                  <span className="material-symbols-outlined text-[14px]">check_box</span> {activity.target}
+                </span>
+              ) : (
+                <span className="font-semibold text-[#1a1c1e] cursor-pointer hover:text-[#4C2B74] underline decoration-gray-200">
+                  {activity.target}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <p className="text-[11px] text-[#5e636e] mt-0.5">{activity.time}</p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const AuditLogPreviewItem = ({ activity }) => (
-  <div className="group flex items-center justify-between gap-4 rounded-xl border border-transparent px-3 py-2.5 transition-all hover:border-purple-100 hover:bg-[#faf7ff]">
-    <div className="flex min-w-0 items-center gap-3">
+  <div className="group flex items-center justify-between gap-3 rounded-lg border border-transparent px-2.5 py-2 transition-all hover:border-purple-100 hover:bg-[#faf7ff]">
+    <div className="flex min-w-0 items-center gap-2.5">
       <div
-        className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-white shadow-sm flex items-center justify-center text-xs font-black"
+        className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-white shadow-sm flex items-center justify-center text-[11px] font-black"
         style={{ backgroundColor: activity.avatarColor, color: activity.textColor }}
       >
         {activity.avatarUrl ? (
@@ -670,14 +939,14 @@ const AuditLogPreviewItem = ({ activity }) => (
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="max-w-[130px] truncate text-[13px] font-black text-[#170338]">
+          <span className="max-w-[130px] truncate text-[13px] font-bold text-[#170338]">
             {activity.user}
           </span>
           <span className="min-w-0 truncate text-[13px] font-semibold text-[#5e636e]">
             {activity.action}
           </span>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] font-semibold text-[#5e636e]">
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] font-semibold text-[#5e636e]">
           <span className="truncate">{activity.time}</span>
           {activity.target && (
             <>
@@ -688,28 +957,30 @@ const AuditLogPreviewItem = ({ activity }) => (
         </div>
       </div>
     </div>
-    <span className={`shrink-0 status-pill px-2.5 py-1 rounded-full text-[9px] ${activity.statusColor} font-black uppercase border whitespace-nowrap`}>
+    <span className={`shrink-0 status-pill px-2 py-0.5 rounded-full text-[9px] ${activity.statusColor} font-black uppercase border whitespace-nowrap`}>
       {activity.status}
     </span>
   </div>
 );
 
-const RecentActivityTimelineItem = ({ activity }) => (
-  <div className="flex gap-3 py-1.5">
-    <div
-      className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-black text-white"
-      style={{ backgroundColor: activity.avatarColor }}
-      title={activity.user}
-    >
-      {activity.avatarUrl ? (
-        <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full object-cover" />
-      ) : (
-        activity.initials
-      )}
-    </div>
-    <div className="min-w-0 flex-1 text-[13px] leading-5 text-[#3f3f46]">
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        <span className="font-semibold text-[#4f46e5]">{activity.user}</span>
+const RecentActivityTimelineItem = ({ activity, authUser = null }) => {
+  const displayUser = getActivityDisplayUser(activity, authUser);
+  return (
+    <div className="flex gap-3 py-1.5">
+      <div
+        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-black text-white"
+        style={{ backgroundColor: activity.avatarColor }}
+        title={activity.user}
+      >
+        {activity.avatarUrl ? (
+          <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full object-cover" />
+        ) : (
+          activity.initials
+        )}
+      </div>
+      <div className="min-w-0 flex-1 text-[13px] leading-5 text-[#3f3f46]">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <span className="font-semibold text-[#4f46e5]">{displayUser}</span>
         <span className="text-[#3f3f46]">{activity.action}</span>
         {activity.target && (
           <>
@@ -728,13 +999,15 @@ const RecentActivityTimelineItem = ({ activity }) => (
       </div>
       <div className="mt-0.5 text-[13px] text-[#5e636e]">{activity.relativeTime || activity.time}</div>
     </div>
-  </div>
-);
+    </div>
+  );
+};
 
 const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, spaceId = null, summaryMemberId = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const { user: authUser } = useAuth();
   const [hoveredSegment, setHoveredSegment] = useState(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [hoveredPriority, setHoveredPriority] = useState(null);
@@ -744,6 +1017,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
   // Modal specific filters
   const [modalSearch, setModalSearch] = useState("");
+  const [debouncedModalSearch, setDebouncedModalSearch] = useState("");
   const [modalEventType, setModalEventType] = useState("All Events");
   const [modalTimeRange, setModalTimeRange] = useState("All time");
   const [modalSortOrder, setModalSortOrder] = useState("Newest First");
@@ -789,6 +1063,19 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   }, [isActivityModalOpen]);
 
   useEffect(() => {
+    if (!isActivityModalOpen) return;
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedModalSearch(modalSearch.trim());
+    }, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isActivityModalOpen, modalSearch]);
+
+  useEffect(() => {
+    if (!isActivityModalOpen) return;
+    setModalPage(1);
+  }, [debouncedModalSearch, isActivityModalOpen]);
+
+  useEffect(() => {
     if (!isAdmin || !isActivityModalOpen) return;
     let isMounted = true;
 
@@ -799,7 +1086,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
         const response = await getSuperAdminAuditLogs({
           page: modalPage,
           page_size: modalRowsPerPage,
-          search: modalSearch.trim() || undefined,
+          search: debouncedModalSearch || undefined,
           event_type: toApiAuditEventType(modalEventType),
           label_title: toApiAuditLabelTitle(modalLabelTitle),
           sort_order: toApiAuditSortOrder(modalSortOrder),
@@ -831,7 +1118,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
     modalLabelTitle,
     modalPage,
     modalRowsPerPage,
-    modalSearch,
+    debouncedModalSearch,
     modalSortOrder,
     modalTimeRange,
   ]);
@@ -1049,8 +1336,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   const maxPriorityValue = Math.max(...yAxisTicks, 1);
 
   const taskTabs = (isAdmin || isPrivilegedSpaceSummary)
-    ? ['Worked on', 'Recently viewed', 'Assign History']
-    : ['Worked on', 'Recently viewed', 'Assigned to me'];
+    ? ['Work on', 'View history', 'Assignment history']
+    : ['Work on', 'View history', 'Assigned to me'];
 
   const [activeTaskTab, setActiveTaskTab] = useState(taskTabs[0]);
 
@@ -1066,7 +1353,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
     ? ((adminAuditLogResponse?.items || []).map(mapAuditActivity))
     : (spaceSummary?.recent_activities?.map(mapRecentActivityPreview) || []);
   const recentActivityPreview = currentActivities;
-  const recentActivityGroups = ["Today", "Yesterday", "In the last week"];
+  const recentActivityGroups = groupActivitiesByDate(recentActivityPreview);
   const recentActivityDateGroups = recentActivityPreview.reduce((groups, activity) => {
     const heading = formatActivityDateHeading(activity.createdAt || activity.time);
     const existingGroup = groups.find((group) => group.heading === heading);
@@ -1110,6 +1397,11 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   const accountOverviewDescription = embedded
     ? "Monitor member status and health inside this space."
     : "Monitor the current status and health of user accounts across the system.";
+  const layoutQueryString = getLayoutQueryString(location.search);
+  const taskListQueryString = `${layoutQueryString}${layoutQueryString ? '&' : '?'}view=list`;
+  const statusOverviewPath = isEmbeddedSummary && spaceId
+    ? `/dashboard/tasks/${spaceId}${taskListQueryString}`
+    : `/dashboard/spaces${layoutQueryString}`;
   const renderPriorityBreakdown = (compact = false) => (
     <div className={`glass-card p-8 rounded-2xl flex flex-col w-full ${compact ? 'h-full' : ''}`}>
       <div className="mb-6 flex items-center justify-between">
@@ -1260,15 +1552,17 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
       const matchStatus = selectedStatus === "All Status" || item.status?.replace('_', ' ').toLowerCase() === selectedStatus.toLowerCase();
 
       // Filter by Date dropdown
-      const matchDate = selectedDate === "All Dates" || item.group?.toLowerCase() === selectedDate.toLowerCase();
+      const matchDate = matchesActivityDateRange(item.createdAt, selectedDate);
 
       return matchStatus && matchDate && matchSpace;
     });
   };
 
   const filteredWorkedOn = getFilteredData(currentWorkedOnTasks);
-  const filteredViewed = getFilteredData(currentViewedTasks);
-  const filteredAssigned = getFilteredData(currentAssignedTasks);
+  const filteredViewed = dedupeLatestViewedItems(getFilteredData(currentViewedTasks));
+  const filteredAssigned = buildAssignmentHistoryTimeline(getFilteredData(currentAssignedTasks));
+  const groupedWorkedOn = groupActivitiesByDate(filteredWorkedOn);
+  const groupedViewed = groupActivitiesByDate(filteredViewed);
 
   // Custom Audit Logs Filtering & Sorting Logic
   const auditLogRows = isAdmin
@@ -1285,7 +1579,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   const currentAuditPage = Math.min(modalPage, maxAuditPages);
   const auditStartIndex = (currentAuditPage - 1) * modalRowsPerPage;
   const auditEndIndex = totalAuditLogs === 0 ? 0 : Math.min(auditStartIndex + modalAuditRows.length, totalAuditLogs);
-  const paginatedAuditLogs = modalAuditLoading ? [] : modalAuditRows;
+  const paginatedAuditLogs = modalAuditRows;
 
   return (
     <div className="flex-1 overflow-y-auto px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 space-y-6 custom-scrollbar bg-[#FAFBFF]">
@@ -1457,7 +1751,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline transition-colors group-focus-within:text-[#0052CC]">search</span>
                         <input
                           value={modalSearch}
-                          onChange={(e) => { setModalSearch(e.target.value); setModalPage(1); }}
+                          onChange={(e) => { setModalSearch(e.target.value); }}
                           type="text"
                           placeholder="Search by User, Action, or Log ID..."
                           className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg focus:border-slate-600 focus:ring-0 transition-all font-body-md"
@@ -1719,7 +2013,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                         <p className="text-[12px] font-bold text-[#2f3136]">{group.heading}</p>
                         <div className="space-y-1">
                           {group.items.map((activity, idx) => (
-                            <RecentActivityTimelineItem key={`${group.heading}-${activity.targetId || activity.target || 'activity'}-${idx}`} activity={activity} />
+                            <RecentActivityTimelineItem key={`${group.heading}-${activity.targetId || activity.target || 'activity'}-${idx}`} activity={activity} authUser={authUser} />
                           ))}
                         </div>
                       </div>
@@ -1758,18 +2052,18 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
         </div>
 
         {/* 2x2 Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Status Overview (Top Left) */}
-          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-8 h-full'}`}>
-            <div className={isEmbeddedSummary ? 'mb-4' : 'mb-6'}>
+          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-6 h-full'}`}>
+            <div className={isEmbeddedSummary ? 'mb-4' : 'mb-4'}>
               <div className="flex items-center justify-between">
                 <h4 className="text-lg font-bold text-[#170338]">Status Overview</h4>
-                <Link to={`/dashboard/spaces${getLayoutQueryString(location.search)}`} className="text-[#170338] text-xs font-bold hover:underline">View all</Link>
+                <Link to={statusOverviewPath} className="text-[#170338] text-xs font-bold hover:underline">View all</Link>
               </div>
               <p className="text-[#5e636e] text-sm mt-1">Snapshot of your work item statuses.</p>
             </div>
-            <div className={`flex flex-col lg:flex-row items-center justify-around flex-1 ${isEmbeddedSummary ? 'gap-4 py-1' : 'gap-6 py-4'}`}>
-              <div className={`relative cursor-pointer ${isEmbeddedSummary ? 'w-44 h-44' : 'w-56 h-56'}`}>
+            <div className={`flex flex-col lg:flex-row items-center justify-around flex-1 ${isEmbeddedSummary ? 'gap-4 py-1' : 'gap-5 py-2'}`}>
+              <div className={`relative cursor-pointer ${isEmbeddedSummary ? 'w-44 h-44' : 'w-48 h-48'}`}>
                 {/* Tooltip Overlay - Absolute to this container */}
                 {hoveredSegment !== null && (
                   <div
@@ -1810,15 +2104,15 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   ))}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className={`${isEmbeddedSummary ? 'text-3xl' : 'text-4xl'} text-[#1a1c1e] font-bold tracking-tight`}>{totalTasksCount}</span>
+                  <span className={`${isEmbeddedSummary ? 'text-3xl' : 'text-3xl'} text-[#1a1c1e] font-bold tracking-tight`}>{totalTasksCount}</span>
                   <p className="text-[11px] text-[#5e636e] font-bold mt-1 text-center leading-tight">Total tasks</p>
                 </div>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {statusLegendData.map((item) => (
                   <div
                     key={item.key || item.index}
-                    className={`flex items-center gap-3 cursor-pointer p-1.5 rounded-lg transition-all ${hoveredSegment === item.index ? 'bg-gray-50 translate-x-1' : ''}`}
+                    className={`flex items-center gap-2.5 cursor-pointer p-1 rounded-md transition-all ${hoveredSegment === item.index ? 'bg-gray-50 translate-x-1' : ''}`}
                     onMouseEnter={() => setHoveredSegment(item.index)}
                     onMouseLeave={() => setHoveredSegment(null)}
                   >
@@ -1833,8 +2127,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
           </div>
 
           {/* Audit Logs (SUPER ADMIN) */}
-          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-0' : 'p-8 h-full'}`}>
-            <div className={`${isEmbeddedSummary ? 'mb-3' : 'mb-6'} flex justify-between items-start`}>
+          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-0' : 'p-6 h-full'}`}>
+            <div className={`${isEmbeddedSummary ? 'mb-3' : 'mb-4'} flex justify-between items-start`}>
               <div>
                 <h4 className="text-lg font-bold text-[#170338]">{isAdmin ? "Audit Logs" : "Recent Activity"}</h4>
                 <p className="text-[#5e636e] text-sm mt-1">
@@ -1849,14 +2143,13 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
               </button>
             </div>
             <div className={`relative ${isEmbeddedSummary ? 'min-h-0' : 'flex-1 min-h-0'}`}>
-              <div className={`overflow-y-auto custom-scrollbar pr-1 ${isEmbeddedSummary ? 'space-y-3 max-h-[265px] pb-1' : 'space-y-4 max-h-[400px]'}`}>
+              <div className={`overflow-y-auto custom-scrollbar pr-1 ${isEmbeddedSummary ? 'space-y-3 max-h-[265px] pb-1' : 'space-y-3 max-h-[320px]'}`}>
               {recentActivityPreview.length === 0 && (
                 <div className="rounded-xl border border-gray-100 bg-white/70 p-6 text-sm font-semibold text-[#5e636e]">
                   {dashboardLoading ? (isAdmin ? 'Loading audit logs...' : 'Loading recent activity...') : (isAdmin ? 'No audit logs found.' : 'No recent activity found.')}
                 </div>
               )}
-              {recentActivityGroups.map((group) => {
-                const groupActivities = recentActivityPreview.filter(a => a.group === group);
+              {recentActivityGroups.map(({ heading: group, items: groupActivities }) => {
                 if (groupActivities.length === 0) return null;
                 return (
                   <div key={group} className={isEmbeddedSummary ? 'space-y-3' : 'space-y-2'}>
@@ -1865,7 +2158,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                       isAdmin ? (
                         <AuditLogPreviewItem key={idx} activity={activity} />
                       ) : (
-                        <ActivityItem key={idx} activity={activity} isCompact={true} />
+                        <ActivityItem key={idx} activity={activity} isCompact={true} authUser={authUser} />
                       )
                     ))}
                   </div>
@@ -2047,16 +2340,15 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
         <div className={`glass-card rounded-2xl flex flex-col w-full ${isAdmin ? 'min-h-[520px] overflow-visible' : 'overflow-hidden'}`}>
           <div className={`flex-1 ${isAdmin ? 'overflow-visible' : 'overflow-y-auto custom-scrollbar'}`}>
             {isAdmin ? (
-              <div className="p-8 pb-4 border-b border-gray-100 bg-white sticky top-0 z-20">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <h3 className="text-lg font-bold text-[#170338] pb-2 lg:pb-3">Recent Activities</h3>
+              <div className="px-5 py-4 border-b border-gray-100 bg-white sticky top-0 z-20">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <h3 className="text-lg font-bold text-[#170338]">Recent Activities</h3>
 
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end lg:justify-end">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
                     {/* Space Filter */}
-                    <div className="relative w-full sm:w-[320px] lg:w-[360px]">
-                      <label className="block text-[11px] font-black uppercase tracking-wider text-[#5e636e] mb-2">Space</label>
+                    <div className="relative w-full sm:w-[260px] lg:w-[300px]">
                       <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-[20px]">workspaces</span>
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[17px]">workspaces</span>
                         <input
                           value={activitySpaceSearch}
                           onChange={(e) => {
@@ -2072,7 +2364,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                           onKeyDown={handleActivitySpaceFilterKeyDown}
                           disabled={dashboardLoading && activitySpaces.length === 0}
                           placeholder={dashboardLoading && activitySpaces.length === 0 ? "Loading spaces..." : "Filter by space name..."}
-                          className={`w-full h-12 rounded-xl border bg-white pl-12 pr-12 text-sm font-bold outline-none transition-all disabled:cursor-wait disabled:bg-gray-50 ${selectedActivitySpaceId
+                          className={`w-full h-9 rounded-md border bg-white pl-9 pr-9 text-[13px] font-semibold outline-none transition-all disabled:cursor-wait disabled:bg-gray-50 ${selectedActivitySpaceId
                             ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
                             : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 focus:border-gray-300 focus:text-[#170338]"
                             }`}
@@ -2086,18 +2378,18 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                               setActivitySpaceSearch("");
                               setShowActivitySpaceOptions(false);
                             }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 h-7 w-7 rounded-lg text-gray-400 transition-colors hover:bg-purple-50 hover:text-[#4C2B74]"
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md text-gray-400 transition-colors hover:bg-purple-50 hover:text-[#4C2B74]"
                             title="Clear space filter"
                           >
                             <span className="material-symbols-outlined text-[18px]">close</span>
                           </button>
                         ) : (
-                          <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-[20px] pointer-events-none">expand_more</span>
+                          <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[18px] pointer-events-none">expand_more</span>
                         )}
                         {showActivitySpaceOptions && !(dashboardLoading && activitySpaces.length === 0) && (
-                          <div className="absolute left-0 right-0 top-full mt-2 z-[120] max-h-72 overflow-y-auto rounded-xl border border-gray-100 bg-white p-2 shadow-xl">
+                          <div className="absolute left-0 right-0 top-full mt-1.5 z-[120] max-h-64 overflow-y-auto rounded-lg border border-gray-100 bg-white py-1.5 shadow-xl">
                             {visibleActivitySpaceOptions.length === 0 ? (
-                              <div className="px-3 py-4 text-sm font-semibold text-[#5e636e]">No spaces found.</div>
+                              <div className="px-3 py-3 text-[13px] font-semibold text-[#5e636e]">No spaces found.</div>
                             ) : (
                               visibleActivitySpaceOptions.map((space) => (
                                 <button
@@ -2107,10 +2399,10 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                     event.preventDefault();
                                     selectActivitySpace(space);
                                   }}
-                                  className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${selectedActivitySpaceId === space.id ? "bg-gray-50 text-[#170338]" : "text-[#170338] hover:bg-gray-50"}`}
+                                  className={`w-full px-3 py-2 text-left transition-colors ${selectedActivitySpaceId === space.id ? "bg-gray-50 text-[#170338]" : "text-[#170338] hover:bg-gray-50"}`}
                                 >
-                                  <span className="block truncate text-sm font-black">{space.label}</span>
-                                  <span className="block truncate text-[11px] font-semibold text-[#5e636e]">{space.sub}</span>
+                                  <span className="block truncate text-[13px] font-semibold">{space.label}</span>
+                                  <span className="block truncate text-[11px] font-medium text-[#5e636e]">{space.sub}</span>
                                 </button>
                               ))
                             )}
@@ -2121,14 +2413,13 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
                     {/* Status Dropdown */}
                     <div className="relative">
-                      <label className="block text-[11px] font-black uppercase tracking-wider text-[#5e636e] mb-2">Status</label>
                         <button
                           onClick={() => {
                             setShowStatusFilter(!showStatusFilter);
                             setShowDateFilter(false);
                             setShowActivitySpaceOptions(false);
                           }}
-                          className={`flex h-12 items-center justify-between gap-2 min-w-[140px] px-4 rounded-xl border transition-all text-sm font-bold ${selectedStatus !== "All Status"
+                          className={`flex h-9 items-center justify-between gap-2 min-w-[112px] px-3 rounded-md border transition-all text-[13px] font-semibold ${selectedStatus !== "All Status"
                             ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
                             : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
                             }`}
@@ -2137,12 +2428,12 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                           <span className={`material-symbols-outlined text-gray-400 transition-transform ${showStatusFilter ? 'rotate-180' : ''}`}>expand_more</span>
                         </button>
                         {showStatusFilter && (
-                          <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-gray-100 rounded-2xl shadow-xl z-[100] p-2 animate-in fade-in zoom-in-95 duration-200">
-                            {['All Status', 'New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done', 'Cancelled'].map(st => (
+                          <div className="absolute top-full left-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-lg shadow-xl z-[100] py-1.5 animate-in fade-in zoom-in-95 duration-200">
+                            {['All Status', 'New', 'In Progress', 'In Testing', 'Pending Review', 'Need Revision', 'Done'].map(st => (
                               <button
                                 key={st}
                                 onClick={() => { setSelectedStatus(st); setShowStatusFilter(false); }}
-                                className="flex items-center gap-3 w-full p-2.5 hover:bg-gray-50 rounded-xl text-sm font-bold text-[#5e636e] transition-colors"
+                                className="flex items-center gap-2 w-full px-4 py-2.5 hover:bg-gray-50 text-[13px] font-medium text-[#170338] transition-colors"
                               >
                                 {st}
                               </button>
@@ -2153,31 +2444,30 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
                     {/* Date Dropdown */}
                     <div className="relative">
-                      <label className="block text-[11px] font-black uppercase tracking-wider text-[#5e636e] mb-2">Date</label>
                         <button
                           onClick={() => {
                             setShowDateFilter(!showDateFilter);
                             setShowStatusFilter(false);
                             setShowActivitySpaceOptions(false);
                           }}
-                          className={`flex h-12 items-center justify-between gap-2 min-w-[150px] px-4 rounded-xl border transition-all text-sm font-bold ${selectedDate !== "All Dates"
+                          className={`flex h-9 items-center justify-between gap-2 min-w-[136px] px-3 rounded-md border transition-all text-[13px] font-semibold ${selectedDate !== "All Dates"
                             ? "border-[#4C2B74] text-[#4C2B74] bg-purple-50"
                             : "border-gray-200 text-[#5e636e] hover:border-[#4C2B74] hover:text-[#4C2B74] hover:bg-purple-50/10 bg-white"
                             }`}
                         >
                           <div className="flex items-center gap-2 truncate">
-                            <span className="material-symbols-outlined text-gray-400 text-lg">calendar_today</span>
+                            <span className="material-symbols-outlined text-gray-400 text-[17px]">calendar_today</span>
                             {selectedDate}
                           </div>
                           <span className={`material-symbols-outlined text-gray-400 transition-transform ${showDateFilter ? 'rotate-180' : ''}`}>expand_more</span>
                         </button>
                         {showDateFilter && (
-                          <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-gray-100 rounded-2xl shadow-xl z-[100] p-2 animate-in fade-in zoom-in-95 duration-200">
-                            {['All Dates', 'Today', 'Yesterday', 'In the last week'].map(d => (
+                          <div className="absolute top-full left-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-lg shadow-xl z-[100] py-1.5 animate-in fade-in zoom-in-95 duration-200">
+                            {ACTIVITY_DATE_OPTIONS.map(d => (
                               <button
                                 key={d}
                                 onClick={() => { setSelectedDate(d); setShowDateFilter(false); }}
-                                className="flex items-center gap-3 w-full p-2.5 hover:bg-gray-50 rounded-xl text-sm font-bold text-[#5e636e] transition-colors"
+                                className="flex items-center gap-2 w-full px-4 py-2.5 hover:bg-gray-50 text-[13px] font-medium text-[#170338] transition-colors"
                               >
                                 {d}
                               </button>
@@ -2211,7 +2501,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   {tab}
                   {(() => {
                     const assignedToMeCount = activityCounts.assigned_to_me ?? spaceSummary?.assigned_to_me?.total ?? currentAssignedTasks.length;
-                    const tabCount = tab === 'Recently viewed' ? viewedCount : tab === 'Assign History' ? assignHistoryCount : tab === 'Assigned to me' ? assignedToMeCount : 0;
+                    const tabCount = tab === 'View history' ? filteredViewed.length : tab === 'Assignment history' ? assignHistoryCount : tab === 'Assigned to me' ? assignedToMeCount : 0;
                     return tabCount > 0 ? (
                       <span className="ml-1.5 bg-gray-100/80 text-gray-400 text-[10px] px-1.5 py-0.5 rounded-full font-black">
                         {tabCount}
@@ -2227,16 +2517,15 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
 
             {/* Tab Content Body */}
             <div className="min-h-[140px]">
-              {/* 1. Worked On Tab */}
-              {activeTaskTab === 'Worked on' && (
+              {/* 1. Work Log Tab */}
+              {activeTaskTab === 'Work on' && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                   {filteredWorkedOn.length === 0 && (
                     <div className="px-8 py-10 text-sm font-semibold text-[#5e636e]">
-                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view worked on activities.' : dashboardLoading ? 'Loading worked on activities...' : 'No worked on activities found.'}
+                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view work log activities.' : dashboardLoading ? 'Loading work log activities...' : 'No work log activities found.'}
                     </div>
                   )}
-                  {["TODAY", "YESTERDAY", "IN THE LAST WEEK"].map(group => {
-                    const groupTasks = filteredWorkedOn.filter(t => t.group === group);
+                  {groupedWorkedOn.map(({ heading: group, items: groupTasks }) => {
                     if (groupTasks.length === 0) return null;
                     return (
                       <div key={group}>
@@ -2283,16 +2572,15 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                 </div>
               )}
 
-              {/* 2. Recently viewed Tab */}
-              {activeTaskTab === 'Recently viewed' && (
+              {/* 2. View History Tab */}
+              {activeTaskTab === 'View history' && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                   {filteredViewed.length === 0 && (
                     <div className="px-8 py-10 text-sm font-semibold text-[#5e636e]">
-                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view recently viewed items.' : dashboardLoading ? 'Loading recently viewed items...' : 'No recently viewed items found.'}
+                      {isAdmin && !activitySpaceFilterApplied ? 'Select a space or All Spaces to view history.' : dashboardLoading ? 'Loading view history...' : 'No view history found.'}
                     </div>
                   )}
-                  {["Today", "Yesterday", "In the last week"].map(group => {
-                    const groupTasks = filteredViewed.filter(t => t.group === group);
+                  {groupedViewed.map(({ heading: group, items: groupTasks }) => {
                     if (groupTasks.length === 0) return null;
                     return (
                       <div key={group}>
@@ -2318,16 +2606,16 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                 </div>
               )}
 
-              {/* 3. Assign History */}
-              {(activeTaskTab === 'Assigned to me' || activeTaskTab === 'Assign History') && (
+              {/* 3. Assignment History */}
+              {(activeTaskTab === 'Assigned to me' || activeTaskTab === 'Assignment history') && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                   {(isAdmin || isPrivilegedSpaceSummary) ? (
                     <div>
-                      <div className="hidden xl:block px-8 py-3 bg-gradient-to-r from-[#faf7ff] via-white to-[#f8fafc] border-y border-[#ede7f6] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                        <div className={`grid ${isAdmin ? 'grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px]' : 'grid-cols-[280px_minmax(360px,1fr)_260px_90px]'} gap-6 items-center`}>
+                      <div className="hidden xl:block px-6 py-2.5 bg-gradient-to-r from-[#faf7ff] via-white to-[#f8fafc] border-y border-[#ede7f6] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                        <div className={`grid ${isAdmin ? 'grid-cols-[minmax(240px,1fr),minmax(440px,1.75fr),minmax(150px,0.55fr),92px]' : 'grid-cols-[260px_minmax(460px,1.75fr)_180px_80px]'} gap-6 items-center`}>
                           {[
                             { label: "Task", icon: "assignment" },
-                            { label: "Assignee Change", icon: "compare_arrows" },
+                            { label: "Assignee Change", icon: "compare_arrows", align: "justify-self-center" },
                             { label: "Changed By", icon: "manage_accounts" },
                             { label: "Status", icon: "verified", align: "justify-end" },
                           ].map(column => (
@@ -2354,7 +2642,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                           const isScopedAdminActivity = isAdmin && Boolean(selectedActivitySpaceId);
                           return (
                             <div key={task.assignment_history_id || idx} className="px-8 py-5 hover:bg-[#f9f1fc]/40 transition-all cursor-pointer group">
-                              <div className={`grid grid-cols-1 ${isAdmin ? 'xl:grid-cols-[minmax(260px,1.4fr),minmax(260px,1.2fr),minmax(180px,0.8fr),120px]' : 'xl:grid-cols-[280px_minmax(360px,1fr)_260px_90px]'} gap-5 xl:gap-6 items-start xl:items-center`}>
+                              <div className={`grid grid-cols-1 ${isAdmin ? 'xl:grid-cols-[minmax(240px,1fr),minmax(440px,1.75fr),minmax(150px,0.55fr),92px]' : 'xl:grid-cols-[260px_minmax(460px,1.75fr)_180px_80px]'} gap-5 xl:gap-6 items-start xl:items-center`}>
                                 <div className={`flex items-start min-w-0 ${isAdmin ? 'gap-4' : 'gap-0'}`}>
                                   {isAdmin && (
                                     <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-sm group-hover:scale-105 transition-transform bg-amber-50 text-amber-600 border-amber-100">
@@ -2381,25 +2669,10 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                 </div>
 
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    {[task.previous_assignee, task.new_assignee].map((person, personIdx) => (
-                                      <React.Fragment key={`${task.assignment_history_id}-${personIdx}`}>
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <UserAvatar user={person} sizeClass="w-8 h-8" textClass="text-[10px]" className="shadow-sm" />
-                                          <span className="text-[12px] font-bold text-[#170338] truncate">{person?.full_name || "Unassigned"}</span>
-                                        </div>
-                                        {personIdx === 0 && (
-                                          <span className="material-symbols-outlined text-[18px] text-[#5e636e] shrink-0">arrow_forward</span>
-                                        )}
-                                      </React.Fragment>
-                                    ))}
-                                  </div>
-                                  {task.reason && (
-                                    <p className="text-[11px] text-[#5e636e] mt-2 line-clamp-1">{task.reason}</p>
-                                  )}
+                                  <AssignmentChangeSummary task={task} />
                                 </div>
 
-                                <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 xl:justify-self-start xl:pl-2">
                                   <UserAvatar user={task.changed_by} sizeClass="w-8 h-8" textClass="text-[10px]" className="shadow-sm" />
                                   <div className="min-w-0">
                                     <p className="text-[12px] font-bold text-[#170338] truncate">{task.changed_by?.full_name || "Unknown"}</p>
