@@ -79,7 +79,7 @@ class GlobalSearchResponse(BaseModel):
 
 class SearchRecentRequest(BaseModel):
     entity_type: Literal["space", "task", "user"]
-    entity_id: str = Field(..., min_length=1, max_length=15)
+    entity_id: str = Field(..., min_length=1, max_length=32)
 
 
 class SearchRecentDeleteResponse(BaseModel):

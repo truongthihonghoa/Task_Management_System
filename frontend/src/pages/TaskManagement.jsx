@@ -400,14 +400,21 @@ const mapApiTask = (task) => {
   };
 };
 
-const formatScopedTaskId = (sequence) => `TSK${String(sequence).padStart(8, '0')}`;
+const normalizeDisplaySpaceKey = (spaceKey) => String(spaceKey || '').trim().toUpperCase();
+
+const formatScopedTaskId = (sequence, spaceKey) => {
+  const key = normalizeDisplaySpaceKey(spaceKey);
+  return key ? `${key}-${sequence}` : `TSK${String(sequence).padStart(8, '0')}`;
+};
+
+const isSpaceKeyTaskId = (taskId) => /^[A-Z][A-Z0-9]{0,9}-[1-9]\d*$/.test(String(taskId || ''));
 
 const getTaskSequenceTime = (task) => {
   const timestamp = Date.parse(task.created_at || task.createdAt || task.date || '');
   return Number.isNaN(timestamp) ? 0 : timestamp;
 };
 
-const assignScopedTaskDisplayIds = (tasks) => {
+const assignScopedTaskDisplayIds = (tasks, fallbackSpaceKey = '') => {
   const groups = new Map();
 
   tasks.forEach((task, originalIndex) => {
@@ -426,13 +433,17 @@ const assignScopedTaskDisplayIds = (tasks) => {
         return String(a.task.id || '').localeCompare(String(b.task.id || ''));
       })
       .forEach((entry, index) => {
-        displayIdsByIndex.set(entry.originalIndex, formatScopedTaskId(index + 1));
+        displayIdsByIndex.set(
+          entry.originalIndex,
+          formatScopedTaskId(index + 1, entry.task.spaceKey || fallbackSpaceKey)
+        );
       });
   });
 
   return tasks.map((task, index) => ({
     ...task,
-    displayId: displayIdsByIndex.get(index) || task.displayId || task.id,
+    spaceKey: task.spaceKey || fallbackSpaceKey,
+    displayId: isSpaceKeyTaskId(task.id) ? task.id : displayIdsByIndex.get(index) || task.displayId || task.id,
     rawTaskId: task.rawTaskId || task.id,
   }));
 };
@@ -669,7 +680,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       const remainingSprints = firstSprint
         ? orderedSprints.slice(1)
         : [];
-      const nextTasks = assignScopedTaskDisplayIds((taskResponse.data?.items || []).map(mapApiTask));
+      const nextTasks = assignScopedTaskDisplayIds(
+        (taskResponse.data?.items || []).map(task => ({
+          ...mapApiTask(task),
+          spaceKey: nextSpace.space_key || '',
+        })),
+        nextSpace.space_key || ''
+      );
       const nextMembers = (memberResponse.data || [])
         .filter(member => member.status === 'Active')
         .map(mapApiSpaceMember);
@@ -677,6 +694,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       setApiSpace({
         id: nextSpace.space_id,
         title: nextSpace.name_space || 'Task Management',
+        key: nextSpace.space_key || '',
         ownerId: nextSpace.owner_id,
         status: nextSpace.status_space,
       });
@@ -759,10 +777,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
     const updatedTask = mapApiTask(response.data);
-    setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === taskId ? updatedTask : task)));
+    setTasks(prev => assignScopedTaskDisplayIds(
+      prev.map(task => task.id === taskId ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
+      apiSpace?.key || ''
+    ));
     setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
     return updatedTask;
-  }, []);
+  }, [apiSpace?.key]);
 
   useEffect(() => {
     if (!selectedTaskDetail?.id) return;
@@ -1154,10 +1175,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         );
       }
     }
-    setTasks(prev => assignScopedTaskDisplayIds([createdTask, ...prev]));
+    setTasks(prev => assignScopedTaskDisplayIds(
+      [{ ...createdTask, spaceKey: apiSpace?.key || '' }, ...prev],
+      apiSpace?.key || ''
+    ));
 
     return createdTask;
-  }, [canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
+  }, [apiSpace?.key, canModifyTasks, extraSprints, projectAssigneeOptions, spaceId, sprint1Data]);
 
   useEffect(() => {
     if (!setCreateTaskHandler) return undefined;
@@ -1565,9 +1589,43 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     displayedSprints.filter(sprint => sprint.status === 'Completed').map(sprint => sprint.id)
   );
   const isTaskReadOnly = (task) => Boolean(task?.sprintId && completedSprintIds.has(task.sprintId));
-  const selectableTaskIds = filteredTasks
-    .filter(task => !isTaskReadOnly(task))
-    .map(task => task.id);
+  const handleListSprintDragEnd = async (result) => {
+    if (!canModifyTasks) return;
+
+    const { destination, source, draggableId } = result;
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId) return;
+
+    const movingTask = tasks.find(task => task.id === draggableId);
+    const targetSprint = displayedSprints.find(sprint => sprint.id === destination.droppableId);
+    if (!movingTask || !targetSprint || isTaskReadOnly(movingTask)) return;
+    if (targetSprint.status === 'Completed') {
+      setTasksError('Cannot move tasks into a completed sprint.');
+      return;
+    }
+
+    const previousTasks = tasks;
+    const optimisticTask = {
+      ...movingTask,
+      sprintId: targetSprint.id,
+      sprint: targetSprint.name,
+    };
+
+    setTasksError('');
+    setTasks(prev => assignScopedTaskDisplayIds(
+      prev.map(task => task.id === draggableId ? optimisticTask : task),
+      apiSpace?.key || ''
+    ));
+    setSelectedTaskDetail(prev => prev?.id === draggableId ? { ...prev, ...optimisticTask } : prev);
+
+    try {
+      await updateTaskRequest(draggableId, { sprint_id: targetSprint.id });
+    } catch (error) {
+      setTasks(previousTasks);
+      setSelectedTaskDetail(prev => prev?.id === draggableId ? movingTask : prev);
+      setTasksError(getErrorMessage(error, 'Unable to move task to another sprint.'));
+    }
+  };
   const activeBoardSprint = displayedSprints.find(sprint => sprint.status === 'Active') || null;
   const boardTasks = activeBoardSprint
     ? filteredTasks.filter(task => task.sprintId === activeBoardSprint.id)
@@ -1575,6 +1633,32 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const getTasksForSprint = (sprintId) => (
     sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
   );
+  const selectableTaskIds = filteredTasks
+    .filter(task => !isTaskReadOnly(task))
+    .map(task => task.id);
+  const getSelectableTaskIdsForSprint = (sprintId) => (
+    getTasksForSprint(sprintId)
+      .filter(task => !isTaskReadOnly(task))
+      .map(task => task.id)
+  );
+  const isSprintFullySelected = (sprintId) => {
+    const sprintTaskIds = getSelectableTaskIdsForSprint(sprintId);
+    return sprintTaskIds.length > 0 && sprintTaskIds.every(taskId => selectedTasks.includes(taskId));
+  };
+  const toggleSprintSelection = (sprintId) => {
+    if (!canSelectTasks) return;
+    const sprintTaskIds = getSelectableTaskIdsForSprint(sprintId);
+    if (sprintTaskIds.length === 0) return;
+
+    setSelectedTasks(prev => {
+      const sprintTaskIdSet = new Set(sprintTaskIds);
+      const isFullySelected = sprintTaskIds.every(taskId => prev.includes(taskId));
+      if (isFullySelected) {
+        return prev.filter(taskId => !sprintTaskIdSet.has(taskId));
+      }
+      return Array.from(new Set([...prev, ...sprintTaskIds]));
+    });
+  };
   const isSprintCompleted = (sprint) => {
     return sprint?.status === 'Completed';
   };
@@ -1779,7 +1863,10 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     if (Object.keys(updates).length === 0) {
       if (assigneeChanged) return;
-      setTasks(prev => assignScopedTaskDisplayIds(prev.map(task => task.id === updatedTask.id ? updatedTask : task)));
+      setTasks(prev => assignScopedTaskDisplayIds(
+        prev.map(task => task.id === updatedTask.id ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
+        apiSpace?.key || ''
+      ));
       setSelectedTaskDetail(updatedTask);
       return;
     }
@@ -2579,6 +2666,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       {/* LIST VIEW */}
       {view === 'list' && (
         <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', paddingBottom: '16px' }}>
+          <DragDropContext onDragEnd={handleListSprintDragEnd}>
+            <div>
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
             <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
               <div className="flex items-center gap-3">
@@ -2586,8 +2675,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <input
                     type="checkbox"
                     className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
-                    checked={selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId))}
-                    onChange={toggleAll}
+                    checked={isSprintFullySelected(sprint1Data.id)}
+                    onChange={() => toggleSprintSelection(sprint1Data.id)}
                   />
                 )}
                 <span
@@ -2686,7 +2775,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
                     <tr className="text-[11px] text-outline uppercase tracking-wider">
-                      <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                      <th className="w-[220px] min-w-[220px] px-2 py-3 font-bold text-center">Task ID</th>
                       <th className="px-3 py-3 font-bold text-center">Points</th>
                       <th className="px-6 py-3 font-bold">Title</th>
                       <th className="px-6 py-3 font-bold">Assignee</th>
@@ -2696,25 +2785,50 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       {canManageTasks && sprint1Data.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-outline-variant">
-                    {primarySprintTasks.map(task => (
-                      <TaskRow
-                        key={task.id}
-                        {...task}
-                        isAdmin={canManageTasks && sprint1Data.status !== 'Completed'}
-                        canSelect={canSelectTasks && sprint1Data.status !== 'Completed'}
-                        canModifyTasks={canModifyTasks && sprint1Data.status !== 'Completed'}
-                        isSelected={selectedTasks.includes(task.id)}
-                        isAnySelected={selectedTasks.length > 0}
-                        onToggle={() => toggleTask(task.id)}
-                        onOpenDetail={() => handleOpenTaskDetail(task)}
-                        onDelete={() => setTaskToDelete(task)}
-                        assigneeOptions={projectAssigneeOptions}
-                        onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
-                        onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
-                      />
-                    ))}
-                  </tbody>
+                  <Droppable
+                    droppableId={sprint1Data.id}
+                    type="LIST_SPRINT_TASK"
+                    isDropDisabled={!canModifyTasks || sprint1Data.status === 'Completed'}
+                  >
+                    {(provided, snapshot) => (
+                      <tbody
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`divide-y divide-outline-variant ${snapshot.isDraggingOver ? 'bg-[#F7F5FF]' : ''}`}
+                      >
+                        {primarySprintTasks.map((task, index) => (
+                          <Draggable
+                            key={task.id}
+                            draggableId={task.id}
+                            index={index}
+                            isDragDisabled={!canModifyTasks || sprint1Data.status === 'Completed' || isTaskReadOnly(task)}
+                            disableInteractiveElementBlocking
+                          >
+                            {(dragProvided, dragSnapshot) => (
+                              <TaskRow
+                                {...task}
+                                isAdmin={canManageTasks && sprint1Data.status !== 'Completed'}
+                                canSelect={canSelectTasks && sprint1Data.status !== 'Completed'}
+                                canModifyTasks={canModifyTasks && sprint1Data.status !== 'Completed'}
+                                isSelected={selectedTasks.includes(task.id)}
+                                isAnySelected={selectedTasks.length > 0}
+                                onToggle={() => toggleTask(task.id)}
+                                onOpenDetail={() => handleOpenTaskDetail(task)}
+                                onDelete={() => setTaskToDelete(task)}
+                                assigneeOptions={projectAssigneeOptions}
+                                onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                                onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
+                                draggableProvided={dragProvided}
+                                dragHandleProps={dragProvided.dragHandleProps}
+                                isDragging={dragSnapshot.isDragging}
+                              />
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </tbody>
+                    )}
+                  </Droppable>
                 </table>
               </div>
             )}
@@ -2743,7 +2857,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 {/* Sprint Header */}
                 <div className="px-6 py-2 border-b border-[#DDE3F0] bg-[#FAFAFF] flex items-center justify-between flex-none">
                   <div className="flex items-center gap-3">
-                    {canSelectTasks && sprint.status !== 'Completed' && <input type="checkbox" className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary" />}
+                    {canSelectTasks && sprint.status !== 'Completed' && (
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary"
+                        checked={isSprintFullySelected(sprint.id)}
+                        onChange={() => toggleSprintSelection(sprint.id)}
+                      />
+                    )}
                     <span
                       className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
                       style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
@@ -2832,7 +2953,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <table className="w-full text-left border-collapse">
                       <thead className="bg-surface-container-low border-b border-outline-variant sticky top-0 z-10 bg-[#F4F5FF]">
                         <tr className="text-[11px] text-outline uppercase tracking-wider">
-                          <th className="px-2 py-3 font-bold text-center">Task ID</th>
+                          <th className="w-[220px] min-w-[220px] px-2 py-3 font-bold text-center">Task ID</th>
                           <th className="px-3 py-3 font-bold text-center">Points</th>
                           <th className="px-6 py-3 font-bold">Title</th>
                           <th className="px-6 py-3 font-bold">Assignee</th>
@@ -2842,37 +2963,75 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           {canManageTasks && sprint.status !== 'Completed' && <th className="px-6 py-3 font-bold text-center">Actions</th>}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-outline-variant">
-                        {extraSprintTasks.map(task => (
-                          <TaskRow
-                            key={task.id}
-                            {...task}
-                            isAdmin={canManageTasks && sprint.status !== 'Completed'}
-                            canSelect={canSelectTasks && sprint.status !== 'Completed'}
-                            canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
-                            isSelected={selectedTasks.includes(task.id)}
-                            isAnySelected={selectedTasks.length > 0}
-                            onToggle={() => toggleTask(task.id)}
-                            onOpenDetail={() => handleOpenTaskDetail(task)}
-                            onDelete={() => {
-                              setTaskToDelete(task);
-                            }}
-                            assigneeOptions={projectAssigneeOptions}
-                            onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
-                            onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
-                          />
-                        ))}
-                      </tbody>
+                      <Droppable
+                        droppableId={sprint.id}
+                        type="LIST_SPRINT_TASK"
+                        isDropDisabled={!canModifyTasks || sprint.status === 'Completed'}
+                      >
+                        {(provided, snapshot) => (
+                          <tbody
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`divide-y divide-outline-variant ${snapshot.isDraggingOver ? 'bg-[#F7F5FF]' : ''}`}
+                          >
+                            {extraSprintTasks.map((task, index) => (
+                              <Draggable
+                                key={task.id}
+                                draggableId={task.id}
+                                index={index}
+                                isDragDisabled={!canModifyTasks || sprint.status === 'Completed' || isTaskReadOnly(task)}
+                                disableInteractiveElementBlocking
+                              >
+                                {(dragProvided, dragSnapshot) => (
+                                  <TaskRow
+                                    {...task}
+                                    isAdmin={canManageTasks && sprint.status !== 'Completed'}
+                                    canSelect={canSelectTasks && sprint.status !== 'Completed'}
+                                    canModifyTasks={canModifyTasks && sprint.status !== 'Completed'}
+                                    isSelected={selectedTasks.includes(task.id)}
+                                    isAnySelected={selectedTasks.length > 0}
+                                    onToggle={() => toggleTask(task.id)}
+                                    onOpenDetail={() => handleOpenTaskDetail(task)}
+                                    onDelete={() => {
+                                      setTaskToDelete(task);
+                                    }}
+                                    assigneeOptions={projectAssigneeOptions}
+                                    onUpdateAssignee={(user) => handleUpdateAssignee(task.id, user)}
+                                    onRemoveAssignee={(assigneeUserId) => handleRemoveTaskAssignee(task.id, assigneeUserId)}
+                                    draggableProvided={dragProvided}
+                                    dragHandleProps={dragProvided.dragHandleProps}
+                                    isDragging={dragSnapshot.isDragging}
+                                  />
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </tbody>
+                        )}
+                      </Droppable>
                     </table>
                   </div>
                 )}
 
                 {/* Sprint Body - Empty State */}
                 {expandedSprints[sprint.id] && extraSprintTasks.length === 0 && (
-                  <div className="border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px]">
-                    <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
-                    <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
-                  </div>
+                  <Droppable
+                    droppableId={sprint.id}
+                    type="LIST_SPRINT_TASK"
+                    isDropDisabled={!canModifyTasks || sprint.status === 'Completed'}
+                  >
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`border-t border-dashed border-outline-variant/60 p-6 flex flex-col items-center justify-center bg-surface-container-lowest min-h-[80px] ${snapshot.isDraggingOver ? 'bg-[#F7F5FF] border-[#5e4db2]' : ''}`}
+                      >
+                        <span className="material-symbols-outlined text-[28px] text-outline/50 mb-1">sprint</span>
+                        <span className="text-[11px] text-outline italic">No tasks in this sprint yet. Drag tasks here or create new ones.</span>
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
                 )}
 
                 {/* + Create button below sprint body */}
@@ -2904,6 +3063,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
               {hasAvailableSprint ? 'Create Sprint' : 'Start sprint'}
             </button>
           </div>}
+            </div>
+          </DragDropContext>
         </div>
       )}
 
@@ -3641,8 +3802,9 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
   );
 }
 
-function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees }) {
+function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, pts, status, date, completed_at, is_overdue, is_due_today, priority, isSelected, isAnySelected, onToggle, onOpenDetail, onDelete, onUpdateAssignee, onRemoveAssignee, isAdmin = true, canSelect = true, canModifyTasks = true, assigneeOptions = availableAssignees, draggableProvided = null, dragHandleProps = null, isDragging = false }) {
   const visibleTaskId = displayId || id;
+  const draggableProps = draggableProvided?.draggableProps || {};
   const isOverdue = isTaskOverdue(completed_at || date, status);
   const isDueToday = !isOverdue && isTaskDueToday(completed_at || date, status);
   const displayDate = completed_at ? formatTaskDate(completed_at) : date;
@@ -3697,25 +3859,38 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
 
   return (
     <tr
-      className={`group hover:bg-surface-container-low/50 transition-colors cursor-pointer ${isSelected ? 'bg-[#e6f0ff]' : ''}`}
+      ref={draggableProvided?.innerRef}
+      {...draggableProps}
+      className={`group hover:bg-surface-container-low/50 transition-colors cursor-pointer ${isSelected ? 'bg-[#e6f0ff]' : ''} ${isDragging ? 'bg-white shadow-lg' : ''}`}
       onClick={() => onOpenDetail && onOpenDetail()}
     >
-      <td className="px-2 py-2">
-        <div className="flex items-center justify-center gap-3">
-          {canSelect && (
-            <input
-              type="checkbox"
-              className={`w-3.5 h-3.5 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
-              checked={isSelected}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-            />
-          )}
-          <span className={`text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{visibleTaskId}</span>
-        </div>
+      <td className="relative w-[220px] min-w-[220px] px-2 py-2 text-center">
+        {canSelect && (
+          <input
+            type="checkbox"
+            className={`absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded border-outline-variant cursor-pointer accent-primary transition-opacity duration-150 ${isAnySelected ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100'}`}
+            checked={isSelected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+          />
+        )}
+        {dragHandleProps && (
+          <span
+            {...dragHandleProps}
+            role="button"
+            aria-label="Move task to another sprint"
+            title="Move task to another sprint"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-10 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-outline hover:bg-[#F0EDFF] hover:text-[#5e4db2] cursor-grab active:cursor-grabbing transition-colors"
+            style={{ touchAction: 'none' }}
+          >
+            <span className="material-symbols-outlined text-[17px]">drag_indicator</span>
+          </span>
+        )}
+        <span className={`inline-block text-[11px] font-medium text-outline ${status === 'Done' ? 'line-through text-slate-500' : ''}`}>{visibleTaskId}</span>
       </td>
       <td className="px-3 py-2 text-center">
         <span className="inline-flex min-w-8 items-center justify-center rounded bg-surface-container px-2 py-0.5 text-[10px] font-bold text-outline">

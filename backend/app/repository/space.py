@@ -84,6 +84,25 @@ def _normalize_space_name(name: str) -> str:
     return normalized
 
 
+def _normalize_space_key(space_key: str) -> str:
+    normalized = space_key.strip().upper()
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space key is required",
+        )
+    if not normalized[0].isalpha() or not normalized.isalnum() or len(normalized) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space key must start with a letter and contain only letters/numbers",
+        )
+    return normalized
+
+
+def _space_key_for_response(space: Space) -> str:
+    return getattr(space, "space_key", None) or "SP"
+
+
 def _ensure_active_owner(owner: User) -> None:
     if owner.status_user != "Active":
         raise HTTPException(
@@ -182,6 +201,35 @@ def _ensure_space_name_available(
         )
 
 
+def _ensure_space_key_available(
+    db: Session,
+    *,
+    space_key: str,
+    exclude_space_id: str | None = None,
+) -> None:
+    query = db.query(Space).filter(func.upper(Space.space_key) == space_key.upper())
+    if exclude_space_id:
+        query = query.filter(Space.space_id != exclude_space_id)
+
+    if query.first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Space key already exists",
+        )
+
+
+def find_space_by_key(
+    db: Session,
+    *,
+    space_key: str,
+    exclude_space_id: str | None = None,
+) -> Space | None:
+    query = db.query(Space).filter(func.upper(Space.space_key) == space_key.upper())
+    if exclude_space_id:
+        query = query.filter(Space.space_id != exclude_space_id)
+    return query.first()
+
+
 def _active_task_counts_for_spaces(db: Session, space_ids: list[str]) -> dict[str, int]:
     if not space_ids:
         return {}
@@ -256,6 +304,7 @@ def _space_response(space: Space, *, task_count: int = 0) -> SpaceResponse:
     return SpaceResponse(
         space_id=space.space_id,
         name_space=space.name_space,
+        space_key=_space_key_for_response(space),
         description=space.description,
         owner_id=space.owner_id,
         status_space=space.status_space,
@@ -337,6 +386,11 @@ def _get_space_member(db: Session, space_id: str, user_id: str) -> SpaceMember |
     return (
         db.query(SpaceMember)
         .filter(SpaceMember.space_id == space_id, SpaceMember.user_id == user_id)
+        .order_by(
+            SpaceMember.removed_at.is_(None).desc(),
+            SpaceMember.joined_at.desc(),
+            SpaceMember.space_member_id.desc(),
+        )
         .first()
     )
 
@@ -407,6 +461,11 @@ def _frontend_space_tasks_url(space_id: str) -> str:
     return f"{frontend_url}/dashboard/tasks/{space_id}"
 
 
+def _frontend_member_request_url(review_token: str, action: str) -> str:
+    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    return f"{frontend_url}/space-invitations/{review_token}/{action}"
+
+
 def _send_member_request_email(
     *,
     owner: User,
@@ -417,21 +476,15 @@ def _send_member_request_email(
     safe_space_name = html.escape(space.name_space)
     safe_requester_name = html.escape(requester.full_name)
     safe_requester_email = html.escape(requester.email)
-    safe_owner_email = html.escape(owner.email)
     safe_requested_name = html.escape(request.requested_name or request.requested_email)
-    safe_requested_email = html.escape(request.requested_email)
-    base_url = _api_public_base_url()
-    approve_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/approve"
-    reject_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/reject"
+    approve_url = _frontend_member_request_url(request.review_token, "accept")
+    reject_url = _frontend_member_request_url(request.review_token, "decline")
 
     text_content = (
         "TaskFlow\n\n"
         f"{requester.full_name} ({requester.email}) requested your approval before inviting "
         f"{request.requested_name or request.requested_email} ({request.requested_email}) "
         f"to {space.name_space}.\n\n"
-        f"Owner: {owner.email}\n"
-        f"Requested by: {requester.email}\n"
-        f"Invitee: {request.requested_email}\n\n"
         f"Approve: {approve_url}\n"
         f"Reject: {reject_url}\n\n"
         "If you did not expect this request, reject it or ignore this email."
@@ -444,9 +497,9 @@ def _send_member_request_email(
         <td align="center">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #E0D7F0;border-radius:14px;overflow:hidden;box-shadow:0 16px 42px rgba(76,43,116,0.14);">
             <tr>
-              <td style="padding:14px 28px 15px;background:#4C2B74;color:#ffffff;">
-                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#EADFF9;">TaskFlow</div>
-                <div style="font-size:20px;font-weight:800;margin-top:5px;">Review member request</div>
+              <td style="padding:14px 28px 15px;background:#FAF8FF;border-bottom:1px solid #E2D8EE;color:#4C2B74;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5B3A7A;">TaskFlow</div>
+                <div style="font-size:20px;font-weight:800;margin-top:5px;color:#0f172a;">Review member request</div>
               </td>
             </tr>
             <tr>
@@ -459,24 +512,6 @@ def _send_member_request_email(
                   wants to invite <strong>{safe_requested_name}</strong>
                   to <strong>{safe_space_name}</strong>.
                 </p>
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #E0D7F0;border-radius:10px;background:#FAF8FF;margin-bottom:18px;overflow:hidden;">
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;width:130px;">Space</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_space_name}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;">Owner email</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_owner_email}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E0D7F0;">Requested by</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E0D7F0;">{safe_requester_email}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;">Invitee email</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;">{safe_requested_email}</td>
-                  </tr>
-                </table>
                 <a href="{html.escape(approve_url)}" style="display:inline-block;background:#6B4A91;color:#ffffff;text-decoration:none;font-weight:800;font-size:13px;padding:11px 17px;border-radius:9px;margin-right:10px;">Approve and send invite</a>
                 <a href="{html.escape(reject_url)}" style="display:inline-block;background:#ffffff;color:#b91c1c;text-decoration:none;font-weight:800;font-size:13px;padding:10px 16px;border:1px solid #fecaca;border-radius:9px;">Reject</a>
               </td>
@@ -506,17 +541,14 @@ def _send_member_invitation_email(
     safe_inviter_name = html.escape(inviter.full_name)
     safe_inviter_email = html.escape(inviter.email)
     safe_requested_name = html.escape(request.requested_name or request.requested_email)
-    safe_requested_email = html.escape(request.requested_email)
-    base_url = _api_public_base_url()
-    accept_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/approve"
-    decline_url = f"{base_url}/api/v1/spaces/member-requests/{request.review_token}/reject"
+    accept_url = _frontend_member_request_url(request.review_token, "accept")
+    decline_url = _frontend_member_request_url(request.review_token, "decline")
 
     text_content = (
         "TaskFlow\n\n"
         f"{inviter.full_name} ({inviter.email}) invited you to join {space.name_space}.\n\n"
         f"Accept invitation: {accept_url}\n"
-        f"Decline invitation: {decline_url}\n\n"
-        f"This invitation was sent to {request.requested_email}."
+        f"Decline invitation: {decline_url}"
     )
     html_content = f"""<!doctype html>
 <html>
@@ -526,9 +558,9 @@ def _send_member_invitation_email(
         <td align="center">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #E2D8EE;border-radius:14px;overflow:hidden;box-shadow:0 14px 34px rgba(76,43,116,0.12);">
             <tr>
-              <td style="padding:14px 28px 15px;background:#5B3A7A;color:#ffffff;">
-                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#EADFF9;">TaskFlow invitation</div>
-                <div style="font-size:20px;font-weight:800;margin-top:5px;">You're invited to collaborate</div>
+              <td style="padding:14px 28px 15px;background:#FAF8FF;border-bottom:1px solid #E2D8EE;color:#4C2B74;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5B3A7A;">TaskFlow invitation</div>
+                <div style="font-size:20px;font-weight:800;margin-top:5px;color:#0f172a;">You're invited to collaborate</div>
               </td>
             </tr>
             <tr>
@@ -540,20 +572,6 @@ def _send_member_invitation_email(
                   <span style="color:#64748b;">({safe_inviter_email})</span>
                   invited you to join <strong>{safe_space_name}</strong> on TaskFlow.
                 </p>
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #E2D8EE;border-radius:10px;background:#FAF8FF;margin-bottom:18px;overflow:hidden;">
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E2D8EE;width:130px;">Workspace</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E2D8EE;">{safe_space_name}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;border-bottom:1px solid #E2D8EE;">Invited by</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;border-bottom:1px solid #E2D8EE;">{safe_inviter_email}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#6E5A8A;font-size:12px;font-weight:700;">Sent to</td>
-                    <td style="padding:10px 14px;color:#1f2937;font-size:13px;">{safe_requested_email}</td>
-                  </tr>
-                </table>
                 <a href="{html.escape(accept_url)}" style="display:inline-block;background:#6B4A91;color:#ffffff;text-decoration:none;font-weight:800;font-size:13px;padding:11px 17px;border-radius:9px;margin-right:10px;">Accept invitation</a>
                 <a href="{html.escape(decline_url)}" style="display:inline-block;background:#ffffff;color:#5B3A7A;text-decoration:none;font-weight:800;font-size:13px;padding:10px 16px;border:1px solid #E2D8EE;border-radius:9px;">Decline</a>
               </td>
@@ -638,14 +656,17 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
     _ensure_active_owner(owner)
 
     name_space = _normalize_space_name(payload.name_space)
+    space_key = _normalize_space_key(payload.space_key)
     _ensure_space_name_available(
         db,
         owner_id=payload.owner_id,
         name_space=name_space,
     )
+    _ensure_space_key_available(db, space_key=space_key)
 
     space = Space(
         name_space=name_space,
+        space_key=space_key,
         description=payload.description,
         owner_id=payload.owner_id,
         status_space="Active",

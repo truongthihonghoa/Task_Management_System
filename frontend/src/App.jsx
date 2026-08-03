@@ -12,6 +12,7 @@ import RegisterPage from "./pages/RegisterPage";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import ResetPassword from "./pages/ResetPassword";
+import SpaceInvitationAction from "./pages/SpaceInvitationAction";
 
 import MainLayout from "./components/layout/MainLayout";
 import SpaceManagement from "./pages/SpaceManagement";
@@ -48,6 +49,7 @@ function AppRoutes() {
             <Route path="/forgot-password" element={<Navigate to="/account-recovery" replace />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/space-invitations/:token/:action" element={<SpaceInvitationAction />} />
 
             {/* Protected layout */}
             <Route

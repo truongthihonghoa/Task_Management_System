@@ -84,6 +84,7 @@ const getErrorMessage = (error, fallback) => {
 const mapApiSpace = (space) => ({
   id: space.space_id,
   title: space.name_space || 'Untitled Space',
+  key: space.space_key || '',
   description: space.description || 'No description provided.',
   tasksCount: space.task_count ?? space.tasks_count ?? 0,
   date: formatSpaceDate(space.created_at),
@@ -111,9 +112,10 @@ const listOwnerTrashRequest = async (ownerId) => {
   return response.data.map(mapApiSpace);
 };
 
-const createSpaceRequest = async ({ name, title, description, ownerId }) => {
+const createSpaceRequest = async ({ name, title, key, description, ownerId }) => {
   const response = await axiosClient.post('/spaces', {
     name_space: name || title,
+    space_key: key,
     description: description || null,
     owner_id: ownerId,
   });

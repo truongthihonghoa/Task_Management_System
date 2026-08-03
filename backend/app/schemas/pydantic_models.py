@@ -6,8 +6,25 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class SpaceCreate(BaseModel):
     name_space: str = Field(..., min_length=1, max_length=255)
+    space_key: str = Field(..., min_length=1, max_length=10)
     owner_id: str = Field(..., min_length=1, max_length=15)
     description: Optional[str] = None
+
+    @field_validator("name_space")
+    @classmethod
+    def validate_name_space(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Space name is required.")
+        return name
+
+    @field_validator("space_key")
+    @classmethod
+    def validate_space_key(cls, value: str) -> str:
+        key = value.strip().upper()
+        if not re.fullmatch(r"[A-Z][A-Z0-9]{0,9}", key):
+            raise ValueError("Space key must start with a letter and contain only letters/numbers.")
+        return key
 
 
 class SpaceUpdate(BaseModel):
@@ -19,6 +36,7 @@ class SpaceUpdate(BaseModel):
 class SpaceResponse(BaseModel):
     space_id: str
     name_space: str
+    space_key: str
     description: Optional[str]
     owner_id: str
     status_space: str

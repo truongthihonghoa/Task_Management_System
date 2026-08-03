@@ -12,7 +12,7 @@ class Notification(Base):
     notification_id = prefixed_id_column("NTF", "notifications_notification_id_seq")
     user_id = Column(String(15), ForeignKey("users.user_id"), nullable=False)
     actor_id = Column(String(15), ForeignKey("users.user_id"), nullable=True)
-    task_id = Column(String(15), ForeignKey("tasks.task_id"), nullable=True)
+    task_id = Column(String(32), ForeignKey("tasks.task_id"), nullable=True)
     space_id = Column(String(15), ForeignKey("spaces.space_id"), nullable=True)
     type = Column(String(50), nullable=False)
     title = Column(String(255), nullable=False)

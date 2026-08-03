@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.space import Space
@@ -23,6 +23,45 @@ TASK_STATUSES = (
 )
 
 
+def _normalize_task_key_prefix(space_key: str) -> str:
+    return str(space_key or "").strip().upper()
+
+
+def _task_sequence_from_id(task_id: str, prefix: str) -> int:
+    marker = f"{prefix}-"
+    if not task_id.startswith(marker):
+        return 0
+    suffix = task_id[len(marker):]
+    return int(suffix) if suffix.isdigit() else 0
+
+
+def get_next_task_id_for_space(db: Session, space_id: str) -> str:
+    space = get_space(db, space_id)
+    space_key = _normalize_task_key_prefix(getattr(space, "space_key", ""))
+    if not space_key:
+        raise ValueError("Space key is required to create task id.")
+
+    bind = getattr(db, "get_bind", lambda: None)()
+    dialect_name = getattr(getattr(bind, "dialect", None), "name", "")
+    if dialect_name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:space_id))"),
+            {"space_id": space_id},
+        )
+
+    prefix = f"{space_key}-"
+    rows = (
+        db.query(Task.task_id)
+        .filter(Task.space_id == space_id, Task.task_id.like(f"{prefix}%"))
+        .all()
+    )
+    max_sequence = max(
+        (_task_sequence_from_id(row[0] if isinstance(row, tuple) else row.task_id, space_key) for row in rows),
+        default=0,
+    )
+    return f"{space_key}-{max_sequence + 1}"
+
+
 def get_space(db: Session, space_id: str) -> Space | None:
     return db.query(Space).filter(Space.space_id == space_id).first()
 
@@ -34,8 +73,8 @@ def get_active_space_member(db: Session, space_id: str, user_id: str) -> SpaceMe
             SpaceMember.user_id == user_id,
             SpaceMember.status == "Active",
             SpaceMember.removed_at.is_(None),
-        )
-    ).scalar_one_or_none()
+        ).order_by(SpaceMember.joined_at.desc(), SpaceMember.space_member_id.desc())
+    ).scalars().first()
 
 
 def get_sprint(db: Session, sprint_id: str) -> Sprint | None:
@@ -189,6 +228,8 @@ def list_task_records(
 
 
 def create_task_record(db: Session, task: Task, *, commit: bool = True) -> Task:
+    if not task.task_id:
+        task.task_id = get_next_task_id_for_space(db, task.space_id)
     db.add(task)
     if commit:
         db.commit()
@@ -320,5 +361,5 @@ def get_active_space_member(db: Session, space_id: str, user_id: str) -> SpaceMe
             SpaceMember.user_id == user_id,
             SpaceMember.status == "Active",
             SpaceMember.removed_at.is_(None),
-        )
-    ).scalar_one_or_none()
+        ).order_by(SpaceMember.joined_at.desc(), SpaceMember.space_member_id.desc())
+    ).scalars().first()

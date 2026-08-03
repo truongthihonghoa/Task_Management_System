@@ -11,7 +11,7 @@ class RecentView(Base):
     recent_view_id = prefixed_id_column("RCV", "recent_views_recent_view_id_seq")
     user_id = Column(String(15), ForeignKey("users.user_id"), nullable=False)
     entity_type = Column(String(20), nullable=False)
-    entity_id = Column(String(15), nullable=False)
+    entity_id = Column(String(32), nullable=False)
     viewed_at = Column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (

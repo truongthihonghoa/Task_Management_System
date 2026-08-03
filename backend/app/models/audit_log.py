@@ -13,7 +13,7 @@ class AuditLog(Base):
     user_id = Column(String(15), ForeignKey("users.user_id"), nullable=True)
     action = Column(String(100), nullable=False)
     label_title = Column(String(50), nullable=False)
-    entity_id = Column(String(15), nullable=True)
+    entity_id = Column(String(32), nullable=True)
     payload = Column(JSONB, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
