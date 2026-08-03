@@ -400,7 +400,10 @@ const mapApiTask = (task) => {
   };
 };
 
-const normalizeDisplaySpaceKey = (spaceKey) => String(spaceKey || '').trim().toUpperCase();
+const normalizeDisplaySpaceKey = (spaceKey) => {
+  const normalized = String(spaceKey || '').trim().toUpperCase();
+  return /^SP0+\d+$/.test(normalized) ? 'SP' : normalized;
+};
 
 const formatScopedTaskId = (sequence, spaceKey) => {
   const key = normalizeDisplaySpaceKey(spaceKey);
@@ -408,6 +411,12 @@ const formatScopedTaskId = (sequence, spaceKey) => {
 };
 
 const isSpaceKeyTaskId = (taskId) => /^[A-Z][A-Z0-9]{0,9}-[1-9]\d*$/.test(String(taskId || ''));
+
+const getDisplayTaskId = (taskId) => {
+  const match = /^([A-Z][A-Z0-9]{0,9})-([1-9]\d*)$/.exec(String(taskId || '').trim().toUpperCase());
+  if (!match) return '';
+  return `${normalizeDisplaySpaceKey(match[1])}-${match[2]}`;
+};
 
 const getTaskSequenceTime = (task) => {
   const timestamp = Date.parse(task.created_at || task.createdAt || task.date || '');
@@ -443,7 +452,7 @@ const assignScopedTaskDisplayIds = (tasks, fallbackSpaceKey = '') => {
   return tasks.map((task, index) => ({
     ...task,
     spaceKey: task.spaceKey || fallbackSpaceKey,
-    displayId: isSpaceKeyTaskId(task.id) ? task.id : displayIdsByIndex.get(index) || task.displayId || task.id,
+    displayId: isSpaceKeyTaskId(task.id) ? getDisplayTaskId(task.id) : displayIdsByIndex.get(index) || task.displayId || task.id,
     rawTaskId: task.rawTaskId || task.id,
   }));
 };
@@ -3079,7 +3088,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
+                  className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
                   {selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId)) ? 'Unselect all' : 'Select all'}
                 </button>
@@ -3088,7 +3097,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
-                      className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-[#5E4DB2] hover:bg-[#4C3A9E] text-white border border-[#5E4DB2] transition shadow-sm"
+                      className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                     >
                       Change status
                     </button>
@@ -3114,7 +3123,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <button
                     type="button"
                     onClick={handleDeleteSelectedTasks}
-                    className="px-3 py-1 text-[12px] font-semibold rounded-md bg-red-600 hover:bg-red-700 text-white shadow-sm transition"
+                    className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-[#B42318] hover:bg-[#A11F17] text-white shadow-sm transition"
                   >
                     Delete
                   </button>
