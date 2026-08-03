@@ -892,6 +892,15 @@ export default function TaskDetailModal({
     return getUserDisplayName(getHistoryUser(entry, field), 'Unassigned');
   };
 
+  const getHistoryUserKey = (entry, field) => {
+    const user = getHistoryUser(entry, field);
+    return (
+      entry[`${field}_id`] ||
+      (typeof user === 'object' && user ? (user.user_id || user.id || user.email) : '') ||
+      getUserDisplayName(user, '')
+    );
+  };
+
   const getChangedByName = (entry) => {
     return getUserDisplayName(entry.changed_by_user || entry.changed_by_name || entry.changed_by, 'Unknown user');
   };
@@ -945,6 +954,81 @@ export default function TaskDetailModal({
     </div>
   );
 
+  const buildHistoryPerson = (entry, field) => {
+    const user = getHistoryUser(entry, field);
+    const name = getUserDisplayName(user, '');
+    const key = getHistoryUserKey(entry, field);
+    if (!key && !name) return null;
+    const displayName = name || key;
+    if (!displayName || displayName === 'Unassigned') return null;
+    return {
+      key: key || displayName,
+      name: displayName,
+      user,
+      profile: getHistoryProfile(user, displayName),
+    };
+  };
+
+  const buildAssignmentTimeline = (history) => {
+    const assigned = new Map();
+    const chronological = [...history].sort((a, b) => new Date(a.changed_at || 0) - new Date(b.changed_at || 0));
+
+    return chronological.map(entry => {
+      const changeType = getHistoryChangeType(entry);
+      const previousPerson = buildHistoryPerson(entry, 'previous_assignee');
+      const nextPerson = buildHistoryPerson(entry, 'new_assignee');
+
+      if ((changeType === 'removed' || changeType === 'reassigned') && previousPerson && !assigned.has(previousPerson.key)) {
+        assigned.set(previousPerson.key, previousPerson);
+      }
+
+      const beforeAssignees = Array.from(assigned.values());
+
+      if (changeType === 'removed') {
+        if (previousPerson) assigned.delete(previousPerson.key);
+      } else if (changeType === 'reassigned') {
+        if (previousPerson) assigned.delete(previousPerson.key);
+        if (nextPerson) assigned.set(nextPerson.key, nextPerson);
+      } else if (changeType === 'assigned') {
+        if (nextPerson) assigned.set(nextPerson.key, nextPerson);
+      }
+
+      return {
+        ...entry,
+        _changeType: changeType,
+        _beforeAssignees: beforeAssignees,
+        _afterAssignees: Array.from(assigned.values()),
+      };
+    }).sort((a, b) => new Date(b.changed_at || 0) - new Date(a.changed_at || 0));
+  };
+
+  const renderHistoryAssigneeList = (people) => {
+    if (!people.length) {
+      const profile = getAssigneeProfile('Unassigned');
+      return (
+        <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-[#F4F5F7] px-2 py-1 text-[11px] font-semibold text-[#5E6C84]">
+          {renderHistoryAvatar(profile, 18, 7)}
+          Unassigned
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+        {people.map(person => (
+          <span
+            key={person.key}
+            className="inline-flex max-w-[180px] items-center gap-1.5 rounded-md bg-[#F4F5F7] px-2 py-1 text-[11px] font-semibold text-[#172B4D]"
+            title={person.name}
+          >
+            {renderHistoryAvatar(person.profile, 18, 7)}
+            <span className="truncate">{person.name}</span>
+          </span>
+        ))}
+      </span>
+    );
+  };
+
   const getHistoryChangeType = (entry) => {
     const previousUser = getHistoryUser(entry, 'previous_assignee');
     const newUser = getHistoryUser(entry, 'new_assignee');
@@ -994,7 +1078,6 @@ export default function TaskDetailModal({
 
     const alreadyAssigned = localAssignedUsers.some(user => (user.user_id || user.id) === newAssigneeId);
     if (alreadyAssigned) {
-      setIsAssigneeOpen(false);
       return;
     }
 
@@ -1004,7 +1087,7 @@ export default function TaskDetailModal({
       return;
     }
 
-    setIsAssigneeOpen(false);
+    setIsAssigneeOpen(true);
   };
 
   const handleRemoveAssignee = async (assigneeUserId) => {
@@ -1505,12 +1588,9 @@ export default function TaskDetailModal({
                     <div style={{ color: '#6B778C', fontSize: '13px', padding: '12px 8px' }}>No assignment changes yet.</div>
                   ) : (
                     <div className="flex flex-col gap-4">
-                      {sortAssignHistory(assignHistory).map(entry => {
-                        const previousName = getHistoryName(entry, 'previous_assignee');
-                        const nextName = getHistoryName(entry, 'new_assignee');
+                      {buildAssignmentTimeline(assignHistory).map(entry => {
                         const changedByName = getChangedByName(entry);
-                        const changeType = getHistoryChangeType(entry);
-                        const targetName = changeType === 'removed' ? previousName : nextName;
+                        const changeType = entry._changeType || getHistoryChangeType(entry);
                         const actionText = changeType === 'assigned'
                           ? 'assigned'
                           : changeType === 'removed'
@@ -1522,10 +1602,6 @@ export default function TaskDetailModal({
                             ? { color: '#BA1A1A', backgroundColor: '#FFF0F0' }
                             : { color: '#5E35B1', backgroundColor: '#F0EDFF' };
                         const changedByProfile = getHistoryProfile(entry.changed_by_user || entry.changed_by_name || entry.changed_by, changedByName);
-                        const targetProfile = getHistoryProfile(
-                          changeType === 'removed' ? getHistoryUser(entry, 'previous_assignee') : getHistoryUser(entry, 'new_assignee'),
-                          targetName
-                        );
                         return (
                           <div key={entry.assignment_history_id || entry.id} style={{ padding: '8px 0', borderBottom: '1px solid #F4F5F7' }}>
                             <div className="flex items-start gap-3">
@@ -1535,16 +1611,10 @@ export default function TaskDetailModal({
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', minWidth: 0, fontSize: '13px', color: '#172B4D' }}>
                                     <span style={{ fontWeight: 700 }}>{changedByName}</span>
                                     <span style={{ ...actionStyle, display: 'inline-flex', alignItems: 'center', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 700 }}>{actionText}</span>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 700, color: '#172B4D' }}>
-                                      {renderHistoryAvatar(targetProfile, 20, 8)}
-                                      {targetName}
-                                    </span>
-                                    {changeType === 'reassigned' && (
-                                      <>
-                                        <span style={{ color: '#6B778C' }}>from</span>
-                                        <span style={{ fontWeight: 600 }}>{previousName}</span>
-                                      </>
-                                    )}
+                                    <span style={{ color: '#6B778C' }}>from</span>
+                                    {renderHistoryAssigneeList(entry._beforeAssignees || [])}
+                                    <span style={{ color: '#6B778C' }}>to</span>
+                                    {renderHistoryAssigneeList(entry._afterAssignees || [])}
                                   </div>
                                   <span style={{ flexShrink: 0, fontSize: '11px', color: '#6B778C' }}>{formatHistoryTime(entry.changed_at)}</span>
                                 </div>
@@ -1595,19 +1665,24 @@ export default function TaskDetailModal({
                 >
                   {(() => {
                     const profile = getAssigneeProfile(localTask.assignee);
+                    const assigneeListHeightClass = localAssignedUsers.length <= 1
+                      ? 'min-h-[44px] max-h-[44px]'
+                      : localAssignedUsers.length === 2
+                        ? 'min-h-[82px] max-h-[82px]'
+                        : 'min-h-[108px] max-h-[108px]';
                     return (
                       <>
                         <div
-                          className={`flex min-h-[44px] items-center gap-2 w-full rounded-none bg-white px-3 py-2 text-left transition-colors ${canManageAdminFields ? 'hover:bg-[#F4F5F7]' : ''}`}
+                          className={`flex w-full items-start overflow-y-auto overscroll-contain rounded-none bg-white px-3 py-2 text-left custom-scrollbar ${assigneeListHeightClass} ${canManageAdminFields ? 'hover:bg-[#F4F5F7]' : ''}`}
                         >
                           {localAssignedUsers.length > 0 ? (
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex w-full flex-col gap-1 pr-1">
                               {localAssignedUsers.map(user => {
                                 const userId = user.user_id || user.id;
                                 return (
                                   <span
                                     key={userId || user.name}
-                                    className="group/avatar inline-flex items-center gap-1 rounded-full bg-[#F4F5F7] py-0.5 pl-0.5 pr-2"
+                                    className="group/avatar flex h-9 w-full items-center gap-2 rounded-md bg-[#F4F5F7] px-2"
                                   >
                                     <span
                                       className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold"
@@ -1619,7 +1694,7 @@ export default function TaskDetailModal({
                                         user.initials || getInitials(user.name)
                                       )}
                                     </span>
-                                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{user.name}</span>
+                                    <span className="min-w-0 flex-1 truncate" style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{user.name}</span>
                                     {canManageAdminFields && userId && (
                                       <button
                                         type="button"
@@ -1627,7 +1702,7 @@ export default function TaskDetailModal({
                                           event.stopPropagation();
                                           handleRemoveAssignee(userId);
                                         }}
-                                        className="ml-0.5 hidden h-4 w-4 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[10px] font-bold leading-none text-slate-500 shadow-sm hover:bg-slate-200 group-hover/avatar:inline-flex"
+                                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-[10px] font-bold leading-none text-slate-500 opacity-70 shadow-sm hover:bg-slate-200 group-hover/avatar:opacity-100"
                                         aria-label={`Remove ${user.name}`}
                                       >
                                         x
@@ -1638,7 +1713,7 @@ export default function TaskDetailModal({
                               })}
                             </div>
                           ) : (
-                            <>
+                            <div className="flex h-full items-center gap-2">
                               <div
                                 className="shrink-0 flex items-center justify-center"
                                 style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: profile.color, color: profile.textColor || '#FFFFFF', fontSize: '10px', fontWeight: 700 }}
@@ -1646,16 +1721,16 @@ export default function TaskDetailModal({
                                 {profile.initials}
                               </div>
                               <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>Unassigned</span>
-                            </>
+                            </div>
                           )}
                         </div>
-                        <div className={`absolute left-0 top-full z-50 mt-2 w-full rounded-none border border-outline-variant bg-white shadow-2xl transition-all duration-150 overflow-hidden ${isAssigneeOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                        <div className={`absolute left-0 top-full z-50 mt-2 max-h-[236px] w-full overflow-y-auto overscroll-contain rounded-none border border-outline-variant bg-white shadow-2xl transition-all duration-150 custom-scrollbar ${isAssigneeOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                           {availableAssignees.map(user => {
                             const userId = user.user_id || user.id || '';
                             const isAssigned = userId && localAssignedUsers.some(assigned => (assigned.user_id || assigned.id) === userId);
                             return (
                             <button
-                              key={user.name}
+                              key={userId || user.name}
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();

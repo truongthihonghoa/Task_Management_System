@@ -1,5 +1,3 @@
-export const DEFAULT_TASK_BADGE_COUNT = 12;
-
 export function buildDemoLayoutUser({ isSuperAdmin, currentSpaceRole }) {
   if (isSuperAdmin) {
     return {
@@ -20,7 +18,7 @@ export function buildDemoLayoutUser({ isSuperAdmin, currentSpaceRole }) {
   };
 }
 
-export function getPrimaryNavigationItems({ isSuperAdmin, taskCount = DEFAULT_TASK_BADGE_COUNT }) {
+export function getPrimaryNavigationItems({ isSuperAdmin }) {
   return [
     {
       key: 'dashboard',
@@ -36,7 +34,6 @@ export function getPrimaryNavigationItems({ isSuperAdmin, taskCount = DEFAULT_TA
       icon: 'clipboard-list',
       path: '/dashboard/spaces',
       visible: true,
-      badge: taskCount,
       match: (pathname) => (
         pathname === '/dashboard/spaces'
         || pathname.startsWith('/dashboard/spaces/')

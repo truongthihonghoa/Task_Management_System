@@ -520,6 +520,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       return { ...prev, [sprintSpaceKey]: nextSprints };
     });
   }, [sprintSpaceKey]);
+
+  useEffect(() => {
+    const requestedView = taskSearchParams.get('view');
+    if (['summary', 'list', 'board'].includes(requestedView)) {
+      setView(requestedView);
+    }
+  }, [taskSearchParams]);
   const [expandedSprints, setExpandedSprints] = useState({});
   // Which sprint's ... menu is open (null = none, 'sprint-1' = Sprint 1, sprint.id = extra sprint)
   const [openSprintMenuId, setOpenSprintMenuId] = useState(null);
@@ -1376,6 +1383,13 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const switchView = (newView) => {
     setView(newView);
+    const nextParams = new URLSearchParams(taskSearchParams);
+    if (newView === 'list') {
+      nextParams.delete('view');
+    } else {
+      nextParams.set('view', newView);
+    }
+    setTaskSearchParams(nextParams, { replace: true });
   };
 
   const handleDeleteTask = async (taskId) => {

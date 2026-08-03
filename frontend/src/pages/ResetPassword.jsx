@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { resetPassword as resetPasswordRequest } from '../api/authApi';
+import {
+  resetPassword as resetPasswordRequest,
+  verifyResetToken,
+} from '../api/authApi';
 
 function getErrorMessage(error) {
   const detail = error?.response?.data?.detail;
@@ -29,6 +32,10 @@ export default function ResetPassword() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  const [isVerifying, setIsVerifying] = useState(true);
+  const [isValidToken, setIsValidToken] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+
   const checks = useMemo(() => ({
     length: newPassword.length >= 8,
     upper: /[A-Z]/.test(newPassword),
@@ -55,13 +62,41 @@ export default function ResetPassword() {
   const hasValidLink = Boolean(email && token);
 
   useEffect(() => {
+    if (!hasValidLink) {
+      setIsVerifying(false);
+      setIsValidToken(false);
+      return;
+    }
+
+    let isMounted = true;
+    verifyResetToken({ email, token })
+      .then(() => {
+        if (isMounted) {
+          setIsValidToken(true);
+        }
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setIsValidToken(false);
+          setVerifyError(getErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsVerifying(false);
+        }
+      });
+
     const clearAutofill = window.setTimeout(() => {
       setNewPassword('');
       setConfirmPassword('');
     }, 100);
 
-    return () => window.clearTimeout(clearAutofill);
-  }, []);
+    return () => {
+      isMounted = false;
+      window.clearTimeout(clearAutofill);
+    };
+  }, [email, token, hasValidLink]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -107,6 +142,45 @@ export default function ResetPassword() {
       setIsSubmitting(false);
     }
   };
+
+  if (isVerifying) {
+    return (
+      <div className="bg-surface min-h-screen flex flex-col font-sans antialiased">
+        <main className="flex-grow flex items-center justify-center p-6">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-[#4B3277] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-slate-500 font-medium">Verifying reset link...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isValidToken && hasValidLink) {
+    return (
+      <div className="bg-surface min-h-screen flex flex-col font-sans antialiased">
+        <main className="flex-grow flex items-center justify-center p-6">
+          <section className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-12 w-full max-w-[440px] text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-50 mb-4">
+              <svg className="h-6 w-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Link No Longer Valid</h1>
+            <p className="text-sm text-gray-500 mb-8">
+              {verifyError || 'This reset link is invalid or has expired.'}
+            </p>
+            <Link
+              className="inline-flex w-full justify-center py-3.5 px-4 bg-[#4B2C7F] hover:bg-[#3d2368] text-white font-semibold rounded-lg transition-colors shadow-md active:scale-[0.98]"
+              to="/"
+            >
+              Back to Login
+            </Link>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-surface min-h-screen flex flex-col font-sans antialiased">

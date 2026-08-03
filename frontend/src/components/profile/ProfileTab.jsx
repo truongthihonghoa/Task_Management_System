@@ -26,10 +26,6 @@ function getErrorMessage(error) {
   return 'Unable to update profile. Please try again.';
 }
 
-function displayRole(role) {
-  return role === 'SUPER_ADMIN' ? 'Super Admin' : 'User';
-}
-
 function getBackendOrigin() {
   try {
     const url = new URL(API_BASE_URL);
@@ -348,9 +344,6 @@ export default function ProfileTab() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-gray-900 truncate">{profileData.fullName}</h1>
-            <span className="px-2 py-0.5 bg-green-50 text-green-700 text-xs font-semibold rounded-full border border-green-100">
-              {profileData.status}
-            </span>
           </div>
           <p className="text-gray-500 text-sm mb-2 break-all">{profileData.email}</p>
           <div className="flex gap-3">
@@ -396,30 +389,6 @@ export default function ProfileTab() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <input
-                    type="text"
-                    value={displayRole(editData.role)}
-                    readOnly
-                    className="w-full px-3 text-gray-600 py-2 bg-gray-100 border border-gray-300 rounded-lg focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Account Status
-                  </label>
-                  <input
-                    type="text"
-                    value={editData.status}
-                    readOnly
-                    className="w-full text-gray-600 px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Email
                   </label>
                   <input
@@ -436,20 +405,6 @@ export default function ProfileTab() {
                   <div>
                     <p className="text-sm text-gray-900 font-medium">Full Name</p>
                     <p className="text-gray-500 mt-0.5">{profileData.fullName}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-900 font-medium">Role</p>
-                    <p className="text-gray-500 mt-0.5">{displayRole(profileData.role)}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-900 font-medium">Account Status</p>
-                    <div className="mt-1">
-                      <span className="px-2.5 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                        {profileData.status}
-                      </span>
-                    </div>
                   </div>
 
                   <div>
