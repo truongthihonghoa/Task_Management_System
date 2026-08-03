@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser, isSubmitting = false, submitError = '' }) => {
   const [formData, setFormData] = useState({
     title: '',
+    key: '',
     description: ''
   });
   const [localError, setLocalError] = useState('');
@@ -19,13 +20,26 @@ const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser, isSubmitting
     e.preventDefault();
     setLocalError('');
 
+    const title = formData.title.trim();
+    const key = formData.key.trim().toUpperCase();
+    if (!title) {
+      setLocalError('Space name is required.');
+      return;
+    }
+    if (!/^[A-Z][A-Z0-9]{0,9}$/.test(key)) {
+      setLocalError('Space key must start with a letter and contain only letters/numbers.');
+      return;
+    }
+
     try {
       await onCreate({
         ...formData,
+        title,
+        key,
         owner: currentUser?.id,
         ownerName: currentUser?.name
       });
-      setFormData({ title: '', description: '' });
+      setFormData({ title: '', key: '', description: '' });
     } catch (error) {
       setLocalError(error?.message || 'Unable to create this space.');
     }
@@ -55,6 +69,20 @@ const CreateSpaceModal = ({ isOpen, onClose, onCreate, currentUser, isSubmitting
               value={formData.title}
               onChange={(e) => setFormData({...formData, title: e.target.value})}
               autoFocus
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5 ml-0.5">Space Key</label>
+            <input
+              type="text"
+              required
+              maxLength={10}
+              pattern="[A-Za-z][A-Za-z0-9]{0,9}"
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[13px] uppercase outline-none focus:ring-2 focus:ring-[#4C2B74]/20 focus:border-[#4C2B74] transition-all"
+              placeholder="e.g. EC"
+              value={formData.key}
+              onChange={(e) => setFormData({ ...formData, key: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
             />
           </div>
  

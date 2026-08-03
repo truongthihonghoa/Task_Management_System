@@ -49,7 +49,7 @@ Ghi chú: Bảng "Thông tin chạy Docker" không phải API, chỉ dùng để
 
 | Tên API | Mô tả | Đầu vào | Đầu ra | Phương thức HTTP | Endpoint |
 | --- | --- | --- | --- | --- | --- |
-| Create Space | Tạo không gian làm việc mới | Header `Authorization`, Body `{ name_space, owner_id, description? }` | `SpaceResponse` | POST | `/api/v1/spaces` |
+| Create Space | Tạo không gian làm việc mới | Header `Authorization`, Body `{ name_space, space_key, owner_id, description? }` | `SpaceResponse` | POST | `/api/v1/spaces` |
 | List Spaces | Lấy danh sách space user có quyền xem | Header `Authorization`, Query `include_deleted?` | `SpaceResponse[]` | GET | `/api/v1/spaces` |
 | List Owner Trash | Lấy danh sách space đã xóa của owner | Header `Authorization`, Path `{ owner_id }` | `SpaceResponse[]` | GET | `/api/v1/spaces/owners/{owner_id}/trash` |
 | Get Space | Lấy thông tin chi tiết space | Header `Authorization`, Path `{ space_id }` | `SpaceResponse` | GET | `/api/v1/spaces/{space_id}` |

@@ -9,7 +9,7 @@ class TaskAttachment(Base):
     __tablename__ = "task_attachments"
 
     attachment_id = prefixed_id_column("TAT", "task_attachments_attachment_id_seq")
-    task_id = Column(String(15), ForeignKey("tasks.task_id"), nullable=False)
+    task_id = Column(String(32), ForeignKey("tasks.task_id"), nullable=False)
     file_name = Column(String(255), nullable=False)
     file_path = Column(Text, nullable=False)
     storage_url = Column(Text, nullable=True)

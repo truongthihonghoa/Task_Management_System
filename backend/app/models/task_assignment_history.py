@@ -9,7 +9,7 @@ class TaskAssignmentHistory(Base):
     __tablename__ = "task_assignment_history"
 
     assignment_history_id = prefixed_id_column("TAH", "task_assignment_history_assignment_history_id_seq")
-    task_id = Column(String(15), ForeignKey("tasks.task_id"), nullable=False)
+    task_id = Column(String(32), ForeignKey("tasks.task_id"), nullable=False)
     previous_assignee_id = Column(String(15), ForeignKey("users.user_id"), nullable=True)
     new_assignee_id = Column(String(15), ForeignKey("users.user_id"), nullable=True)
     changed_by = Column(String(15), ForeignKey("users.user_id"), nullable=False)

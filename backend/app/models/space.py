@@ -10,6 +10,7 @@ class Space(Base):
 
     space_id = prefixed_id_column("SPC", "spaces_space_id_seq")
     name_space = Column(String(255), nullable=False)
+    space_key = Column(String(10), nullable=False, unique=True)
     description = Column(Text, nullable=True)
     owner_id = Column(String(15), ForeignKey("users.user_id"), nullable=False)
     status_space = Column(String(20), nullable=False, default="Active", server_default="Active")

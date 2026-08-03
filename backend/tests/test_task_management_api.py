@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import task_management
+from app.repository import task as task_repository
 from app.schemas.pydantic_models import TaskCreate, TaskListItemResponse, TaskUpdate
 from app.services import task_management_service
 
@@ -33,6 +34,30 @@ def test_assignment_routes_are_documented_under_task_management():
         ("patch", "/api/v1/tasks/{task_id}", "Update Task"),
         ("delete", "/api/v1/tasks/{task_id}", "Delete Task"),
     ]
+
+
+def test_next_task_id_uses_space_key_and_next_sequence(monkeypatch):
+    class FakeTaskIdQuery:
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return [("EC-1",), ("EC-2",), ("OTHER-9",)]
+
+    class FakeDB:
+        def get_bind(self):
+            return None
+
+        def query(self, *_args):
+            return FakeTaskIdQuery()
+
+    monkeypatch.setattr(
+        task_repository,
+        "get_space",
+        lambda _db, space_id: SimpleNamespace(space_id=space_id, space_key="EC"),
+    )
+
+    assert task_repository.get_next_task_id_for_space(FakeDB(), "SPC00000002") == "EC-3"
 
 
 def test_create_task_delegates_form_payload_and_attachments_to_service(monkeypatch):

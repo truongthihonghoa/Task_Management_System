@@ -1,14 +1,13 @@
 from sqlalchemy import CheckConstraint, Column, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import relationship
 
-from app.core.id_generator import prefixed_id_column
 from app.db.base_class import Base
 
 
 class Task(Base):
     __tablename__ = "tasks"
 
-    task_id = prefixed_id_column("TSK", "tasks_task_id_seq")
+    task_id = Column(String(32), primary_key=True, nullable=False)
     space_id = Column(String(15), ForeignKey("spaces.space_id"), nullable=False)
     sprint_id = Column(String(15), ForeignKey("sprints.sprint_id"), nullable=False)
     title = Column(String(255), nullable=False)

@@ -40,7 +40,7 @@ def list_notifications(
     notification_type: NotificationType | None = Query(default=None, alias="type"),
     audience: NotificationAudience | None = None,
     search: str | None = Query(default=None, max_length=255),
-    task_id: str | None = Query(default=None, max_length=15),
+    task_id: str | None = Query(default=None, max_length=32),
     space_id: str | None = Query(default=None, max_length=15),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
