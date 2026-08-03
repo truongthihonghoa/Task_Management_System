@@ -9,7 +9,7 @@ class TaskComment(Base):
     __tablename__ = "task_comments"
 
     comment_id = prefixed_id_column("TCM", "task_comments_comment_id_seq")
-    task_id = Column(String(15), ForeignKey("tasks.task_id"), nullable=False)
+    task_id = Column(String(32), ForeignKey("tasks.task_id"), nullable=False)
     user_id = Column(String(15), ForeignKey("users.user_id"), nullable=False)
     parent_comment_id = Column(String(15), ForeignKey("task_comments.comment_id"), nullable=True)
     comment = Column(Text, nullable=False)

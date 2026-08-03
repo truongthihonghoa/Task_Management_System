@@ -6,7 +6,7 @@ from typing import List
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, get_optional_bearer_token
@@ -71,6 +71,34 @@ def _create_account_redirect(*, email: str, space_id: str, message: str) -> Redi
     return RedirectResponse(
         url=f"{_frontend_url()}/create-account?{query}",
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _space_tasks_url(space_id: str, *, invite_status: str, message: str) -> str:
+    query = urlencode({"invite": invite_status, "message": message})
+    return f"{_frontend_url()}/dashboard/tasks/{space_id}?{query}"
+
+
+def _create_account_url(*, email: str, space_id: str, message: str) -> str:
+    query = urlencode(
+        {
+            "invite": "accepted",
+            "email": email,
+            "spaceId": space_id,
+            "message": message,
+        }
+    )
+    return f"{_frontend_url()}/create-account?{query}"
+
+
+def _review_json_response(*, title: str, message: str, redirect_url: str | None = None) -> JSONResponse:
+    return JSONResponse(
+        {
+            "title": title,
+            "message": message,
+            "redirect_url": redirect_url,
+        },
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -235,14 +263,21 @@ def add_people_to_space(
 @router.get("/member-requests/{review_token}/approve")
 def approve_space_member_request(
     review_token: str,
+    response: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    wants_json = response == "json"
     member_request = (
         db.query(SpaceMemberRequest)
         .filter(SpaceMemberRequest.review_token == review_token)
         .first()
     )
     if member_request is None:
+        if wants_json:
+            return _review_json_response(
+                title="Request already handled",
+                message="This approval link was already used or has expired. If it was approved, the invitation email has already been sent.",
+            )
         return _review_confirmation_response(
             title="Request already handled",
             message="This approval link was already used or has expired. If it was approved, the invitation email has already been sent.",
@@ -251,20 +286,46 @@ def approve_space_member_request(
     space_id = member_request.space_id
     message = space_crud.review_space_member_request(db, review_token, approve=True)
     if request_status == "PENDING_OWNER":
+        if wants_json:
+            return _review_json_response(
+                title="Invitation email sent",
+                message=message,
+            )
         return _review_confirmation_response(
             title="Invitation email sent",
             message=message,
         )
     if request_status not in ("PENDING_INVITEE",):
+        if wants_json:
+            return _review_json_response(
+                title="Request already handled",
+                message=message,
+            )
         return _review_confirmation_response(
             title="Request already handled",
             message=message,
         )
     if member_request.requested_user_id is None:
+        if wants_json:
+            return _review_json_response(
+                title="Invitation accepted",
+                message=message,
+                redirect_url=_create_account_url(
+                    email=member_request.requested_email,
+                    space_id=space_id,
+                    message=message,
+                ),
+            )
         return _create_account_redirect(
             email=member_request.requested_email,
             space_id=space_id,
             message=message,
+        )
+    if wants_json:
+        return _review_json_response(
+            title="Invitation accepted",
+            message=message,
+            redirect_url=_space_tasks_url(space_id, invite_status="accepted", message=message),
         )
     return _space_tasks_redirect(space_id, invite_status="accepted", message=message)
 
@@ -272,19 +333,31 @@ def approve_space_member_request(
 @router.get("/member-requests/{review_token}/reject")
 def reject_space_member_request(
     review_token: str,
+    response: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    wants_json = response == "json"
     member_request = (
         db.query(SpaceMemberRequest)
         .filter(SpaceMemberRequest.review_token == review_token)
         .first()
     )
     if member_request is None:
+        if wants_json:
+            return _review_json_response(
+                title="Request already handled",
+                message="This review link was already used or has expired.",
+            )
         return _review_confirmation_response(
             title="Request already handled",
             message="This review link was already used or has expired.",
         )
     message = space_crud.review_space_member_request(db, review_token, approve=False)
+    if wants_json:
+        return _review_json_response(
+            title="Request rejected",
+            message=message,
+        )
     return _review_confirmation_response(
         title="Request rejected",
         message=message,

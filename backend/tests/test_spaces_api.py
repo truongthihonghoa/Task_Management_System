@@ -16,6 +16,7 @@ def test_space_crud_routes_delegate_to_repository(monkeypatch):
     current_user = SimpleNamespace(user_id="USR00000003", role="USER")
     create_payload = SpaceCreate(
         name_space="Task Management",
+        space_key="TM",
         owner_id="USR00000003",
         description="Task management workspace",
     )
@@ -94,6 +95,7 @@ def test_create_space_requires_user_role():
     db = object()
     payload = SpaceCreate(
         name_space="Task Management",
+        space_key="TM",
         owner_id="USR00000001",
         description="Task management workspace",
     )
@@ -110,6 +112,7 @@ def test_create_space_requires_current_user_as_owner():
     db = object()
     payload = SpaceCreate(
         name_space="Task Management",
+        space_key="TM",
         owner_id="USR00000099",
         description="Task management workspace",
     )

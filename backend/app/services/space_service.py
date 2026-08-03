@@ -48,6 +48,25 @@ def _normalize_space_name(name: str) -> str:
     return normalized
 
 
+def _normalize_space_key(space_key: str) -> str:
+    normalized = space_key.strip().upper()
+    if not normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space key is required",
+        )
+    if not normalized[0].isalpha() or not normalized.isalnum() or len(normalized) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space key must start with a letter and contain only letters/numbers",
+        )
+    return normalized
+
+
+def _space_key_for_response(space: Space) -> str:
+    return getattr(space, "space_key", None) or "SP"
+
+
 def _ensure_active_owner(owner: User) -> None:
     if owner.status_user != "Active":
         raise HTTPException(
@@ -113,6 +132,24 @@ def _ensure_space_name_available(
         )
 
 
+def _ensure_space_key_available(
+    db: Session,
+    *,
+    space_key: str,
+    exclude_space_id: str | None = None,
+) -> None:
+    existing_space = space_repository.find_space_by_key(
+        db,
+        space_key=space_key,
+        exclude_space_id=exclude_space_id,
+    )
+    if existing_space:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Space key already exists",
+        )
+
+
 def _active_task_counts_for_spaces(db: Session, space_ids: list[str]) -> dict[str, int]:
     if not space_ids:
         return {}
@@ -141,6 +178,7 @@ def _space_response(space: Space, *, task_count: int = 0) -> SpaceResponse:
     return SpaceResponse(
         space_id=space.space_id,
         name_space=space.name_space,
+        space_key=_space_key_for_response(space),
         description=space.description,
         owner_id=space.owner_id,
         status_space=space.status_space,
@@ -184,14 +222,17 @@ def create_space(db: Session, payload: SpaceCreate) -> SpaceResponse:
     _ensure_active_owner(owner)
 
     name_space = _normalize_space_name(payload.name_space)
+    space_key = _normalize_space_key(payload.space_key)
     _ensure_space_name_available(
         db,
         owner_id=payload.owner_id,
         name_space=name_space,
     )
+    _ensure_space_key_available(db, space_key=space_key)
 
     space = Space(
         name_space=name_space,
+        space_key=space_key,
         description=payload.description,
         owner_id=payload.owner_id,
         status_space="Active",
