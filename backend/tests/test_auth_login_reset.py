@@ -353,16 +353,16 @@ def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
 
 def test_reset_password_rejects_used_reset_link(monkeypatch):
     user = make_user()
-    token = make_token(used_at=vietnam_now())
 
     monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
-    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
+    # Simulate the token having been deleted after first use
+    monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: None)
     patch_valid_reset_jwt(monkeypatch, user)
 
     with pytest.raises(HTTPException) as exc_info:
-        auth_service.reset_password(FakeDb(), user.email, token.otp_code, "NewPassword@123")
+        auth_service.reset_password(FakeDb(), user.email, "some_otp", "NewPassword@123")
 
-    assert_http_error(exc_info, 400, "The password reset link is no longer valid.")
+    assert_http_error(exc_info, 400, "This reset link is no longer valid because your password has already been changed.")
 
 
 def test_reset_password_validates_password_strength_and_match():

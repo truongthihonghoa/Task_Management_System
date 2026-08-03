@@ -128,8 +128,8 @@ def _get_valid_verification_token(
 
     if token is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Verification record not found."},
+            status_code=status.HTTP_400_BAD_REQUEST if is_password_reset else status.HTTP_404_NOT_FOUND,
+            detail={"message": "This reset link is no longer valid because your password has already been changed." if is_password_reset else "Verification record not found."},
         )
     if token.otp_code != code:
         raise HTTPException(
@@ -599,8 +599,8 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
     )
 
     try:
-        # Mark token as used
-        token_obj.used_at = now
+        # Delete the token instead of marking it used
+        db.delete(token_obj)
         # Update password
         user.password_hash = hash_password(new_password)
         user.failed_login_attempts = 0
@@ -623,6 +623,27 @@ def reset_password(db: Session, email: str, token: str, new_password: str) -> Me
         raise
 
     return MessageResponse(message="Password reset successfully.")
+
+
+def verify_reset_token(db: Session, email: str, token: str) -> MessageResponse:
+    """Verify if a password reset token is valid without resetting the password."""
+    now = vietnam_now()
+    user = get_user_by_email(db, email)
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"message": "Email does not exist."},
+        )
+
+    _decode_password_reset_link_token(token, email=user.email, user_id=user.user_id)
+
+    # Validate token (must be valid, not used, not expired)
+    _get_valid_verification_token(
+        db, email=email, code=token, token_type=PASSWORD_RESET, now=now
+    )
+
+    return MessageResponse(message="Valid reset token.")
 
 
 def register(db: Session, payload: RegisterRequest) -> RegisterResponse:

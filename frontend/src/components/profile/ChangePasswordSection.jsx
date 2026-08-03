@@ -114,14 +114,6 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
     }
   };
 
-  const renderStatusIcon = (isValid) => (
-    <span
-      className={`material-symbols-outlined text-[16px] ${isValid ? 'text-green-600' : 'text-gray-400'}`}
-      style={{ fontVariationSettings: isValid ? "'FILL' 1" : "'FILL' 0" }}
-    >
-      {isValid ? 'check_circle' : 'circle'}
-    </span>
-  );
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} autoComplete="off">
@@ -199,24 +191,6 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
           </div>
         </div>
       )}
-
-      <div>
-        <p className="text-sm font-semibold mb-2">Password Requirements</p>
-        <div className="space-y-2 text-sm">
-          {[
-            ['length', 'Minimum 8 characters'],
-            ['upper', 'One uppercase letter'],
-            ['lower', 'One lowercase letter'],
-            ['number', 'One number'],
-            ['special', 'One special character'],
-          ].map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2">
-              {renderStatusIcon(requirements[key])}
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {errorMessage && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
