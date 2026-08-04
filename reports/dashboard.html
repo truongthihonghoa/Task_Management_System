@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pytest Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #657084;
+      --line: #dfe4ec;
+      --pass: #12805c;
+      --fail: #d92d20;
+      --error: #a54800;
+      --skip: #6b5e00;
+      --accent: #315fce;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 44px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    h1, h2 { margin: 0; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 18px; margin-bottom: 14px; }
+    .meta { color: var(--muted); margin-top: 6px; }
+    .status {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 12px 14px;
+      min-width: 190px;
+      text-align: right;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .metric, section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .metric { padding: 16px; }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      margin-top: 4px;
+    }
+    .pass { color: var(--pass); }
+    .fail { color: var(--fail); }
+    .error { color: var(--error); }
+    .skip { color: var(--skip); }
+    .bar {
+      display: flex;
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e9edf5;
+      margin: 4px 0 22px;
+    }
+    .bar > div { min-width: 0; }
+    .bar .pass-bg { background: var(--pass); }
+    .bar .fail-bg { background: var(--fail); }
+    .bar .error-bg { background: var(--error); }
+    .bar .skip-bg { background: #b29d00; }
+    .visuals {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr 1.2fr;
+      gap: 16px;
+      margin: 18px 0 22px;
+    }
+    .visual-card {
+      min-height: 260px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .chart-center {
+      display: grid;
+      place-items: center;
+      min-height: 190px;
+    }
+    .donut {
+      width: 184px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at center, var(--panel) 0 53%, transparent 54%),
+        conic-gradient(
+          var(--pass) 0 98.4%,
+          var(--fail) 98.4% 100.0%,
+          var(--error) 100.0% 100.0%,
+          #b29d00 100.0% 100.0%,
+          #e9edf5 100.0% 100%
+        );
+      box-shadow: inset 0 8px 18px rgba(255, 255, 255, 0.75), 0 18px 30px rgba(23, 32, 51, 0.12);
+    }
+    .donut strong {
+      display: block;
+      font-size: 28px;
+      text-align: center;
+    }
+    .donut span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 14px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-right: 7px;
+      vertical-align: -1px;
+      background: currentColor;
+    }
+    .sphere {
+      position: relative;
+      width: 176px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 68% 74%, rgba(0, 0, 0, 0.22) 0 18%, transparent 42%),
+        conic-gradient(var(--pass) 0 98.4%, var(--fail) 98.4% 100%);
+      box-shadow: inset -22px -24px 34px rgba(0, 0, 0, 0.22), inset 18px 18px 28px rgba(255, 255, 255, 0.38), 0 22px 34px rgba(23, 32, 51, 0.16);
+    }
+    .sphere::after {
+      content: "";
+      position: absolute;
+      inset: 14%;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.38);
+    }
+    .sphere strong {
+      position: relative;
+      z-index: 1;
+      color: #fff;
+      font-size: 30px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+    .cylinders {
+      height: 190px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      gap: 18px;
+      padding: 18px 6px 2px;
+    }
+    .cylinder-wrap {
+      width: 64px;
+      text-align: center;
+    }
+    .cylinder {
+      position: relative;
+      width: 48px;
+      height: var(--height);
+      min-height: 8px;
+      margin: 0 auto;
+      border-radius: 999px / 18px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.45), transparent 28%, rgba(0,0,0,0.12) 72%, rgba(255,255,255,0.22)),
+        var(--color);
+      box-shadow: inset -10px 0 18px rgba(0, 0, 0, 0.12), 0 12px 20px rgba(23, 32, 51, 0.14);
+    }
+    .cylinder::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -8px;
+      height: 16px;
+      border-radius: 50%;
+      background:
+        radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.8), rgba(255,255,255,0.18) 38%, rgba(0,0,0,0.12) 72%),
+        var(--color);
+    }
+    .cylinder::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -8px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color);
+      filter: brightness(0.82);
+    }
+    .cylinder-wrap strong {
+      display: block;
+      margin-top: 14px;
+      color: var(--ink);
+    }
+    .cylinder-wrap span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    section { padding: 18px; margin-top: 16px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 10px 8px;
+      border-top: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    pre {
+      margin: 0;
+      max-width: 520px;
+      white-space: pre-wrap;
+      color: #384255;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 12px;
+    }
+    a { color: var(--accent); }
+    .links { display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px; }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eef2f8;
+    }
+    .pill.passed { color: var(--pass); }
+    .pill.failure { color: var(--fail); }
+    .pill.error { color: var(--error); }
+    .pill.skipped { color: var(--skip); }
+    .empty { color: var(--muted); text-align: center; }
+    .empty-card {
+      padding: 28px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .failure-list {
+      display: grid;
+      gap: 12px;
+    }
+    .failure-card {
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--fail);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 14px 16px 16px;
+    }
+    .failure-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .failure-duration {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .failure-card h3 {
+      margin: 0 0 10px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .failure-card pre {
+      max-width: none;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f7f8fb;
+      border: 1px solid #e6ebf2;
+    }
+    @media (max-width: 820px) {
+      header { display: block; }
+      .status { text-align: left; margin-top: 14px; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .visuals { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Pytest Dashboard</h1>
+        <div class="meta">Generated 2026-08-04 09:37:39 SE Asia Standard Time on Python 3.14.5 (Windows)</div>
+      </div>
+      <div class="status">
+        <strong>Needs attention</strong>
+        <div class="meta">pytest exit code: 1</div>
+        <div class="links">
+          <a href="junit.xml">JUnit XML</a>
+          <a href="pytest-output.txt">Console output</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid" aria-label="Test result summary">
+      <div class="metric"><span>Total</span><strong>246</strong></div>
+      <div class="metric"><span>Passed</span><strong class="pass">242</strong></div>
+      <div class="metric"><span>Failed</span><strong class="fail">4</strong></div>
+      <div class="metric"><span>Errors</span><strong class="error">0</strong></div>
+      <div class="metric"><span>Skipped</span><strong class="skip">0</strong></div>
+    </div>
+
+    <div class="bar" title="Passed 98.4%, failed 1.6%, errors 0.0%, skipped 0.0%">
+      <div class="pass-bg" style="width: 98.4%"></div>
+      <div class="fail-bg" style="width: 1.6%"></div>
+      <div class="error-bg" style="width: 0.0%"></div>
+      <div class="skip-bg" style="width: 0.0%"></div>
+    </div>
+
+    <div class="visuals" aria-label="Visual test result charts">
+      <div class="visual-card">
+        <h2>Result Donut</h2>
+        <div class="chart-center">
+          <div class="donut">
+            <div>
+              <strong>246</strong>
+              <span>Tests</span>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="pass">Passed 98.4%</span>
+          <span class="fail">Failed 1.6%</span>
+          <span class="error">Errors 0.0%</span>
+          <span class="skip">Skipped 0.0%</span>
+        </div>
+      </div>
+
+      <div class="visual-card">
+        <h2>Pass Sphere</h2>
+        <div class="chart-center">
+          <div class="sphere"><strong>98.4%</strong></div>
+        </div>
+        <div class="meta">Green shows passed tests; red shows failed tests.</div>
+      </div>
+
+      <div class="visual-card">
+        <h2>3D Result Cylinders</h2>
+        <div class="cylinders">
+          <div class="cylinder-wrap">
+            <div class="cylinder" style="--height: 150.0px; --color: var(--pass);"></div>
+            <strong>242</strong>
+            <span>Passed</span>
+          </div>
+          <div class="cylinder-wrap">
+            <div class="cylinder" style="--height: 8.0px; --color: var(--fail);"></div>
+            <strong>4</strong>
+            <span>Failed</span>
+          </div>
+          <div class="cylinder-wrap">
+            <div class="cylinder" style="--height: 8.0px; --color: var(--error);"></div>
+            <strong>0</strong>
+            <span>Errors</span>
+          </div>
+          <div class="cylinder-wrap">
+            <div class="cylinder" style="--height: 8.0px; --color: #b29d00;"></div>
+            <strong>0</strong>
+            <span>Skipped</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section>
+      <h2>Failures And Errors</h2>
+      <div class="failure-list">
+        <article class="failure-card">
+          <div class="failure-head">
+            <span class="pill failure">Failed</span>
+            <span class="failure-duration">0.00s</span>
+          </div>
+          <h3>backend/app/services/help_ai_service_test::test_valid_guide_response</h3>
+          <pre>AssertionError: assert &#x27;Creating Tasks&#x27; in &#x27;Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.&#x27;
+ +  where &#x27;Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.&#x27; = AIChatResponse(reply=&#x27;Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.&#x27;).reply</pre>
+        </article>
+        
+
+        <article class="failure-card">
+          <div class="failure-head">
+            <span class="pill failure">Failed</span>
+            <span class="failure-duration">0.01s</span>
+          </div>
+          <h3>backend/app/services/help_ai_service_test::test_unsupported_question</h3>
+          <pre>AssertionError: assert &#x27;Here is info...tive actions.&#x27; == &#x27;Sorry, I cou...w user guide.&#x27;
+  
+  - Sorry, I couldn&#x27;t find any relevant information in the TaskFlow user guide.
+  + Here is information regarding User Permissions (Super Admin):
+  + 
+  + Super Admin:
+  + The Super Admin role provides complete, unrestricted access to the entire TaskFlow platform. Super Admins are responsible for user lifecycle management and platform-level oversight.
+  + ...
+  
+  ...Full output truncated (7 lines hidden), use &#x27;-vv&#x27; to show</pre>
+        </article>
+        
+
+        <article class="failure-card">
+          <div class="failure-head">
+            <span class="pill failure">Failed</span>
+            <span class="failure-duration">0.00s</span>
+          </div>
+          <h3>backend/tests/test_auth_login_reset::test_reset_password_hashes_password_and_clears_lock</h3>
+          <pre>AttributeError: &#x27;FakeDb&#x27; object has no attribute &#x27;delete&#x27;</pre>
+        </article>
+        
+
+        <article class="failure-card">
+          <div class="failure-head">
+            <span class="pill failure">Failed</span>
+            <span class="failure-duration">0.00s</span>
+          </div>
+          <h3>backend/tests/test_sprint_api::test_complete_sprint_requires_all_tasks_done</h3>
+          <pre>AssertionError: assert &#x27;Sprint can o... or cancelled&#x27; == &#x27;Sprint can o...asks are done&#x27;
+  
+  Skipping 41 identical leading characters in diff, use -v to show
+  - ks are done
+  + ks are done or cancelled</pre>
+        </article>
+        </div>
+    </section>
+
+    <section>
+      <h2>Results By File</h2>
+      <table>
+        <thead><tr><th>File</th><th>Total</th><th>Passed</th><th>Failed</th><th>Errors</th><th>Skipped</th><th>Duration</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>backend/app/services/help_ai_service_test</td>
+          <td>3</td>
+          <td class="pass">1</td>
+          <td class="fail">2</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.01s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_auth_login_reset</td>
+          <td>20</td>
+          <td class="pass">19</td>
+          <td class="fail">1</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.06s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_sprint_api</td>
+          <td>7</td>
+          <td class="pass">6</td>
+          <td class="fail">1</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.01s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_dashboard_api</td>
+          <td>31</td>
+          <td class="pass">31</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>1.00s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_notifications</td>
+          <td>43</td>
+          <td class="pass">43</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.92s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_main_layout</td>
+          <td>22</td>
+          <td class="pass">22</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.48s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_task_management_api</td>
+          <td>17</td>
+          <td class="pass">17</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.47s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_user_management_api</td>
+          <td>62</td>
+          <td class="pass">62</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.08s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_attachment_api</td>
+          <td>3</td>
+          <td class="pass">3</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.08s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_spaces_api</td>
+          <td>22</td>
+          <td class="pass">22</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.02s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_task_assignments</td>
+          <td>10</td>
+          <td class="pass">10</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.01s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_comment_api</td>
+          <td>3</td>
+          <td class="pass">3</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.00s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_help_api</td>
+          <td>3</td>
+          <td class="pass">3</td>
+          <td class="fail">0</td>
+          <td class="error">0</td>
+          <td class="skip">0</td>
+          <td>0.00s</td>
+        </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Slowest Tests</h2>
+      <table>
+        <thead><tr><th>Test</th><th>Status</th><th>Duration</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>backend/tests/test_dashboard_api::test_openapi_hides_space_summary_detail_routes</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.95s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_notifications::test_openapi_documents_page_size_limit_read_state_and_no_legacy_patch_endpoints</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.47s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_main_layout::test_openapi_keeps_only_backend_owned_main_layout_routes</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.46s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_task_management_api::test_assignment_routes_are_documented_under_task_management</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.46s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_notifications::test_preference_api_never_accepts_user_id_from_client</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.38s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_attachment_api::test_upload_task_media_uses_cloudinary_when_enabled</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.07s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_auth_login_reset::test_refresh_tokens_with_valid_refresh_token_updates_access_token</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.04s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_user_management_api::test_update_user_avatar_saves_public_media_url_to_user</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.02s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/tests/test_notifications::test_notification_repository_visible_operations_apply_thirty_day_window</td>
+          <td><span class="pill passed">Passed</span></td>
+          <td>0.02s</td>
+        </tr>
+        
+
+        <tr>
+          <td>backend/app/services/help_ai_service_test::test_unsupported_question</td>
+          <td><span class="pill failure">Failed</span></td>
+          <td>0.01s</td>
+        </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="meta">Total runtime reported by JUnit: 3.14s.</p>
+  </main>
+</body>
+</html>

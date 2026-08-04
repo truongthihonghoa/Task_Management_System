@@ -65,6 +65,22 @@ const toTitleCase = (value = '') => String(value)
   .toLowerCase()
   .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const normalizeDisplaySpaceKey = (spaceKey) => {
+  const normalized = String(spaceKey || '').trim().toUpperCase();
+  return /^SP0+\d+$/.test(normalized) ? 'SP' : normalized;
+};
+
+const getDisplayTaskId = (taskId) => {
+  const match = /^([A-Z][A-Z0-9]{0,9})-([1-9]\d*)$/.exec(String(taskId || '').trim().toUpperCase());
+  if (!match) return taskId || '';
+  return `${normalizeDisplaySpaceKey(match[1])}-${match[2]}`;
+};
+
+const normalizeTaskIdsInText = (value = '') => String(value || '').replace(
+  /\b([A-Z][A-Z0-9]{0,9})-([1-9]\d*)\b/g,
+  (fullId) => getDisplayTaskId(fullId)
+);
+
 const normalizeDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -595,11 +611,11 @@ const mapRecentActivityTask = (activity, uppercaseGroup = true, { showSpaceConte
     const user = normalizeUser(assignee);
     return { name: user.full_name, full_name: user.full_name, initials: user.initials, color: user.color, avatarUrl: user.avatarUrl };
   });
-  const subtitleParts = [activity?.target_id];
+  const subtitleParts = [getDisplayTaskId(activity?.target_id)];
   if (showSpaceContext) subtitleParts.push(activity?.space_name);
   return {
-    title: activity?.target_title || activity?.action || activity?.target_id || 'Activity',
-    subtitle: activity?.subtitle || subtitleParts.filter(Boolean).join(' - '),
+    title: normalizeTaskIdsInText(activity?.target_title || activity?.action || activity?.target_id || 'Activity'),
+    subtitle: normalizeTaskIdsInText(activity?.subtitle || subtitleParts.filter(Boolean).join(' - ')),
     status: activity?.status || '',
     group: groupFromDate(activity?.created_at, uppercaseGroup),
     time: formatRelativeTime(activity?.created_at),
@@ -658,6 +674,7 @@ const mapAssignmentHistory = (history, { showSpaceContext = true } = {}) => {
   return {
     assignment_history_id: history?.assignment_history_id,
     task_id: history?.task_id,
+    display_task_id: getDisplayTaskId(history?.task_id),
     task_title: history?.task_title || history?.task_id,
     space_name: showSpaceContext ? (history?.space_name || '') : '',
     previous_assignee: previousAssignee,
@@ -2662,7 +2679,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                       <p className="mt-1 text-[10px] font-black tracking-wide text-[#8c8c8c]">
                                         {task.assignment_history_id && <span>{task.assignment_history_id}</span>}
                                         {task.assignment_history_id && task.task_id && <span className="mx-1.5 text-[#c7bfd0]">/</span>}
-                                        {task.task_id && <span>{task.task_id}</span>}
+                                        {task.task_id && <span>{task.display_task_id || getDisplayTaskId(task.task_id)}</span>}
                                       </p>
                                     )}
                                   </div>

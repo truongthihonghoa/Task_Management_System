@@ -1,0 +1,136 @@
+.FF...............F..................................................... [ 29%]
+........................................................................ [ 58%]
+...........F............................................................ [ 87%]
+..............................                                           [100%]
+================================== FAILURES ===================================
+__________________________ test_valid_guide_response __________________________
+
+mock_db = <MagicMock id='2087335839792'>
+
+    def test_valid_guide_response(mock_db):
+        # Query that should match the Task Management guide
+        request = AIChatRequest(message="How do I create a task?")
+        response = answer_chat(mock_db, request, None)
+        # Ensure the response is not the unsupported message
+        assert response.reply != _text("en", "no_guide")
+        # Check that a known section title from the guide appears in the answer
+>       assert "Creating Tasks" in response.reply
+E       AssertionError: assert 'Creating Tasks' in 'Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.'
+E        +  where 'Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.' = AIChatResponse(reply='Sorry, I cannot access real-time system data or your personal TaskFlow information. I can only answer questions about the TaskFlow user guide and system features.').reply
+
+backend\app\services\help_ai_service_test.py:26: AssertionError
+__________________________ test_unsupported_question __________________________
+
+mock_db = <MagicMock id='2087335842480'>
+
+    def test_unsupported_question(mock_db):
+        request = AIChatRequest(message="What is the meaning of life?")
+        response = answer_chat(mock_db, request, None)
+>       assert response.reply == _text("en", "no_guide")
+E       AssertionError: assert 'Here is info...tive actions.' == 'Sorry, I cou...w user guide.'
+E         
+E         - Sorry, I couldn't find any relevant information in the TaskFlow user guide.
+E         + Here is information regarding User Permissions (Super Admin):
+E         + 
+E         + Super Admin:
+E         + The Super Admin role provides complete, unrestricted access to the entire TaskFlow platform. Super Admins are responsible for user lifecycle management and platform-level oversight.
+E         + ...
+E         
+E         ...Full output truncated (7 lines hidden), use '-vv' to show
+
+backend\app\services\help_ai_service_test.py:31: AssertionError
+_____________ test_reset_password_hashes_password_and_clears_lock _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5FF0B9FF0>
+
+    def test_reset_password_hashes_password_and_clears_lock(monkeypatch):
+        db = FakeDb()
+        user = make_user(status_user="Locked", failed_login_attempts=5, locked_until=vietnam_now())
+        token = make_token(used_at=None)
+        audits = []
+        revoked = []
+    
+        monkeypatch.setattr(auth_service, "get_user_by_email", lambda _db, email: user)
+        monkeypatch.setattr(auth_service, "get_verification_token", lambda _db, email, token_type: token)
+        patch_valid_reset_jwt(monkeypatch, user)
+        monkeypatch.setattr(auth_service, "hash_password", lambda password: f"hashed::{password}")
+        monkeypatch.setattr(auth_service, "create_audit_log", lambda _db, **kwargs: audits.append(kwargs))
+        monkeypatch.setattr(auth_service, "revoke_all_user_tokens", lambda _db, user_id: revoked.append(user_id))
+    
+>       response = auth_service.reset_password(db, user.email, token.otp_code, "NewPassword@123")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend\tests\test_auth_login_reset.py:341: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+db = <test_auth_login_reset.FakeDb object at 0x000001E5FF0A5E10>
+email = 'minhtrang@gmail.com'
+token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoicGFzc3dvcmRfcmVzZXQiLCJ1c2VyX2lkIjoiVVNSMDAwMDAwMDIiLCJlbWFpbCI6Im1pbmh0cmFuZ0BnbWFpbC5jb20ifQ.signature'
+new_password = 'NewPassword@123'
+
+    def reset_password(db: Session, email: str, token: str, new_password: str) -> MessageResponse:
+        """Reset password using a token from the reset link."""
+        now = vietnam_now()
+        user = get_user_by_email(db, email)
+    
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Email does not exist."},
+            )
+    
+        _decode_password_reset_link_token(token, email=user.email, user_id=user.user_id)
+    
+        # Validate token (must be valid, not used, not expired)
+        token_obj = _get_valid_verification_token(
+            db, email=email, code=token, token_type=PASSWORD_RESET, now=now
+        )
+    
+        try:
+            # Delete the token instead of marking it used
+>           db.delete(token_obj)
+            ^^^^^^^^^
+E           AttributeError: 'FakeDb' object has no attribute 'delete'
+
+backend\app\services\auth_service.py:603: AttributeError
+________________ test_complete_sprint_requires_all_tasks_done _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E5FED1A820>
+
+    def test_complete_sprint_requires_all_tasks_done(monkeypatch):
+        db = object()
+        user = SimpleNamespace(user_id="USR00000003", role="USER")
+        space = SimpleNamespace(
+            space_id="SPC00000002",
+            owner_id=user.user_id,
+            status_space="Active",
+            deleted_at=None,
+        )
+        sprint = SimpleNamespace(
+            sprint_id="SPR00000003",
+            space_id=space.space_id,
+            status="Active",
+            space=space,
+        )
+    
+        monkeypatch.setattr(sprint_service, "_get_sprint_or_404", lambda received_db, sprint_id: sprint)
+        monkeypatch.setattr(sprint_service.sprint_repository, "count_incomplete_tasks_by_sprint", lambda *_args: 2)
+    
+        with pytest.raises(HTTPException) as exc_info:
+            sprint_service.complete_sprint(db, sprint.sprint_id, user)
+    
+        assert exc_info.value.status_code == 400
+>       assert exc_info.value.detail == "Sprint can only be completed when all tasks are done"
+E       AssertionError: assert 'Sprint can o... or cancelled' == 'Sprint can o...asks are done'
+E         
+E         Skipping 41 identical leading characters in diff, use -v to show
+E         - ks are done
+E         + ks are done or cancelled
+
+backend\tests\test_sprint_api.py:153: AssertionError
+=========================== short test summary info ===========================
+FAILED backend/app/services/help_ai_service_test.py::test_valid_guide_response
+FAILED backend/app/services/help_ai_service_test.py::test_unsupported_question
+FAILED backend/tests/test_auth_login_reset.py::test_reset_password_hashes_password_and_clears_lock
+FAILED backend/tests/test_sprint_api.py::test_complete_sprint_requires_all_tasks_done
+4 failed, 242 passed in 11.97s
