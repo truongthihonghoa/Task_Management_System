@@ -67,6 +67,10 @@ function escapeHtmlAttribute(value = '') {
     .replace(/>/g, '&gt;');
 }
 
+function getTaskDisplayId(task = {}) {
+  return task.displayId || task.taskId || task.id || '';
+}
+
 /**
  * Compute portal position (fixed) from a trigger element.
  * Returns { top, left } placing the panel below the trigger.
@@ -287,7 +291,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
     let html;
     if (linkSelected) {
       // Liên kết nội bộ tới task
-      const display = linkText || `[${linkSelected.id}] ${linkSelected.title}`;
+      const display = linkText || `[${getTaskDisplayId(linkSelected)}] ${linkSelected.title}`;
       html = `<a href="#task-${linkSelected.id}" class="rte-task-link" data-task-id="${linkSelected.id}" contenteditable="false">${display}</a>&nbsp;`;
       // Cập nhật danh sách task gần đây
       setRecentTasks(prev => {
@@ -312,7 +316,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
     // Insert directly without needing buttons
     restoreSelection(savedRangeRef.current);
     editorRef.current?.focus();
-    const display = linkText || `[${task.id}] ${task.title}`;
+    const display = linkText || `[${getTaskDisplayId(task)}] ${task.title}`;
     const html = `<a href="#task-${task.id}" class="rte-task-link" data-task-id="${task.id}" contenteditable="false">${display}</a>&nbsp;`;
     try { document.execCommand('insertHTML', false, html); } catch (_) {}
     notifyChange();
@@ -914,6 +918,7 @@ function LinkDialog({
   // Lọc task theo từ khóa (ID, title, status)
   const filteredTasks = tasks.filter(t =>
     !linkSearch ||
+    getTaskDisplayId(t).toLowerCase().includes(searchLower) ||
     t.id.toLowerCase().includes(searchLower) ||
     t.title.toLowerCase().includes(searchLower) ||
     (t.status && t.status.toLowerCase().includes(searchLower))
@@ -1032,7 +1037,7 @@ function LinkDialog({
                         className={`rte-task-item ${linkSelected?.id === task.id ? 'selected' : ''}`}
                         onMouseDown={(e) => { e.preventDefault(); onSelectTask(task); }}
                       >
-                        <span className="rte-task-item-id">{task.id}</span>
+                        <span className="rte-task-item-id">{getTaskDisplayId(task)}</span>
                         <span className="rte-task-item-title">{task.title}</span>
                         <span
                           className="rte-task-item-status"
@@ -1067,7 +1072,7 @@ function LinkDialog({
                         className="rte-task-item"
                         onMouseDown={(e) => { e.preventDefault(); onSelectTask(task); }}
                       >
-                        <span className="rte-task-item-id">{task.id}</span>
+                        <span className="rte-task-item-id">{getTaskDisplayId(task)}</span>
                         <span className="rte-task-item-title">{task.title}</span>
                         <span
                           className="rte-task-item-status"

@@ -457,6 +457,13 @@ const assignScopedTaskDisplayIds = (tasks, fallbackSpaceKey = '') => {
   }));
 };
 
+const preserveTaskDisplayIdentity = (task, sourceTask = {}, fallbackSpaceKey = '') => ({
+  ...task,
+  spaceKey: task.spaceKey || sourceTask.spaceKey || fallbackSpaceKey,
+  displayId: sourceTask.displayId || task.displayId || (isSpaceKeyTaskId(task.id) ? getDisplayTaskId(task.id) : task.id),
+  rawTaskId: sourceTask.rawTaskId || task.rawTaskId || task.id,
+});
+
 const getSprintNumber = (sprintName) => {
   const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
   return match ? Number(match[1]) : 0;
@@ -785,14 +792,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
-    const updatedTask = mapApiTask(response.data);
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail || {};
+    const updatedTask = preserveTaskDisplayIdentity(mapApiTask(response.data), previousTask, apiSpace?.key || '');
     setTasks(prev => assignScopedTaskDisplayIds(
       prev.map(task => task.id === taskId ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
       apiSpace?.key || ''
     ));
     setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
     return updatedTask;
-  }, [apiSpace?.key]);
+  }, [apiSpace?.key, selectedTaskDetail, tasks]);
 
   useEffect(() => {
     if (!selectedTaskDetail?.id) return;
@@ -1210,16 +1218,19 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         axiosClient.get(`/tasks/${task.id}/assignment-history`),
       ]);
       const detailedTask = {
-        ...mapApiTask(response.data),
+        ...preserveTaskDisplayIdentity(mapApiTask(response.data), task, apiSpace?.key || ''),
         ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || response.data?.assignees || []),
         assignmentHistory: historyResponse.data?.history || response.data?.assignment_history || [],
       };
       setSelectedTaskDetail(detailedTask);
-      setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
+      setTasks(prev => assignScopedTaskDisplayIds(
+        prev.map(item => item.id === detailedTask.id ? preserveTaskDisplayIdentity(detailedTask, item, apiSpace?.key || '') : item),
+        apiSpace?.key || ''
+      ));
     } catch (error) {
       setTasksError(getErrorMessage(error, 'Unable to load task details.'));
     }
-  }, []);
+  }, [apiSpace?.key]);
 
   // Keep selected task detail in sync with the latest task state
   useEffect(() => {
@@ -1872,11 +1883,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     if (Object.keys(updates).length === 0) {
       if (assigneeChanged) return;
+      const nextTask = preserveTaskDisplayIdentity(updatedTask, currentTask, apiSpace?.key || '');
       setTasks(prev => assignScopedTaskDisplayIds(
-        prev.map(task => task.id === updatedTask.id ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
+        prev.map(task => task.id === updatedTask.id ? { ...nextTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
         apiSpace?.key || ''
       ));
-      setSelectedTaskDetail(updatedTask);
+      setSelectedTaskDetail(nextTask);
       return;
     }
 

@@ -708,6 +708,8 @@ export default function TaskDetailModal({
   const completedDateColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#172B4D';
   const completedDateBackground = isCompletedOverdue ? '#FFF0F0' : isCompletedDueToday ? DUE_TODAY_BACKGROUND : 'transparent';
   const completedDateIconColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#6B778C';
+  const detailTaskDisplayId = localTask.displayId || task.displayId || localTask.id || task.id;
+  const detailTaskSprintName = localTask.sprint || task.sprint || 'Development';
 
 
   // Get initials from name
@@ -1126,7 +1128,7 @@ export default function TaskDetailModal({
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined " style={{ color: '#4C2B74', fontSize: '25px' }}>task_alt</span>
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              {task.displayId || task.id} / {task.sprint || 'Development'}
+              {detailTaskDisplayId} / {detailTaskSprintName}
             </span>
           </div>
           <div className="flex items-center gap-1">
