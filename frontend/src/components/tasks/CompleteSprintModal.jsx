@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import '../../styles/CompleteSprintModal.css';
 
 const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount, openTasksCount, onComplete }) => {
   if (!isOpen) return null;
@@ -7,58 +8,62 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
   const hasOpenIssues = openTasksCount > 0;
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity" 
+    <div className="complete-sprint-modal fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
         onClick={onClose}
       />
-      
-      {/* Modal Content */}
-      <div className="relative bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="px-6 py-4 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
-          <h2 className="text-base font-bold text-on-surface">Complete {sprintName}</h2>
+
+      <div className="complete-sprint-modal__panel relative bg-white w-full max-w-[560px] rounded-2xl shadow-[0_18px_60px_rgba(17,24,39,0.22)] overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="complete-sprint-modal__header px-8 py-5 border-b border-[#D9D6EA] flex items-center justify-between bg-white">
+          <h2 className="complete-sprint-modal__title text-base font-bold text-on-surface">Complete {sprintName}</h2>
           <button 
             onClick={onClose}
-            className="p-1 hover:bg-surface-container rounded-full transition-colors"
+            type="button"
+            aria-label="Close dialog"
+            className="complete-sprint-modal__close"
           >
-            <span className="material-symbols-outlined text-[20px] text-outline">close</span>
+            <span aria-hidden="true">&times;</span>
           </button>
         </div>
-        
-        <div className="p-6">
-          <div className="flex flex-col gap-4 text-[13px] text-on-surface-variant leading-relaxed">
+
+        <div className="complete-sprint-modal__body px-8 py-7">
+          <div className="complete-sprint-modal__content flex flex-col gap-5 text-[13px] text-on-surface-variant leading-relaxed">
             <p>This sprint can only be completed when every issue is marked as Done or Cancelled.</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-lg flex flex-col items-center">
-                <span className="text-2xl font-bold text-green-700">{completedTasksCount}</span>
-                <span className="text-[11px] font-medium text-green-600 uppercase tracking-wider">Completed</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="complete-sprint-modal__stat complete-sprint-modal__stat--success">
+                <span className="complete-sprint-modal__stat-number">{completedTasksCount}</span>
+                <span className="complete-sprint-modal__stat-label">Completed</span>
               </div>
-              <div className={`${hasOpenIssues ? 'bg-orange-50 border-orange-100' : 'bg-white border-slate-300'} border p-4 rounded-lg flex flex-col items-center`}>
-                <span className={`text-2xl font-bold ${hasOpenIssues ? 'text-orange-700' : 'text-slate-700'}`}>{openTasksCount}</span>
-                <span className={`text-[11px] font-medium uppercase tracking-wider ${hasOpenIssues ? 'text-orange-600' : 'text-slate-600'}`}>Open issues</span>
+              <div className={`complete-sprint-modal__stat ${hasOpenIssues ? 'complete-sprint-modal__stat--warning' : 'complete-sprint-modal__stat--neutral'}`}>
+                <span className="complete-sprint-modal__stat-number">{openTasksCount}</span>
+                <span className="complete-sprint-modal__stat-label">Open issues</span>
               </div>
             </div>
 
             {hasOpenIssues ? (
-              <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-orange-800">
-                <div className="flex gap-3">
-                  <span className="material-symbols-outlined text-[20px] leading-none text-orange-600">error</span>
-                  <div>
-                    <p className="font-bold text-orange-900">Sprint cannot be completed yet.</p>
-                    <p className="mt-1 text-[12px] leading-relaxed">
+              <div className="complete-sprint-modal__notice complete-sprint-modal__notice--warning">
+                <div className="complete-sprint-modal__notice-row">
+                  <span className="complete-sprint-modal__notice-icon complete-sprint-modal__notice-icon--warning" aria-hidden="true">
+                    !
+                  </span>
+                  <div className="complete-sprint-modal__notice-copy">
+                    <p className="complete-sprint-modal__notice-title complete-sprint-modal__notice-title--warning">Sprint cannot be completed yet.</p>
+                    <p className="complete-sprint-modal__notice-body complete-sprint-modal__notice-body--warning">
                       Move all open issues to Done or Cancelled before completing this sprint.
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
-                <div className="flex gap-3">
-                  <span className="material-symbols-outlined text-[20px] leading-none text-slate-600">check_circle</span>
-                  <div>
-                    <p className="font-bold text-slate-800">Ready to complete.</p>
-                    <p className="mt-1 text-[12px] leading-relaxed">
+              <div className="complete-sprint-modal__notice complete-sprint-modal__notice--neutral">
+                <div className="complete-sprint-modal__notice-row">
+                  <span className="complete-sprint-modal__notice-icon complete-sprint-modal__notice-icon--neutral" aria-hidden="true">
+                    &#10003;
+                  </span>
+                  <div className="complete-sprint-modal__notice-copy">
+                    <p className="complete-sprint-modal__notice-title complete-sprint-modal__notice-title--neutral">Ready to complete.</p>
+                    <p className="complete-sprint-modal__notice-body complete-sprint-modal__notice-body--neutral">
                       All issues are Done or Cancelled. Completing this sprint will mark it as Completed.
                     </p>
                   </div>
@@ -67,11 +72,12 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
             )}
           </div>
         </div>
-        
-        <div className="px-6 py-4 bg-surface-container-low/50 border-t border-outline-variant flex justify-end gap-3">
+
+        <div className="complete-sprint-modal__footer px-8 py-4 bg-white border-t border-[#D9D6EA] flex justify-end gap-4">
           <button 
             onClick={onClose}
-            className="px-4 py-2 text-[13px] font-bold text-outline hover:bg-surface-container rounded-lg transition-colors"
+            type="button"
+            className="complete-sprint-modal__cancel"
           >
             Cancel
           </button>
@@ -82,10 +88,10 @@ const CompleteSprintModal = ({ isOpen, onClose, sprintName, completedTasksCount,
               }
             }}
             disabled={hasOpenIssues}
-            className={`px-5 py-2 text-[13px] font-bold rounded-lg shadow-md transition-all active:scale-95 ${
+            className={`complete-sprint-modal__confirm ${
               hasOpenIssues
-                ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none'
-                : 'bg-[#5e4db2] text-white hover:bg-[#4d3e9c]'
+                ? 'is-disabled'
+                : 'is-enabled'
             }`}
           >
             Complete Sprint

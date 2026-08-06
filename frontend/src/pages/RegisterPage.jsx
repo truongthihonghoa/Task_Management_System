@@ -3,21 +3,15 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { uploadRegistrationAvatar } from '../api/authApi';
 import { useAuth } from '../context/AuthContext';
 import { setCurrentUser } from '../services/tokenStorage';
+import { getApiErrorMessage } from '../utils/apiError';
+import {
+  getPasswordRequirements,
+  getRegisterPasswordStrength,
+  meetsAllPasswordRequirements,
+} from '../utils/passwordStrength';
 
 const AVATAR_ALLOWED_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to create account. Please check your information and try again.';
-}
 
 export default function CompleteAccount() {
   const navigate = useNavigate();
@@ -65,23 +59,8 @@ export default function CompleteAccount() {
     }
   }, [avatarPreview]);
 
-  const requirements = {
-    length: formData.password.length >= 8,
-    upper: /[A-Z]/.test(formData.password),
-    lower: /[a-z]/.test(formData.password),
-    number: /[0-9]/.test(formData.password),
-    special: /[^A-Za-z0-9]/.test(formData.password),
-  };
-
-  const calculateStrength = () => {
-    const score = Object.values(requirements).filter(Boolean).length;
-    if (!formData.password) return { text: 'Weak', barWidth: '20%', colorClass: 'bg-[#ba1a1a] text-[#ba1a1a]' };
-    if (score <= 2) return { text: 'Weak', barWidth: '33%', colorClass: 'bg-[#ba1a1a] text-[#ba1a1a]' };
-    if (score <= 4) return { text: 'Medium', barWidth: '66%', colorClass: 'bg-[#943700] text-[#943700]' };
-    return { text: 'Strong', barWidth: '100%', colorClass: 'bg-[#004ac6] text-[#004ac6]' };
-  };
-
-  const strength = calculateStrength();
+  const requirements = getPasswordRequirements(formData.password);
+  const strength = getRegisterPasswordStrength(formData.password, requirements);
 
   const handleInputChange = (e) => {
     const { id, value } = e.target;
@@ -140,7 +119,7 @@ export default function CompleteAccount() {
       return;
     }
 
-    if (!Object.values(requirements).every(Boolean)) {
+    if (!meetsAllPasswordRequirements(requirements)) {
       setErrorMessage('Password must meet all requirements.');
       return;
     }
@@ -177,7 +156,7 @@ export default function CompleteAccount() {
         navigate(response.user?.role === 'SUPER_ADMIN' ? '/dashboard' : '/dashboard/spaces', { replace: true });
       }, 1200);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to create account. Please check your information and try again.'));
     } finally {
       setIsProcessing(false);
     }
@@ -190,7 +169,7 @@ export default function CompleteAccount() {
           <div className="relative mx-auto w-32 h-32">
             <div className="absolute inset-0 bg-[#004ac6]/20 rounded-full animate-ping"></div>
             <div className="relative w-full h-full bg-[#004ac6] text-white rounded-full flex items-center justify-center shadow-2xl">
-              <span className="material-symbols-outlined text-[64px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              <span className="material-symbols-filled material-symbols-outlined text-[64px]">
                 check_circle
               </span>
             </div>
@@ -213,7 +192,7 @@ export default function CompleteAccount() {
           <div className="p-8 space-y-8">
             <header className="text-center space-y-4">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#dbe1ff] text-[#004ac6] mb-2">
-                <span className="material-symbols-outlined text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                <span className="material-symbols-filled material-symbols-outlined text-[28px]">
                   verified_user
                 </span>
               </div>
@@ -227,7 +206,7 @@ export default function CompleteAccount() {
               </div>
               <div className="inline-flex items-center gap-2 px-4 py-1 bg-[#ededf9] rounded-full border border-[#c3c6d7]/30">
                 <span className="text-[13px] font-medium text-[#434655] break-all">{verifiedEmail}</span>
-                <span className="material-symbols-outlined text-[16px] text-[#004ac6]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                <span className="material-symbols-filled material-symbols-outlined text-[16px] text-[#004ac6]">
                   check_circle
                 </span>
               </div>
@@ -336,8 +315,8 @@ export default function CompleteAccount() {
                 </div>
                 <div className="h-1.5 w-full bg-[#e1e2ed] rounded-full overflow-hidden">
                   <div
-                    className={`h-full transition-all duration-300 ease-in-out ${strength.colorClass.split(' ')[0]}`}
-                    style={{ width: strength.barWidth }}
+                    className={`progress-fill h-full transition-all duration-300 ease-in-out ${strength.colorClass.split(' ')[0]}`}
+                    style={{ '--progress-width': strength.barWidth }}
                   ></div>
                 </div>
               </div>
@@ -381,8 +360,7 @@ export default function CompleteAccount() {
                 ].map((req) => (
                   <div key={req.key} className="flex items-center gap-2">
                     <span
-                      className={`material-symbols-outlined text-[16px] transition-all ${requirements[req.key] ? 'text-[#004ac6]' : 'text-[#737686]'}`}
-                      style={{ fontVariationSettings: requirements[req.key] ? "'FILL' 1" : "'FILL' 0" }}
+                      className={`material-symbols-outlined text-[16px] transition-all ${requirements[req.key] ? 'material-symbols-filled text-[#004ac6]' : 'material-symbols-unfilled text-[#737686]'}`}
                     >
                       {requirements[req.key] ? 'check_circle' : 'circle'}
                     </span>

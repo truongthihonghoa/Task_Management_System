@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import './styles/global.css'
 
 class RootErrorBoundary extends React.Component {
   constructor(props) {
@@ -15,12 +16,12 @@ class RootErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 24, fontFamily: 'Arial, sans-serif', color: '#2D1B4E' }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Frontend render error</h1>
-          <p style={{ color: '#4B5563', marginBottom: 12 }}>
+        <div className="root-error">
+          <h1 className="root-error-title">Frontend render error</h1>
+          <p className="root-error-message">
             The UI could not render. Open the browser console for the full stack trace.
           </p>
-          <pre style={{ whiteSpace: 'pre-wrap', background: '#F3F4F6', padding: 16, borderRadius: 8 }}>
+          <pre className="root-error-stack">
             {this.state.error?.message || String(this.state.error)}
           </pre>
         </div>

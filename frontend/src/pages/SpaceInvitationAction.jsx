@@ -1,18 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to handle this invitation link. Please try again.';
-}
+import { getApiErrorMessage } from '../utils/apiError';
 
 function routeFromRedirectUrl(redirectUrl) {
   if (!redirectUrl) return '';
@@ -92,7 +81,7 @@ export default function SpaceInvitationAction() {
         setState({
           status: 'error',
           title: 'Unable to handle invitation',
-          message: getErrorMessage(error),
+          message: getApiErrorMessage(error, 'Unable to handle this invitation link. Please try again.'),
           redirectUrl: '',
         });
       }

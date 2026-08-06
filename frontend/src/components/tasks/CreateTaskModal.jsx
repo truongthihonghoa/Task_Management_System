@@ -1,22 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../../styles/CreateTaskModal.css';
+import CalendarDropdown, { formatDateValue } from './CalendarDropdown';
 import RichTextEditor from '../tasks/RichTextEditor';
-
-const monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
-
-const parseDateValue = (value) => {
-  if (!value) return new Date();
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-};
-
-const formatDateValue = (year, month, day) => {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
 
 const isValidStoryPointsInput = (value) => {
   if (value === '') return true;
@@ -66,74 +51,11 @@ const formatAssigneeSummary = (users = [], visibleCount = 2) => {
   return `${shownNames.join(', ')}${remainingCount > 0 ? ` +${remainingCount}` : ''}`;
 };
 
-function CalendarDropdown({ value, onSelect, onClose }) {
-  const initialDate = parseDateValue(value);
-  const [viewDate, setViewDate] = useState(new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
-  const selectedDate = value ? parseDateValue(value) : null;
-  const viewYear = viewDate.getFullYear();
-  const viewMonth = viewDate.getMonth();
-  const leadingEmptyDays = new Date(viewYear, viewMonth, 1).getDay();
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-
-  const moveCalendar = (monthDelta, yearDelta = 0) => {
-    setViewDate(prev => new Date(prev.getFullYear() + yearDelta, prev.getMonth() + monthDelta, 1));
-  };
-
-  return (
-    <div className="calendar-dropdown-container" onClick={(e) => e.stopPropagation()}>
-      <div className="calendar-header">
-        <div className="flex gap-2">
-          <button type="button" className="calendar-nav-btn" onClick={() => moveCalendar(0, -1)} aria-label="Previous year">
-            <i data-lucide="chevrons-left" className="w-4 h-4"></i>
-          </button>
-          <button type="button" className="calendar-nav-btn" onClick={() => moveCalendar(-1)} aria-label="Previous month">
-            <i data-lucide="chevron-left" className="w-4 h-4"></i>
-          </button>
-        </div>
-        <span className="font-bold text-sm">{monthNames[viewMonth]} {viewYear}</span>
-        <div className="flex gap-2">
-          <button type="button" className="calendar-nav-btn" onClick={() => moveCalendar(1)} aria-label="Next month">
-            <i data-lucide="chevron-right" className="w-4 h-4"></i>
-          </button>
-          <button type="button" className="calendar-nav-btn" onClick={() => moveCalendar(0, 1)} aria-label="Next year">
-            <i data-lucide="chevrons-right" className="w-4 h-4"></i>
-          </button>
-        </div>
-      </div>
-      <div className="calendar-body">
-        <div className="grid grid-cols-7 text-[11px] font-bold text-gray-500 mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="text-center">{d}</div>)}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: leadingEmptyDays }).map((_, i) => (
-            <div key={`empty-${i}`} className="calendar-day empty-day" />
-          ))}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const isSelected = selectedDate &&
-              selectedDate.getFullYear() === viewYear &&
-              selectedDate.getMonth() === viewMonth &&
-              selectedDate.getDate() === day;
-
-            return (
-              <button
-                key={day}
-                type="button"
-                className={`calendar-day ${isSelected ? 'selected-day' : ''}`}
-                onClick={() => {
-                  onSelect(formatDateValue(viewYear, viewMonth, day));
-                  onClose();
-                }}
-              >
-                {day}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+const getPriorityIconClass = (priority) => {
+  if (priority === 'High') return 'priority-icon-high';
+  if (priority === 'Low') return 'priority-icon-low';
+  return 'priority-icon-medium';
+};
 
 const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees = [], initialSprint = '', currentSpaceName = 'Task Management', onCreateTask, currentRole = 'ADMIN', currentSpaceRole = 'USER', currentUser }) => {
   const statusOptions = currentSpaceRole === 'OWNER'
@@ -541,8 +463,8 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                       {selectedAssignees.slice(0, 4).map(user => (
                         <div
                           key={user.user_id || user.id || user.name}
-                          className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold border-2 border-white"
-                          style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                          className="avatar-surface w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold border-2 border-white"
+                          style={{ '--avatar-bg': user.color, '--avatar-color': user.textColor || '#111' }}
                           title={user.name}
                         >
                           {(user.avatarUrl || user.avatar_url) ? (
@@ -560,8 +482,8 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                 ) : (
                   <>
                     <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
-                      style={{ backgroundColor: availableAssignees[0].color, color: availableAssignees[0].textColor || '#111' }}
+                      className="avatar-surface w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold"
+                      style={{ '--avatar-bg': availableAssignees[0].color, '--avatar-color': availableAssignees[0].textColor || '#111' }}
                     >
                       {availableAssignees[0].initials || <span className="material-symbols-outlined">{availableAssignees[0].icon}</span>}
                     </div>
@@ -596,8 +518,8 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                       className="w-full flex items-center gap-3 px-3 py-2 text-left text-[13px] hover:bg-[#EBF0FF] transition-colors"
                     >
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold"
-                        style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                        className="avatar-surface w-8 h-8 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-bold"
+                        style={{ '--avatar-bg': user.color, '--avatar-color': user.textColor || '#111' }}
                       >
                         {(user.avatarUrl || user.avatar_url) ? (
                           <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -626,11 +548,11 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
               >
                 <div className="flex items-center gap-2">
                   {formData.priority === 'High' ? (
-                    <span className="material-symbols-outlined text-[18px]" style={{ color: '#DE350B' }}>keyboard_arrow_up</span>
+                    <span className="priority-icon-high material-symbols-outlined text-[18px]">keyboard_arrow_up</span>
                   ) : formData.priority === 'Medium' ? (
-                    <span className="text-[18px] leading-none font-bold" style={{ color: '#FF8B00' }}>=</span>
+                    <span className="priority-icon-medium text-[18px] leading-none font-bold">=</span>
                   ) : (
-                    <span className="material-symbols-outlined text-[18px]" style={{ color: '#4C2B74' }}>keyboard_arrow_down</span>
+                    <span className="priority-icon-low material-symbols-outlined text-[18px]">keyboard_arrow_down</span>
                   )}
                   <span className="text-sm">{formData.priority}</span>
                 </div>
@@ -640,9 +562,9 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
               {isPriorityOpen && (
                 <div className="priority-custom-dropdown">
                   {[
-                    { label: 'High', icon: 'keyboard_arrow_up', color: '#DE350B' },
-                    { label: 'Medium', icon: '=', color: '#FF8B00' },
-                    { label: 'Low', icon: 'keyboard_arrow_down', color: '#4C2B74' }
+                    { label: 'High', icon: 'keyboard_arrow_up' },
+                    { label: 'Medium', icon: '=' },
+                    { label: 'Low', icon: 'keyboard_arrow_down' }
                   ].map(p => (
                     <div 
                       key={p.label} 
@@ -653,9 +575,9 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                       }}
                     >
                       {p.label === 'Medium' ? (
-                        <span className="text-[18px] leading-none font-bold" style={{ color: p.color }}>{p.icon}</span>
+                        <span className={`${getPriorityIconClass(p.label)} text-[18px] leading-none font-bold`}>{p.icon}</span>
                       ) : (
-                        <span className="material-symbols-outlined text-[18px]" style={{ color: p.color }}>{p.icon}</span>
+                        <span className={`${getPriorityIconClass(p.label)} material-symbols-outlined text-[18px]`}>{p.icon}</span>
                       )}
                       <span className="text-sm">{p.label}</span>
                     </div>
@@ -821,14 +743,14 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                 type="file" 
                 ref={fileInputRef} 
                 onChange={handleFileChange} 
-                style={{ display: 'none' }} 
+                className="hidden-file-input"
                 multiple 
               />
               <input 
                 type="file" 
                 ref={replaceInputRef} 
                 onChange={handleReplaceFile} 
-                style={{ display: 'none' }} 
+                className="hidden-file-input"
               />
               <div className="flex flex-col items-center justify-center gap-2">
                 <i data-lucide="upload-cloud" className="w-8 h-8 text-gray-400"></i>
@@ -842,40 +764,40 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                 {formData.attachments.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-3 group cursor-pointer hover:bg-slate-50 transition-colors"
-                    style={{ padding: '8px 12px', border: '1px solid #DFE1E6', borderRadius: '6px' }}
+                    className="attachment-card flex items-center gap-3 group cursor-pointer hover:bg-slate-50 transition-colors"
                   >
                     {file.type === 'image' && file.previewUrl ? (
                       <img
                         src={file.previewUrl}
                         alt={file.name}
-                        style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #DFE1E6' }}
+                        className="attachment-preview"
                       />
                     ) : (
-                      <div className="flex items-center justify-center shrink-0" style={{ width: '40px', height: '40px', backgroundColor: file.bg, borderRadius: '6px' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '22px', color: file.color }}>{file.icon}</span>
+                      <div
+                        className="attachment-file-icon flex items-center justify-center shrink-0"
+                        style={{ '--attachment-icon-bg': file.bg, '--attachment-icon-color': file.color }}
+                      >
+                        <span className="attachment-file-symbol material-symbols-outlined">{file.icon}</span>
                       </div>
                     )}
                     <div className="flex flex-col flex-1 overflow-hidden">
-                      <span className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#172B4D' }}>{file.name}</span>
-                      <span style={{ fontSize: '11px', color: '#6B778C' }}>{file.size} • {file.date}</span>
+                      <span className="attachment-name truncate">{file.name}</span>
+                      <span className="attachment-meta">{file.size} • {file.date}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <div className="attachment-actions">
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); triggerReplace(file.id); }}
                         title="Replace"
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#6B778C', padding: 6, borderRadius: 6 }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="attachment-action-btn opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                        <span className="attachment-action-icon material-symbols-outlined">edit</span>
                       </button>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); deleteAttachment(file.id); }}
                         title="Delete"
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#DE350B', padding: 6, borderRadius: 6 }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="attachment-action-btn attachment-action-btn-danger opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <span className="material-symbols-outlined">delete</span>
                       </button>
@@ -884,10 +806,9 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
                           type="button"
                           onClick={(e) => downloadAttachment(file, e)}
                           title="Download"
-                          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#42526E', padding: 6, borderRadius: 6 }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="attachment-action-btn attachment-action-btn-neutral opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                          <span className="attachment-action-icon material-symbols-outlined">download</span>
                         </button>
                       )}
                     </div>
@@ -900,17 +821,7 @@ const CreateTaskModal = ({ isOpen, onClose, tasks = [], sprints = [], assignees 
         </div>
 
         {/* Footer */}
-        <div className="modal-footer">
-          <div className="footer-left">
-            <input 
-              type="checkbox" 
-              name="createAnother" 
-              id="createAnother"
-              checked={formData.createAnother}
-              onChange={handleInputChange}
-            />
-            <label htmlFor="createAnother" className="text-sm ml-2 cursor-pointer">Create another</label>
-          </div>
+        <div className="modal-footer modal-footer-end">
           <div className="footer-right">
             <button className="btn-cancel" onClick={handleClose} disabled={isSubmitting}>Cancel</button>
             <button className="btn-create" onClick={handleCreate} disabled={isSubmitting}>

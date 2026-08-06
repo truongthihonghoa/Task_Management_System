@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import '../../styles/CreateTaskModal.css';
+import '../../styles/TaskDetailModal.css';
 import axiosClient, { API_BASE_URL } from '../../api/axiosClient';
+import { normalizeAvatarUrl } from '../../utils/avatar';
 import RichTextEditor from './RichTextEditor';
 
 const getCompletedDateValue = (task = {}) => task.completed_at || task.completedAt || task.date;
@@ -31,20 +33,6 @@ const formatTimelineDateTime = (value, fallback = '2 mins ago') => {
     hour: 'numeric',
     minute: '2-digit',
   })}`;
-};
-
-const normalizeAvatarUrl = (avatarUrl) => {
-  if (!avatarUrl) return '';
-  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
-  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
-  if (/^https?:\/\//i.test(API_BASE_URL)) {
-    try {
-      return `${new URL(API_BASE_URL).origin}${path}`;
-    } catch {
-      return avatarUrl;
-    }
-  }
-  return path;
 };
 
 const isCompletedDateOverdue = (value, status, apiOverdue = undefined) => {
@@ -79,8 +67,11 @@ const isCompletedDateDueToday = (value, status, apiDueToday = undefined) => {
   return completedDate.getTime() === todayDate.getTime();
 };
 
-const DUE_TODAY_COLOR = '#92400E';
-const DUE_TODAY_BACKGROUND = '#FEF3C7';
+const getPriorityIconClass = (priority) => {
+  if (priority === 'High') return 'task-detail-priority-high';
+  if (priority === 'Medium') return 'task-detail-priority-medium';
+  return 'task-detail-priority-low';
+};
 
 const resolveMediaUrl = (url) => {
   if (!url) return '';
@@ -705,9 +696,11 @@ export default function TaskDetailModal({
     localTask.status || localTask.task_status,
     localTask.is_due_today
   );
-  const completedDateColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#172B4D';
-  const completedDateBackground = isCompletedOverdue ? '#FFF0F0' : isCompletedDueToday ? DUE_TODAY_BACKGROUND : 'transparent';
-  const completedDateIconColor = isCompletedOverdue ? '#BA1A1A' : isCompletedDueToday ? DUE_TODAY_COLOR : '#6B778C';
+  const completedDateStateClass = isCompletedOverdue
+    ? 'task-detail-date-chip-overdue'
+    : isCompletedDueToday
+      ? 'task-detail-date-chip-due-today'
+      : '';
   const detailTaskDisplayId = localTask.displayId || task.displayId || localTask.id || task.id;
   const detailTaskSprintName = localTask.sprint || task.sprint || 'Development';
 
@@ -727,25 +720,27 @@ export default function TaskDetailModal({
 
 
   const renderComment = (comment, level = 0) => (
-    <div key={comment.id} className="flex flex-col gap-3 relative" style={{ paddingLeft: `${level * 36}px` }}>
+    <div
+      key={comment.id}
+      className="task-detail-comment-thread flex flex-col gap-3 relative"
+      style={{ '--task-detail-comment-indent': `${level * 36}px` }}
+    >
       <div className="flex gap-3">
         <div
-          className="shrink-0 flex items-center justify-center"
-          style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#DFE1E6', fontSize: '11px', fontWeight: 700, color: '#42526E' }}
+          className="comment-avatar shrink-0 flex items-center justify-center"
         >
           {comment.author.split(' ').map(n => n ? n[0] : '').join('').toUpperCase().substring(0, 2)}
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2" style={{ marginBottom: '4px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#172B4D' }}>{comment.author}</span>
-            <span style={{ fontSize: '11px', color: '#6B778C' }}>{comment.date}</span>
+          <div className="comment-header flex items-center gap-2">
+            <span className="comment-author">{comment.author}</span>
+            <span className="comment-date">{comment.date}</span>
           </div>
-          <p style={{ fontSize: '13px', color: '#172B4D', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: comment.text }} />
+          <p className="comment-body" dangerouslySetInnerHTML={{ __html: comment.text }} />
           {canEditTaskContent && (
-          <div className="flex gap-4" style={{ marginTop: '6px' }}>
+          <div className="comment-actions flex gap-4">
             <button
-              style={{ fontSize: '11px', fontWeight: 500, color: '#6B778C', background: 'none', border: 'none', cursor: 'pointer' }}
-              className="hover:text-[#4C2B74]"
+              className="comment-action-btn hover:text-[#4C2B74]"
               onClick={() => {
                 setReplyToCommentId(comment.id);
                 setTempComment(`@${comment.author} `);
@@ -757,8 +752,7 @@ export default function TaskDetailModal({
             {isCommentOwner(comment) && (
               <>
                 <button
-                  style={{ fontSize: '11px', fontWeight: 500, color: '#6B778C', background: 'none', border: 'none', cursor: 'pointer' }}
-                  className="hover:text-[#4C2B74]"
+                  className="comment-action-btn hover:text-[#4C2B74]"
                   onClick={() => {
                     setTempComment(comment.text);
                     setReplyToCommentId(null);
@@ -769,8 +763,7 @@ export default function TaskDetailModal({
                   Edit
                 </button>
                 <button
-                  style={{ fontSize: '11px', fontWeight: 500, color: '#DE350B', background: 'none', border: 'none', cursor: 'pointer' }}
-                  className="hover:text-[#B91C1C]"
+                  className="comment-action-btn comment-action-btn-danger hover:text-[#B91C1C]"
                   onClick={() => setDeleteConfirmCommentId(comment.id)}
                 >
                   Delete
@@ -782,8 +775,8 @@ export default function TaskDetailModal({
         </div>
       </div>
       {canEditTaskContent && replyToCommentId === comment.id && (
-        <div className="flex flex-col gap-3" style={{ paddingLeft: '36px' }}>
-          <div style={{ fontSize: '12px', color: '#42526E' }}>Replying to {comment.author}</div>
+        <div className="comment-editor-offset flex flex-col gap-3">
+          <div className="comment-context-label">Replying to {comment.author}</div>
           <RichTextEditor
             value={tempComment}
             onChange={(val) => setTempComment(val)}
@@ -803,8 +796,7 @@ export default function TaskDetailModal({
                 setTempComment('');
                 setReplyToCommentId(null);
               }}
-              style={{ padding: '6px 16px', backgroundColor: '#4C2B74', color: '#fff', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}
-              className="hover:opacity-90 active:scale-[0.97] transition-all"
+              className="comment-submit-btn hover:opacity-90 active:scale-[0.97] transition-all"
             >
               Comment
             </button>
@@ -814,8 +806,7 @@ export default function TaskDetailModal({
                 setTempComment('');
                 setReplyToCommentId(null);
               }}
-              style={{ padding: '6px 16px', background: 'none', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, color: '#42526E', cursor: 'pointer' }}
-              className="hover:bg-[#EBECF0] transition-colors"
+              className="comment-cancel-btn hover:bg-[#EBECF0] transition-colors"
             >
               Cancel
             </button>
@@ -823,8 +814,8 @@ export default function TaskDetailModal({
         </div>
       )}
       {canEditTaskContent && editCommentId === comment.id && (
-        <div className="flex flex-col gap-3" style={{ paddingLeft: '36px' }}>
-          <div style={{ fontSize: '12px', color: '#42526E' }}>Editing comment</div>
+        <div className="comment-editor-offset flex flex-col gap-3">
+          <div className="comment-context-label">Editing comment</div>
           <RichTextEditor
             value={tempComment}
             onChange={(val) => setTempComment(val)}
@@ -844,8 +835,7 @@ export default function TaskDetailModal({
                 setTempComment('');
                 setEditCommentId(null);
               }}
-              style={{ padding: '6px 16px', backgroundColor: '#4C2B74', color: '#fff', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}
-              className="hover:opacity-90 active:scale-[0.97] transition-all"
+              className="comment-submit-btn hover:opacity-90 active:scale-[0.97] transition-all"
             >
               Comment
             </button>
@@ -855,8 +845,7 @@ export default function TaskDetailModal({
                 setTempComment('');
                 setEditCommentId(null);
               }}
-              style={{ padding: '6px 16px', background: 'none', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, color: '#42526E', cursor: 'pointer' }}
-              className="hover:bg-[#EBECF0] transition-colors"
+              className="comment-cancel-btn hover:bg-[#EBECF0] transition-colors"
             >
               Cancel
             </button>
@@ -933,19 +922,12 @@ export default function TaskDetailModal({
 
   const renderHistoryAvatar = (profile, size = 28, fontSize = 10) => (
     <div
+      className="task-detail-history-avatar"
       style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        borderRadius: '50%',
-        backgroundColor: profile.color,
-        color: profile.textColor || '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: `${fontSize}px`,
-        fontWeight: 700,
-        flexShrink: 0,
-        overflow: 'hidden',
+        '--history-avatar-size': `${size}px`,
+        '--history-avatar-font-size': `${fontSize}px`,
+        '--history-avatar-bg': profile.color,
+        '--history-avatar-color': profile.textColor || '#fff',
       }}
     >
       {profile.avatarUrl ? (
@@ -1062,6 +1044,12 @@ export default function TaskDetailModal({
     return date.toLocaleString();
   };
 
+  const getHistoryActionClass = (changeType) => {
+    if (changeType === 'assigned') return 'task-detail-history-action-assigned';
+    if (changeType === 'removed') return 'task-detail-history-action-removed';
+    return 'task-detail-history-action-changed';
+  };
+
   const handleAssigneeChange = async (selectedUser) => {
     if (!canManageAdminFields) return;
     const newAssigneeId = selectedUser.user_id || selectedUser.id || '';
@@ -1103,38 +1091,27 @@ export default function TaskDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(9, 30, 66, 0.54)', backdropFilter: 'blur(2px)' }}
+      className="task-detail-overlay fixed inset-0 z-[10000] flex items-center justify-center"
       onClick={onClose}
     >
       <div
-        className="bg-white flex flex-col overflow-hidden"
-        style={{
-          width: '90%',
-          maxWidth: '1100px',
-          height: '90vh',
-          borderRadius: '8px',
-          boxShadow: '0 8px 16px -4px rgba(9,30,66,0.25), 0 0 0 1px rgba(9,30,66,0.08)',
-          animation: 'modalFadeIn 0.2s ease-out',
-          fontFamily: 'var(--font-inter)'
-        }}
+        className="task-detail-dialog bg-white flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* ─── Header ─── */}
         <div
-          className="flex justify-between items-center shrink-0"
-          style={{ padding: '14px 24px', borderBottom: '2px solid #F4F5F7' }}
+          className="task-detail-header flex justify-between items-center shrink-0"
         >
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined " style={{ color: '#4C2B74', fontSize: '25px' }}>task_alt</span>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <span className="task-detail-icon material-symbols-outlined ">task_alt</span>
+            <span className="task-detail-key">
               {detailTaskDisplayId} / {detailTaskSprintName}
             </span>
           </div>
           <div className="flex items-center gap-1">
             {/* share and more icons removed per UX request */}
             <button className="flex items-center justify-center p-1.5 rounded hover:bg-[#EBECF0] transition-colors" onClick={onClose} title="Close">
-              <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#42526E' }}>close</span>
+              <span className="task-detail-close-icon material-symbols-outlined">close</span>
             </button>
           </div>
         </div>
@@ -1146,20 +1123,18 @@ export default function TaskDetailModal({
 
           {/* ── Left: Main Details ── */}
           <main
-            className="flex-1 overflow-y-auto custom-scrollbar"
-            style={{ padding: '28px 32px', backgroundColor: '#fff' }}
+            className="task-detail-main flex-1 overflow-y-auto custom-scrollbar"
           >
             {/* Title */}
             {!isTitleEditing ? (
               <h1
                 onClick={() => { if (canEditTaskContent) setIsTitleEditing(true); }}
-                className={`rounded transition-colors ${canEditTaskContent ? 'hover:bg-[#F4F5F7] cursor-pointer' : ''}`}
-                style={{ fontSize: '20px', fontWeight: 500, color: '#172B4D', marginBottom: '16px', lineHeight: '1.4', padding: '4px 8px', marginLeft: '-8px' }}
+                className={`task-detail-title rounded transition-colors ${canEditTaskContent ? 'hover:bg-[#F4F5F7] cursor-pointer' : ''}`}
               >
                 {localTask.title}
               </h1>
             ) : (
-              <div style={{ marginBottom: '16px' }}>
+              <div className="task-detail-section-tight">
                 <input
                   type="text"
                   value={tempTitle}
@@ -1180,52 +1155,40 @@ export default function TaskDetailModal({
                     }
                   }}
                   autoFocus
-                  style={{
-                    width: '100%',
-                    fontSize: '20px',
-                    fontWeight: 500,
-                    color: '#172B4D',
-                    padding: '4px 8px',
-                    marginLeft: '-8px',
-                    border: '2px solid #4C2B74',
-                    borderRadius: '3px',
-                    outline: 'none',
-                    backgroundColor: '#fff'
-                  }}
+                  className="task-detail-title-input"
                 />
               </div>
             )}
 
 
             {/* Action Buttons */}
-            <div className="flex gap-2" style={{ marginBottom: '28px' }}>
+            <div className="task-detail-section flex gap-2">
               {/* Attach button removed as requested */}
             </div>
 
 
             {/* Description */}
-            <div style={{ marginBottom: '28px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div className="task-detail-section">
+              <h3 className="task-detail-section-label task-detail-section-heading">
                 Description
               </h3>
 
 
               {!isDescriptionEditing ? (
                 <div
-                  className={`group ${canEditTaskContent ? 'cursor-text hover:bg-[#F4F5F7]' : 'cursor-default'}`}
-                  style={{ padding: '12px 16px', border: '1px solid #DFE1E6', borderRadius: '4px', minHeight: '100px', backgroundColor: 'white' }}
+                  className={`task-detail-description-box group ${canEditTaskContent ? 'cursor-text hover:bg-[#F4F5F7]' : 'cursor-default'}`}
                   onClick={() => { if (canEditTaskContent) setIsDescriptionEditing(true); }}
                 >
                   {localTask.description ? (
                     <div
-                      style={{ fontSize: '14px', lineHeight: '1.6', color: '#172B4D' }}
+                      className="task-detail-rich-copy"
                       dangerouslySetInnerHTML={{ __html: localTask.description }}
                     />
                   ) : (
-                    <span style={{ fontSize: '14px', color: '#6B778C' }}>Add a description...</span>
+                    <span className="task-detail-placeholder">Add a description...</span>
                   )}
                   {canEditTaskContent && (
-                    <div className="hidden group-hover:block" style={{ marginTop: '8px', fontSize: '12px', color: '#6B778C', fontStyle: 'italic' }}>
+                    <div className="task-detail-edit-hint hidden group-hover:block">
                       Click to edit...
                     </div>
                   )}
@@ -1250,8 +1213,7 @@ export default function TaskDetailModal({
                         setPendingDescriptionAttachments([]);
                         setIsDescriptionEditing(false);
                       }}
-                      style={{ padding: '6px 12px', backgroundColor: '#4C2B74', color: '#fff', border: 'none', borderRadius: '3px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                      className="hover:opacity-90 transition-all"
+                      className="task-detail-primary-btn hover:opacity-90 transition-all"
                     >
                       Save
                     </button>
@@ -1260,8 +1222,7 @@ export default function TaskDetailModal({
                         setTempDescription(localTask.description || '');
                         setIsDescriptionEditing(false);
                       }}
-                      style={{ padding: '6px 12px', background: 'none', border: 'none', borderRadius: '3px', fontSize: '13px', fontWeight: 600, color: '#42526E', cursor: 'pointer' }}
-                      className="hover:bg-[#EBECF0] transition-colors"
+                      className="task-detail-secondary-btn hover:bg-[#EBECF0] transition-colors"
                     >
                       Cancel
                     </button>
@@ -1272,19 +1233,19 @@ export default function TaskDetailModal({
 
 
             {/* Attachments */}
-            <div style={{ marginBottom: '28px' }}>
-              <div className="flex items-center" style={{ marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div className="task-detail-section">
+              <div className="task-detail-section-tight flex items-center">
+                <h3 className="task-detail-section-label">
                   Attachments ({attachments.length})
                 </h3>
                 {isLoadingAttachments && (
-                  <span style={{ marginLeft: '8px', fontSize: '11px', color: '#6B778C' }}>Loading...</span>
+                  <span className="task-detail-loading-inline">Loading...</span>
                 )}
                 <input
                   type="file"
                   ref={uploadInputRef}
                   onChange={handleFileUpload}
-                  style={{ display: 'none' }}
+                  className="hidden-file-input"
                   accept=".pdf,.zip,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   multiple
                 />
@@ -1293,8 +1254,7 @@ export default function TaskDetailModal({
                 {attachments.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-3 group cursor-pointer hover:bg-[#F4F5F7] transition-colors"
-                    style={{ padding: '10px 14px', border: '1px solid #DFE1E6', borderRadius: '6px' }}
+                    className="attachment-card attachment-card-comfortable flex items-center gap-3 group cursor-pointer hover:bg-[#F4F5F7] transition-colors"
                     onClick={() => {
                       if (file.type === 'image' && file.previewUrl) {
                         setPreviewAttachment(file);
@@ -1305,33 +1265,34 @@ export default function TaskDetailModal({
                       <img
                         src={file.previewUrl}
                         alt={file.name}
-                        style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #DFE1E6' }}
+                        className="attachment-preview"
                       />
                     ) : (
-                      <div className="flex items-center justify-center shrink-0" style={{ width: '40px', height: '40px', backgroundColor: file.bg, borderRadius: '6px' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '22px', color: file.color }}>{file.icon}</span>
+                      <div
+                        className="attachment-file-icon flex items-center justify-center shrink-0"
+                        style={{ '--attachment-icon-bg': file.bg, '--attachment-icon-color': file.color }}
+                      >
+                        <span className="attachment-file-symbol material-symbols-outlined">{file.icon}</span>
                       </div>
                     )}
                     <div className="flex flex-col flex-1 overflow-hidden">
-                      <span className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: '#172B4D' }}>{file.name}</span>
-                      <span style={{ fontSize: '11px', color: '#6B778C' }}>{file.size} • {file.date}</span>
+                      <span className="attachment-name truncate">{file.name}</span>
+                      <span className="attachment-meta">{file.size} • {file.date}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div className="attachment-actions attachment-actions-comfortable">
                       {canEditTaskContent && isAttachmentOwner(file) && (
                         <>
                           <button
                             onClick={(e) => { e.stopPropagation(); triggerReplace(file.id); }}
                             title="Replace"
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#6B778C', padding: 6, borderRadius: 6 }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="attachment-action-btn opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                            <span className="attachment-action-icon material-symbols-outlined">edit</span>
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); deleteAttachment(file.id); }}
                             title="Delete"
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#DE350B', padding: 6, borderRadius: 6 }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="attachment-action-btn attachment-action-btn-danger opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <span className="material-symbols-outlined">delete</span>
                           </button>
@@ -1341,39 +1302,36 @@ export default function TaskDetailModal({
                         <button
                           onClick={(e) => downloadAttachment(file, e)}
                           title="Download"
-                          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#42526E', padding: 6, borderRadius: 6 }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="attachment-action-btn attachment-action-btn-neutral opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                          <span className="attachment-action-icon material-symbols-outlined">download</span>
                         </button>
                       ) : (
-                        <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontSize: '18px', color: '#42526E' }}>download</span>
+                        <span className="attachment-action-icon attachment-action-btn-neutral material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity">download</span>
                       )}
                     </div>
                   </div>
                 ))}
-                <input type="file" ref={replaceInputRef} onChange={handleReplaceFile} style={{ display: 'none' }} />
+                <input type="file" ref={replaceInputRef} onChange={handleReplaceFile} className="hidden-file-input" />
               </div>
               {attachmentError && (
-                <div style={{ marginTop: '10px', fontSize: '12px', color: '#DE350B', fontWeight: 600 }}>
+                <div className="rte-upload-error">
                   {attachmentError}
                 </div>
               )}
               {canEditTaskContent && (
                 <div
-                  className="mt-4 p-5 rounded-2xl border border-dashed border-[#DFE1E6] bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors"
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+                  className="upload-dropzone mt-4 p-5 rounded-2xl border border-dashed border-[#DFE1E6] bg-[#FAFBFC] hover:bg-[#F4F5F7] transition-colors"
                   onClick={openUploadDialog}
                 >
                   <div
-                    className="flex items-center justify-center"
-                    style={{ width: '56px', height: '56px', borderRadius: '16px', backgroundColor: '#F4F7FA' }}
+                    className="upload-dropzone-icon flex items-center justify-center"
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '32px', color: '#4C2B74' }}>cloud_upload</span>
+                    <span className="upload-dropzone-symbol material-symbols-outlined">cloud_upload</span>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#172B4D' }}>Click to upload or drag and drop</div>
-                    <div style={{ fontSize: '12px', color: '#6B778C', marginTop: '4px' }}>PDF, ZIP, images, or Office files up to 20MB</div>
+                  <div className="upload-dropzone-copy">
+                    <div className="upload-dropzone-title">Click to upload or drag and drop</div>
+                    <div className="upload-dropzone-subtitle">PDF, ZIP, images, or Office files up to 20MB</div>
                   </div>
                 </div>
               )}
@@ -1388,21 +1346,20 @@ export default function TaskDetailModal({
                 }}
               >
                 <div
-                  className="bg-white rounded-2xl p-2"
-                  style={{ position: 'relative', width: '75vw', height: '80vh', padding: 12, overflow: 'hidden' }}
+                  className="task-detail-preview-panel bg-white rounded-2xl"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: '8px', zIndex: 20 }}>
+                  <div className="task-detail-preview-toolbar">
                     <button
                       onClick={() => setPreviewZoom(prev => Math.max(0.5, prev - 0.25))}
-                      style={{ border: '1px solid #DFE1E6', background: '#fff', borderRadius: '6px', width: '34px', height: '34px', fontSize: '18px', color: '#4C2B74', cursor: 'pointer' }}
+                      className="preview-toolbar-btn"
                       title="Zoom out"
                     >
                       −
                     </button>
                     <button
                       onClick={() => setPreviewZoom(prev => Math.min(2, prev + 0.25))}
-                      style={{ border: '1px solid #DFE1E6', background: '#fff', borderRadius: '6px', width: '34px', height: '34px', fontSize: '18px', color: '#4C2B74', cursor: 'pointer' }}
+                      className="preview-toolbar-btn"
                       title="Zoom in"
                     >
                       +
@@ -1412,20 +1369,20 @@ export default function TaskDetailModal({
                         setPreviewAttachment(null);
                         setPreviewZoom(1);
                       }}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#4C2B74', fontSize: '24px', lineHeight: '1' }}
+                      className="preview-close-btn"
                       title="Close"
                     >
                       ×
                     </button>
                   </div>
-                  <div className="flex items-center justify-between mb-3" style={{ gap: '12px', minWidth: '300px' }}>
+                  <div className="preview-meta flex items-center justify-between mb-3">
                     <div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#172B4D' }}>{previewAttachment.name}</div>
-                      <div style={{ fontSize: '12px', color: '#6B778C' }}>{previewAttachment.size}</div>
+                      <div className="preview-title">{previewAttachment.name}</div>
+                      <div className="preview-size">{previewAttachment.size}</div>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'center', overflow: 'auto', height: 'calc(80vh - 80px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ display: 'inline-block' }}>
+                  <div className="preview-stage flex items-center justify-center">
+                    <div className="preview-stage-inner">
                       <img
                         ref={previewImgRef}
                         src={previewAttachment.previewUrl}
@@ -1441,14 +1398,8 @@ export default function TaskDetailModal({
                           // reset zoom to 1 when loading new image
                           setPreviewZoom(1);
                         }}
-                        style={{
-                          width: baseWidth ? `${Math.max(40, Math.min(baseWidth * previewZoom, baseMax.w * 4))}px` : 'auto',
-                          height: 'auto',
-                          maxWidth: 'none',
-                          maxHeight: 'none',
-                          borderRadius: '6px',
-                          display: 'block'
-                        }}
+                        className="task-detail-preview-image"
+                        style={{ '--task-detail-preview-width': baseWidth ? `${Math.max(40, Math.min(baseWidth * previewZoom, baseMax.w * 4))}px` : 'auto' }}
                       />
                     </div>
                   </div>
@@ -1459,36 +1410,16 @@ export default function TaskDetailModal({
 
             {/* ── Activity Tabs ── */}
             <div>
-              <div className="flex items-center gap-6" style={{ borderBottom: '2px solid #F4F5F7', marginBottom: '20px' }}>
+              <div className="task-detail-tabs flex items-center gap-6">
                 <button
                   onClick={() => setActiveTab('comments')}
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: activeTab === 'comments' ? '#4C2B74' : '#5E6C84',
-                    borderBottom: activeTab === 'comments' ? '2px solid #4C2B74' : '2px solid transparent',
-                    padding: '10px 2px',
-                    marginBottom: '-2px',
-                    background: 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
-                  }}
+                  className={`task-detail-tab ${activeTab === 'comments' ? 'task-detail-tab-active' : ''}`}
                 >
                   Comments
                 </button>
                 <button
                   onClick={() => setActiveTab('history')}
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: activeTab === 'history' ? '#4C2B74' : '#5E6C84',
-                    borderBottom: activeTab === 'history' ? '2px solid #4C2B74' : '2px solid transparent',
-                    padding: '10px 2px',
-                    marginBottom: '-2px',
-                    background: 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
-                  }}
+                  className={`task-detail-tab ${activeTab === 'history' ? 'task-detail-tab-active' : ''}`}
                 >
                   Assign History
                 </button>
@@ -1497,29 +1428,18 @@ export default function TaskDetailModal({
 
               {/* Comments View */}
               {activeTab === 'comments' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="task-detail-stack">
                   {commentError && (
-                    <div style={{ fontSize: '12px', color: '#DE350B', fontWeight: 600 }}>
+                    <div className="task-detail-danger-text">
                       {commentError}
                     </div>
                   )}
                   {/* Comment Editor */}
                   {!replyToCommentId && !editCommentId && (
-                    <div className="flex flex-col gap-3" style={{ paddingTop: '8px' }}>
+                    <div className="flex flex-col gap-3 pt-2">
                       {!isCommentEditing ? (
                         <div
-                          className="flex-1 cursor-text hover:bg-[#F4F5F7] transition-colors"
-                          style={{
-                            padding: '10px 14px',
-                            border: '2px solid #DFE1E6',
-                            borderRadius: '3px',
-                            fontSize: '13px',
-                            color: '#6B778C',
-                            backgroundColor: '#FAFBFC',
-                            minHeight: '40px',
-                            display: 'flex',
-                            alignItems: 'center'
-                          }}
+                          className="task-detail-comment-placeholder flex-1 cursor-text hover:bg-[#F4F5F7] transition-colors"
                           onClick={() => {
                             setIsCommentEditing(true);
                             setReplyToCommentId(null);
@@ -1548,8 +1468,7 @@ export default function TaskDetailModal({
                                 setTempComment('');
                                 setReplyToCommentId(null);
                               }}
-                              style={{ padding: '6px 16px', backgroundColor: '#4C2B74', color: '#fff', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}
-                              className="hover:opacity-90 active:scale-[0.97] transition-all"
+                              className="task-detail-primary-btn task-detail-comment-btn hover:opacity-90 active:scale-[0.97] transition-all"
                             >
                               Comment
                             </button>
@@ -1559,8 +1478,7 @@ export default function TaskDetailModal({
                                 setTempComment('');
                                 setReplyToCommentId(null);
                               }}
-                              style={{ padding: '6px 16px', background: 'none', border: 'none', borderRadius: '3px', fontSize: '14px', fontWeight: 500, color: '#42526E', cursor: 'pointer' }}
-                              className="hover:bg-[#EBECF0] transition-colors"
+                              className="task-detail-secondary-btn task-detail-comment-btn hover:bg-[#EBECF0] transition-colors"
                             >
                               Cancel
                             </button>
@@ -1574,7 +1492,7 @@ export default function TaskDetailModal({
                   {/* Existing Comments */}
                   <div className="flex flex-col gap-4">
                     {isLoadingComments ? (
-                      <div style={{ color: '#6B778C', fontSize: '13px' }}>Loading comments...</div>
+                      <div className="task-detail-muted-text">Loading comments...</div>
                     ) : (
                       comments.filter(comment => comment.parentId === null).map(comment => renderComment(comment))
                     )}
@@ -1587,7 +1505,7 @@ export default function TaskDetailModal({
               {activeTab === 'history' && (
                 <div>
                   {assignHistory.length === 0 ? (
-                    <div style={{ color: '#6B778C', fontSize: '13px', padding: '12px 8px' }}>No assignment changes yet.</div>
+                    <div className="task-detail-muted-text task-detail-empty-state">No assignment changes yet.</div>
                   ) : (
                     <div className="flex flex-col gap-4">
                       {buildAssignmentTimeline(assignHistory).map(entry => {
@@ -1598,32 +1516,27 @@ export default function TaskDetailModal({
                           : changeType === 'removed'
                             ? 'removed'
                             : 'changed';
-                        const actionStyle = changeType === 'assigned'
-                          ? { color: '#006D3A', backgroundColor: '#E6FFF0' }
-                          : changeType === 'removed'
-                            ? { color: '#BA1A1A', backgroundColor: '#FFF0F0' }
-                            : { color: '#5E35B1', backgroundColor: '#F0EDFF' };
                         const changedByProfile = getHistoryProfile(entry.changed_by_user || entry.changed_by_name || entry.changed_by, changedByName);
                         return (
-                          <div key={entry.assignment_history_id || entry.id} style={{ padding: '8px 0', borderBottom: '1px solid #F4F5F7' }}>
+                          <div key={entry.assignment_history_id || entry.id} className="task-detail-history-row">
                             <div className="flex items-start gap-3">
                               {renderHistoryAvatar(changedByProfile, 32, 11)}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', minWidth: 0, fontSize: '13px', color: '#172B4D' }}>
-                                    <span style={{ fontWeight: 700 }}>{changedByName}</span>
-                                    <span style={{ ...actionStyle, display: 'inline-flex', alignItems: 'center', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 700 }}>{actionText}</span>
-                                    <span style={{ color: '#6B778C' }}>from</span>
+                              <div className="task-detail-history-content">
+                                <div className="task-detail-history-head">
+                                  <div className="task-detail-history-copy">
+                                    <span className="task-detail-history-name">{changedByName}</span>
+                                    <span className={`task-detail-history-action ${getHistoryActionClass(changeType)}`}>{actionText}</span>
+                                    <span className="task-detail-history-muted">from</span>
                                     {renderHistoryAssigneeList(entry._beforeAssignees || [])}
-                                    <span style={{ color: '#6B778C' }}>to</span>
+                                    <span className="task-detail-history-muted">to</span>
                                     {renderHistoryAssigneeList(entry._afterAssignees || [])}
                                   </div>
-                                  <span style={{ flexShrink: 0, fontSize: '11px', color: '#6B778C' }}>{formatHistoryTime(entry.changed_at)}</span>
+                                  <span className="task-detail-history-time">{formatHistoryTime(entry.changed_at)}</span>
                                 </div>
-                                <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontSize: '11px', color: '#6B778C' }}>
-                                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.reason || 'Assignment updated'}</span>
+                                <div className="task-detail-history-meta">
+                                  <span className="task-detail-history-reason">{entry.reason || 'Assignment updated'}</span>
                                   {entry.change_status && (
-                                    <span style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', padding: '2px 7px', borderRadius: '4px', backgroundColor: '#F2F4F7', color: '#475467', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    <span className="task-detail-history-status">
                                       {entry.change_status}
                                     </span>
                                   )}
@@ -1643,21 +1556,20 @@ export default function TaskDetailModal({
 
           {/* ── Right Sidebar ── */}
           <aside
-            className="overflow-y-auto custom-scrollbar shrink-0"
-            style={{ width: '340px', borderLeft: '2px solid #F4F5F7', padding: '24px', backgroundColor: '#FAFBFC' }}
+            className="task-detail-sidebar overflow-y-auto custom-scrollbar shrink-0"
           >
             {/* Sidebar Header */}
-            <h2 style={{ fontSize: '13px', fontWeight: 700, color: '#42526E', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '16px' }}>
+            <h2 className="task-detail-sidebar-title">
               DETAIL TASK
             </h2>
 
 
-            <div style={{ backgroundColor: '#fff', border: '1px solid #DFE1E6', borderRadius: '6px', padding: '20px' }}>
+            <div className="task-detail-sidebar-card">
 
 
               {/* ── Assignee ── */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div className="task-detail-field">
+                <label className="task-detail-section-label task-detail-label-block">
                   Assignee
                 </label>
                 <div
@@ -1687,8 +1599,8 @@ export default function TaskDetailModal({
                                     className="group/avatar flex h-9 w-full items-center gap-2 rounded-md bg-[#F4F5F7] px-2"
                                   >
                                     <span
-                                      className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold"
-                                      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                                      className="avatar-surface flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold"
+                                      style={{ '--avatar-bg': user.color || '#9CA3AF', '--avatar-color': user.textColor || '#FFFFFF' }}
                                     >
                                       {(user.avatarUrl || user.avatar_url) ? (
                                         <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -1696,7 +1608,7 @@ export default function TaskDetailModal({
                                         user.initials || getInitials(user.name)
                                       )}
                                     </span>
-                                    <span className="min-w-0 flex-1 truncate" style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{user.name}</span>
+                                    <span className="task-detail-priority-copy min-w-0 flex-1 truncate">{user.name}</span>
                                     {canManageAdminFields && userId && (
                                       <button
                                         type="button"
@@ -1717,12 +1629,12 @@ export default function TaskDetailModal({
                           ) : (
                             <div className="flex h-full items-center gap-2">
                               <div
-                                className="shrink-0 flex items-center justify-center"
-                                style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: profile.color, color: profile.textColor || '#FFFFFF', fontSize: '10px', fontWeight: 700 }}
+                                className="avatar-surface h-7 w-7 shrink-0 flex items-center justify-center rounded-full text-[10px] font-bold"
+                                style={{ '--avatar-bg': profile.color, '--avatar-color': profile.textColor || '#FFFFFF' }}
                               >
                                 {profile.initials}
                               </div>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>Unassigned</span>
+                              <span className="task-detail-priority-copy">Unassigned</span>
                             </div>
                           )}
                         </div>
@@ -1742,8 +1654,8 @@ export default function TaskDetailModal({
                               className={`w-full flex items-center gap-3 px-3 py-2 text-left text-[12px] transition-colors ${isAssigned ? 'bg-gray-50 text-gray-400 cursor-default' : canManageAdminFields ? 'hover:bg-[#EBF0FF]' : ''}`}
                             >
                               <div
-                                className="w-7 h-7 rounded-full flex items-center justify-center overflow-hidden text-[10px] font-bold"
-                                style={{ backgroundColor: user.color, color: user.textColor || '#111' }}
+                                className="avatar-surface w-7 h-7 rounded-full flex items-center justify-center overflow-hidden text-[10px] font-bold"
+                                style={{ '--avatar-bg': user.color, '--avatar-color': user.textColor || '#111' }}
                               >
                                 {(user.avatarUrl || user.avatar_url) ? (
                                   <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -1765,29 +1677,28 @@ export default function TaskDetailModal({
 
 
               {/* ── Status ── */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div className="task-detail-field">
+                <label className="task-detail-section-label task-detail-label-block">
                   Status
                 </label>
                 <div className="relative">
                   <div
-                    className={`status-custom-trigger ${canEditTaskContent ? '' : 'cursor-default opacity-90'}`}
-                    style={{ padding: '4px 10px', border: '1px solid #DFE1E6', borderRadius: '4px', background: 'white' }}
+                    className={`status-custom-trigger task-detail-field-trigger task-detail-status-trigger ${canEditTaskContent ? '' : 'cursor-default opacity-90'}`}
                     onClick={() => { if (canEditTaskContent) toggleFieldDropdown('status'); }}
                   >
                     <span className={`status-badge-pill ${(localTask?.status || '') === 'Need Revision' ? 'badge-revision' :
                       (localTask?.status || '') === 'Done' ? 'badge-done' :
                         ((localTask?.status || '') === 'Cancelled' || (localTask?.status || '') === 'New') ? 'badge-neutral' :
                           'badge-progress'
-                      }`} style={{ fontSize: '11px' }}>
+                      }`} >
                       {(localTask?.status || 'IN PROGRESS').toUpperCase()}
                     </span>
-                    <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#6B778C' }}>expand_more</span>
+                    <span className="task-detail-chevron material-symbols-outlined">expand_more</span>
                   </div>
 
 
                   {isStatusOpen && canEditTaskContent && (
-                    <div className="status-custom-dropdown" style={{ left: 0, width: '100%' }}>
+                    <div className="status-custom-dropdown task-detail-dropdown-full">
                       {statusOptions.map(s => (
                         <div
                           key={s}
@@ -1802,7 +1713,7 @@ export default function TaskDetailModal({
                             s === 'Done' ? 'badge-done' :
                               (s === 'Cancelled' || s === 'New') ? 'badge-neutral' :
                                 'badge-progress'
-                            }`} style={{ fontSize: '10px' }}>
+                            } task-detail-select-badge-sm`}>
                             {s.toUpperCase()}
                           </span>
                         </div>
@@ -1814,32 +1725,31 @@ export default function TaskDetailModal({
 
 
               {/* ── Priority ── */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div className="task-detail-field">
+                <label className="task-detail-section-label task-detail-label-block">
                   Priority
                 </label>
                 <div className="relative">
                   <div
-                    className={`priority-custom-trigger ${canManageAdminFields ? '' : 'cursor-default opacity-90'}`}
-                    style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #DFE1E6' }}
+                    className={`priority-custom-trigger task-detail-field-trigger task-detail-priority-trigger ${canManageAdminFields ? '' : 'cursor-default opacity-90'}`}
                     onClick={() => { if (canManageAdminFields) toggleFieldDropdown('priority'); }}
                   >
                     <div className="flex items-center gap-2">
                       {localTask.priority === 'High' ? (
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#DE350B' }}>keyboard_arrow_up</span>
+                        <span className="task-detail-priority-icon task-detail-priority-high material-symbols-outlined">keyboard_arrow_up</span>
                       ) : localTask.priority === 'Medium' ? (
-                        <span style={{ fontSize: '18px', color: '#FF8B00', fontWeight: 700 }}>=</span>
+                        <span className="task-detail-priority-icon task-detail-priority-medium">=</span>
                       ) : (
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#4C2B74' }}>keyboard_arrow_down</span>
+                        <span className="task-detail-priority-icon task-detail-priority-low material-symbols-outlined">keyboard_arrow_down</span>
                       )}
-                      <span style={{ fontSize: '12px', fontWeight: 500, color: '#172B4D' }}>{localTask?.priority || 'Medium'}</span>
+                      <span className="task-detail-priority-copy">{localTask?.priority || 'Medium'}</span>
                     </div>
-                    <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#6B778C' }}>expand_more</span>
+                    <span className="task-detail-chevron material-symbols-outlined">expand_more</span>
                   </div>
 
 
                   {isPriorityOpen && canManageAdminFields && (
-                    <div className="priority-custom-dropdown" style={{ left: 0, width: '100%' }}>
+                    <div className="priority-custom-dropdown task-detail-dropdown-full">
                       {[
                         { label: 'High', icon: 'keyboard_arrow_up', color: '#DE350B' },
                         { label: 'Medium', icon: '=', color: '#FF8B00' },
@@ -1855,11 +1765,11 @@ export default function TaskDetailModal({
                           }}
                         >
                           {p.label === 'Medium' ? (
-                            <span style={{ fontSize: '18px', color: p.color, fontWeight: 700 }}>{p.icon}</span>
+                            <span className={`task-detail-priority-icon ${getPriorityIconClass(p.label)}`}>{p.icon}</span>
                           ) : (
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: p.color }}>{p.icon}</span>
+                            <span className={`task-detail-priority-icon ${getPriorityIconClass(p.label)} material-symbols-outlined`}>{p.icon}</span>
                           )}
-                          <span style={{ fontSize: '12px' }}>{p.label}</span>
+                          <span className="task-detail-priority-copy">{p.label}</span>
                         </div>
                       ))}
                     </div>
@@ -1869,12 +1779,12 @@ export default function TaskDetailModal({
 
 
               {/* Divider */}
-              <div style={{ height: '1px', backgroundColor: '#EBECF0', margin: '4px 0 20px' }}></div>
+              <div className="task-detail-divider"></div>
 
 
               {/* ── Story Points ── */}
-              <div className="flex justify-between items-center group cursor-pointer" style={{ marginBottom: '16px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Story Points</span>
+              <div className="task-detail-section-tight flex justify-between items-center group cursor-pointer">
+                <span className="task-detail-section-label">Story Points</span>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -1889,74 +1799,43 @@ export default function TaskDetailModal({
                       setLocalTask(prev => ({ ...prev, pts }));
                       syncTask({ pts });
                     }}
-                    className="story-points-input"
+                    className={`story-points-input ${canManageAdminFields ? 'story-points-input-editable' : 'story-points-input-readonly'}`}
                     readOnly={!canManageAdminFields}
-                    style={{
-                      width: '45px',
-                      padding: '2px 4px',
-                      border: '1px solid #DFE1E6',
-                      borderRadius: '3px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      color: '#172B4D',
-                      textAlign: 'center',
-                      outline: 'none',
-                      backgroundColor: canManageAdminFields ? '#F4F5F7' : '#ECEFF4',
-                      cursor: canManageAdminFields ? 'text' : 'not-allowed'
-                    }}
                   />
-                  <style>{`
-                    .story-points-input::-webkit-inner-spin-button,
-                    .story-points-input::-webkit-outer-spin-button {
-                      opacity: 1;
-                    }
-                    .story-points-input:focus {
-                      background-color: #fff !important;
-                      border-color: #4C2B74 !important;
-                      box-shadow: 0 0 0 2px rgba(76, 43, 116, 0.2);
-                    }
-                  `}</style>
                 </div>
               </div>
 
 
               {/* ── Sprint ── */}
-              <div className="flex justify-between items-center" style={{ marginBottom: '16px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sprint</span>
-                <div className="flex items-center gap-1.5" style={{ fontSize: '12px', fontWeight: 600, color: '#4C2B74' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>sprint</span>
+              <div className="task-detail-section-tight flex justify-between items-center">
+                <span className="task-detail-section-label">Sprint</span>
+                <div className="task-detail-sprint-value flex items-center gap-1.5">
+                  <span className="task-detail-sprint-icon material-symbols-outlined">sprint</span>
                   {task.sprint || 'SCRUM Sprint 1'}
                 </div>
               </div>
 
 
               {/* ── Due Date ── */}
-              <div className="flex justify-between items-center" style={{ marginBottom: '16px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Completed</span>
+              <div className="task-detail-section-tight flex justify-between items-center">
+                <span className="task-detail-section-label">Completed</span>
                 <div className="relative">
                   <div
-                    className={`flex items-center gap-1.5 ${canManageAdminFields ? 'cursor-pointer hover:bg-[#F4F5F7]' : ''} rounded px-2 py-1 transition-colors`}
-                    style={{
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      color: completedDateColor,
-                      backgroundColor: completedDateBackground
-                    }}
+                    className={`task-detail-date-chip ${completedDateStateClass} flex items-center gap-1.5 ${canManageAdminFields ? 'cursor-pointer hover:bg-[#F4F5F7]' : ''} rounded px-2 py-1 transition-colors`}
                     onClick={() => { if (canManageAdminFields) toggleFieldDropdown('completed'); }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '14px', color: completedDateIconColor }}>calendar_today</span>
+                    <span className="task-detail-date-icon material-symbols-outlined">calendar_today</span>
                     {completedDateLabel}
                   </div>
 
 
                   {isCompletedOpen && canManageAdminFields && (
-                    <div className="calendar-dropdown-container" style={{ right: 0, left: 'auto', top: '100%', padding: '12px', width: '280px' }}>
+                    <div className="calendar-dropdown-container task-detail-calendar-dropdown">
                       <div className="calendar-header flex items-center justify-between mb-4">
                         <div className="flex gap-2">
                           <span
                             onClick={(e) => { e.stopPropagation(); setCompletedYear(y => y - 1); }}
-                            className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                            style={{ fontSize: '18px' }}
+                            className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                           >
                             keyboard_double_arrow_left
                           </span>
@@ -1971,8 +1850,7 @@ export default function TaskDetailModal({
                                 return m - 1;
                               });
                             }}
-                            className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                            style={{ fontSize: '18px' }}
+                            className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                           >
                             chevron_left
                           </span>
@@ -1990,15 +1868,13 @@ export default function TaskDetailModal({
                                 return m + 1;
                               });
                             }}
-                            className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                            style={{ fontSize: '18px' }}
+                            className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                           >
                             chevron_right
                           </span>
                           <span
                             onClick={(e) => { e.stopPropagation(); setCompletedYear(y => y + 1); }}
-                            className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                            style={{ fontSize: '18px' }}
+                            className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                           >
                             keyboard_double_arrow_right
                           </span>
@@ -2007,12 +1883,12 @@ export default function TaskDetailModal({
                       <div className="calendar-body">
                         <div className="grid grid-cols-7 gap-1 text-center mb-2">
                           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                            <span key={d} style={{ fontSize: '10px', fontWeight: 700, color: '#6B778C' }}>{d}</span>
+                            <span key={d} className="task-detail-calendar-weekday">{d}</span>
                           ))}
                         </div>
                         <div className="grid grid-cols-7 gap-1">
                           {getDaysInMonth(completedYear, completedMonth).map((day, i) => {
-                            if (day === null) return <div key={`empty-${i}`} style={{ height: '32px' }} />;
+                            if (day === null) return <div key={`empty-${i}`} className="task-detail-calendar-empty" />;
                             // Check if current day is selected
                             const selectedCompletedDate = getCompletedDateValue(localTask);
                             const isSelected = selectedCompletedDate && (() => {
@@ -2029,19 +1905,7 @@ export default function TaskDetailModal({
                             return (
                               <div
                                 key={i}
-                                className={`calendar-day ${isToday ? 'today' : ''}`}
-                                style={{
-                                  height: '32px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '12px',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  color: isSelected ? '#ffffff' : '#172B4D',
-                                  backgroundColor: isSelected ? '#4C2B74' : 'transparent',
-                                  fontWeight: isSelected ? 700 : 400
-                                }}
+                                className={`calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'task-detail-calendar-day-selected' : 'task-detail-calendar-day-unselected'}`}
                                 onClick={() => {
                                   const formatted = `${monthAbbrs[completedMonth]} ${day}, ${completedYear}`;
                                   const completedAt = `${completedYear}-${String(completedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -2063,20 +1927,19 @@ export default function TaskDetailModal({
 
 
               {/* Divider */}
-              <div style={{ height: '1px', backgroundColor: '#EBECF0', margin: '4px 0 16px' }}></div>
+              <div className="task-detail-divider task-detail-divider-tight"></div>
 
 
               {/* ── Timeline ── */}
               <div>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '12px' }}>
+                <span className="task-detail-section-label block mb-3">
                   Timeline
                 </span>
                 <div className="flex flex-col gap-3.5">
                   <div className="flex justify-between items-center relative">
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Created</span>
+                    <span className="task-detail-section-label">Created</span>
                     <span
-                      className={`transition-colors ${canManageAdminFields ? 'cursor-pointer hover:text-[#4C2B74]' : 'opacity-80 cursor-default'}`}
-                      style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}
+                      className={`task-detail-timeline-date transition-colors ${canManageAdminFields ? 'cursor-pointer hover:text-[#4C2B74]' : 'opacity-80 cursor-default'}`}
                       onClick={() => { if (canManageAdminFields) toggleFieldDropdown('created'); }}
                     >
                       {localTask.createdAt || 'Jun 20, 2026'}
@@ -2084,13 +1947,12 @@ export default function TaskDetailModal({
 
 
                     {isCreatedOpen && canManageAdminFields && (
-                      <div className="calendar-dropdown-container" style={{ right: 0, top: '100%', padding: '12px', width: '280px', zIndex: 100 }}>
+                      <div className="calendar-dropdown-container task-detail-calendar-dropdown task-detail-calendar-dropdown-raised">
                         <div className="calendar-header flex items-center justify-between mb-4">
                           <div className="flex gap-2">
                             <span
                               onClick={(e) => { e.stopPropagation(); setCreatedYear(y => y - 1); }}
-                              className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                              style={{ fontSize: '18px' }}
+                              className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                             >
                               keyboard_double_arrow_left
                             </span>
@@ -2105,8 +1967,7 @@ export default function TaskDetailModal({
                                   return m - 1;
                                 });
                               }}
-                              className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                              style={{ fontSize: '18px' }}
+                              className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                             >
                               chevron_left
                             </span>
@@ -2124,15 +1985,13 @@ export default function TaskDetailModal({
                                   return m + 1;
                                 });
                               }}
-                              className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                              style={{ fontSize: '18px' }}
+                              className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                             >
                               chevron_right
                             </span>
                             <span
                               onClick={(e) => { e.stopPropagation(); setCreatedYear(y => y + 1); }}
-                              className="material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
-                              style={{ fontSize: '18px' }}
+                              className="task-detail-calendar-nav material-symbols-outlined cursor-pointer hover:text-[#4C2B74]"
                             >
                               keyboard_double_arrow_right
                             </span>
@@ -2141,12 +2000,12 @@ export default function TaskDetailModal({
                         <div className="calendar-body">
                           <div className="grid grid-cols-7 gap-1 text-center mb-2">
                             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                              <span key={d} style={{ fontSize: '10px', fontWeight: 700, color: '#6B778C' }}>{d}</span>
+                              <span key={d} className="task-detail-calendar-weekday">{d}</span>
                             ))}
                           </div>
                           <div className="grid grid-cols-7 gap-1">
                             {getDaysInMonth(createdYear, createdMonth).map((day, i) => {
-                              if (day === null) return <div key={`empty-${i}`} style={{ height: '32px' }} />;
+                              if (day === null) return <div key={`empty-${i}`} className="task-detail-calendar-empty" />;
                               const isSelected = localTask.createdAt && (() => {
                                 const d = new Date(localTask.createdAt);
                                 return !isNaN(d.getTime()) &&
@@ -2161,19 +2020,7 @@ export default function TaskDetailModal({
                               return (
                                 <div
                                   key={i}
-                                  className={`calendar-day ${isToday ? 'today' : ''}`}
-                                  style={{
-                                    height: '32px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '12px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    color: isSelected ? '#ffffff' : '#172B4D',
-                                    backgroundColor: isSelected ? '#4C2B74' : 'transparent',
-                                    fontWeight: isSelected ? 700 : 400
-                                  }}
+                                  className={`calendar-day ${isToday ? 'today' : ''} ${isSelected ? 'task-detail-calendar-day-selected' : 'task-detail-calendar-day-unselected'}`}
                                   onClick={() => {
                                     const formatted = `${monthAbbrs[createdMonth]} ${day}, ${createdYear}`;
                                     setLocalTask(prev => ({ ...prev, createdAt: formatted }));
@@ -2192,21 +2039,20 @@ export default function TaskDetailModal({
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Updated</span>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D', paddingRight: '2px' }}>{formatTimelineDateTime(localTask?.updated_at)}</span>
+                    <span className="task-detail-section-label">Updated</span>
+                    <span className="task-detail-timeline-date task-detail-timeline-date-end">{formatTimelineDateTime(localTask?.updated_at)}</span>
                   </div>
 
 
-                  <div className="flex justify-between items-center" style={{ marginTop: '2px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#5E6C84', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Creator</span>
+                  <div className="task-detail-creator-row flex justify-between items-center">
+                    <span className="task-detail-section-label">Creator</span>
                     <div className="flex items-center gap-2">
                       <div
-                        className="flex items-center justify-center"
-                        style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#DFE1E6', fontSize: '10px', fontWeight: 700, color: '#42526E' }}
+                        className="task-detail-creator-avatar flex items-center justify-center"
                       >
                         {getInitials(localTask?.creator || 'Peter Tan')}
                       </div>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#172B4D' }}>{localTask?.creator || 'Peter Tan'}</span>
+                      <span className="task-detail-timeline-date">{localTask?.creator || 'Peter Tan'}</span>
                     </div>
                   </div>
                 </div>
@@ -2218,30 +2064,28 @@ export default function TaskDetailModal({
         </div>
       </div>
       {deleteConfirmCommentId && (
-        <div className="fixed inset-0 z-[11000] flex items-center justify-center" style={{ backgroundColor: 'rgba(9, 30, 66, 0.56)' }} onClick={(e) => e.stopPropagation()}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-[#DFE1E6]" style={{ width: '340px', padding: '20px 22px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+        <div className="task-detail-delete-overlay fixed inset-0 z-[11000] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+          <div className="delete-dialog-panel bg-white rounded-2xl shadow-2xl border border-[#DFE1E6]" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setDeleteConfirmCommentId(null)}
-              style={{ position: 'absolute', top: '14px', right: '14px', width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#F4F5F7', color: '#42526E', cursor: 'pointer' }}
-              className="hover:bg-[#E6E9EF] transition-colors"
+              className="delete-dialog-close hover:bg-[#E6E9EF] transition-colors"
               aria-label="Close delete confirmation"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '18px', lineHeight: 1 }}>close</span>
+              <span className="delete-dialog-close-icon material-symbols-outlined">close</span>
             </button>
-            <div className="flex items-start gap-3" style={{ marginBottom: '14px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#FFEBE9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ color: '#DE350B', fontSize: '18px' }}>warning</span>
+            <div className="delete-dialog-body flex items-start gap-3">
+              <div className="delete-dialog-icon-wrap">
+                <span className="delete-dialog-icon material-symbols-outlined">warning</span>
               </div>
               <div>
-                <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#172B4D', marginBottom: '4px' }}>Delete this comment?</h3>
-                <p style={{ fontSize: '12px', color: '#5E6C84', lineHeight: '1.4' }}>Once you delete it, it&apos;s gone for good.</p>
+                <h3 className="delete-dialog-title">Delete this comment?</h3>
+                <p className="delete-dialog-copy">Once you delete it, it&apos;s gone for good.</p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setDeleteConfirmCommentId(null)}
-                style={{ padding: '8px 14px', border: '1px solid #DFE1E6', borderRadius: '8px', background: 'white', color: '#42526E', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-                className="hover:bg-[#F4F5F7] transition-all"
+                className="delete-dialog-cancel hover:bg-[#F4F5F7] transition-all"
               >
                 Cancel
               </button>
@@ -2250,8 +2094,7 @@ export default function TaskDetailModal({
                   const deleted = await removeComment(deleteConfirmCommentId);
                   if (deleted) setDeleteConfirmCommentId(null);
                 }}
-                style={{ padding: '8px 14px', borderRadius: '8px', backgroundColor: '#DE350B', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-                className="hover:opacity-90 transition-all"
+                className="delete-dialog-confirm hover:opacity-90 transition-all"
               >
                 Delete
               </button>

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import CreateSpaceModal from '../components/tasks/CreateSpaceModal';
 import SpaceDetailModal from '../components/spaces/SpaceDetailModal';
 import axiosClient from '../api/axiosClient';
+import '../styles/SpaceManagement.css';
 
 export const DEMO_SPACES = [
   {
@@ -244,7 +245,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
   const [spaces, setSpaces] = useState([]);
   const isRecentlyDeletedView = spaceView === 'deleted';
 
-  const loadSpaces = async () => {
+  const loadSpaces = useCallback(async () => {
     if (!currentUserId && !isSuperAdmin) {
       setSpaces([]);
       return;
@@ -264,12 +265,11 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
     } finally {
       setIsLoadingSpaces(false);
     }
-  };
+  }, [currentUserId, isRecentlyDeletedView, isSuperAdmin]);
 
   useEffect(() => {
     loadSpaces();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, isSuperAdmin, isRecentlyDeletedView]);
+  }, [loadSpaces]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -484,7 +484,7 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
     !isCompletingSpace;
  
   return (
-    <div className="px-6 pb-6 pt-10 bg-[#F5F7FA] min-h-full">
+    <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 bg-[#F5F7FA] min-h-full">
       {/* Page Header */}
       <div className="flex justify-between items-center mb-6">
           <div>
@@ -778,8 +778,8 @@ const SpaceManagement = ({ routeContext = null } = {}) => {
               {!isRecentlyDeletedView && (
                 <div className="p-4 bg-gray-50/50 border-t border-gray-100">
                   <div
-                    className="grid items-center gap-3"
-                    style={{ gridTemplateColumns: `repeat(${footerActionCount + 1}, minmax(0, 1fr))` }}
+                    className="space-footer-actions grid items-center gap-3"
+                    style={{ '--space-footer-action-columns': footerActionCount + 1 }}
                   >
                     <button
                       disabled={!isAssigned || isDeleted}

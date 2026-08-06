@@ -1,18 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { resendVerification, verifyEmail } from '../api/authApi';
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to verify the code. Please try again.';
-}
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function VerifyEmail() {
   const [otp, setOtp] = useState(new Array(6).fill(''));
@@ -89,7 +78,7 @@ export default function VerifyEmail() {
       await verifyEmail({ email, otpCode });
       navigate('/register', { state: { email, verified: true, invitation }, replace: true });
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to verify the code. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -108,7 +97,7 @@ export default function VerifyEmail() {
       inputRefs.current[0]?.focus();
       setMessage(response.message || 'Verification code has been resent.');
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to verify the code. Please try again.'));
     } finally {
       setIsResending(false);
     }

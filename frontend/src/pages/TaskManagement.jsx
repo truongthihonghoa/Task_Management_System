@@ -9,24 +9,12 @@ import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
 import axiosClient, { API_BASE_URL } from '../api/axiosClient';
+import { getInitials as getSharedInitials, normalizeAvatarUrl } from '../utils/avatar';
+import '../styles/TaskManagement.css';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
 ];
-
-const normalizeAvatarUrl = (avatarUrl) => {
-  if (!avatarUrl) return '';
-  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
-  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
-  if (/^https?:\/\//i.test(API_BASE_URL)) {
-    try {
-      return `${new URL(API_BASE_URL).origin}${path}`;
-    } catch {
-      return avatarUrl;
-    }
-  }
-  return path;
-};
 
 const parseNonNegativeStoryPoints = (value) => {
   if (value === '' || value === null || value === undefined) return 0;
@@ -63,10 +51,7 @@ const assigneeProfiles = {
 };
 
 const getInitials = (name) => {
-  if (!name) return 'UN';
-  const parts = name.trim().split(' ').filter(Boolean);
-  if (parts.length === 0) return 'UN';
-  return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  return getSharedInitials(name, 'UN');
 };
 
 const getAssigneeProfile = (assignee) => {
@@ -83,8 +68,8 @@ const AssigneeAvatar = ({ user = {}, sizeClass = 'w-6 h-6', textClass = 'text-[1
   const name = user.name || user.full_name || 'Unassigned';
   return (
     <span
-      className={`${sizeClass} ${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
-      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+      className={`${sizeClass} ${className} task-management-avatar inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
+      style={{ '--task-avatar-bg': user.color || '#9CA3AF', '--task-avatar-color': user.textColor || '#FFFFFF' }}
       title={name}
     >
       {avatarUrl ? (
@@ -2034,7 +2019,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 
   return (
-    <div className="px-6 pb-6 pt-10 flex flex-col bg-[#F4F6F8] text-on-surface" style={{ height: '100%', overflow: 'hidden', position: 'relative' }} id="app-canvas">
+    <div className="task-management-canvas px-6 pb-6 pt-10 flex flex-col bg-[#F4F6F8] text-on-surface" id="app-canvas">
       {/* Header Section */}
       <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${view === 'summary' ? 'mb-4' : 'mb-8'}`}>
         <div>
@@ -2657,9 +2642,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       {/* BOARD VIEW */}
       {view === 'board' && (
-        <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="task-management-board-shell">
           <DragDropContext onDragStart={startBoardAutoScroll} onDragEnd={onDragEnd}>
-            <div ref={boardScrollRef} className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
+            <div ref={boardScrollRef} className="task-management-board-scroll flex gap-4 pb-4 scrollbar-hide" id="board-view-container">
               {visibleStatuses.map(status => (
                 <KanbanColumn
                   key={status}
@@ -2686,7 +2671,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       {/* LIST VIEW */}
       {view === 'list' && (
-        <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', paddingBottom: '16px' }}>
+        <div className="task-management-list-shell">
           <DragDropContext onDragEnd={handleListSprintDragEnd}>
             <div>
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
@@ -2701,8 +2686,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   />
                 )}
                 <span
-                  className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                  style={{ transform: isSprintExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  className="task-management-rotate material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                  style={{ '--task-rotate': isSprintExpanded ? '0deg' : '-90deg' }}
                   onClick={() => setIsSprintExpanded(!isSprintExpanded)}
                 >
                   expand_more
@@ -2887,8 +2872,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       />
                     )}
                     <span
-                      className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                      style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                      className="task-management-rotate material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                      style={{ '--task-rotate': expandedSprints[sprint.id] ? '0deg' : '-90deg' }}
                       onClick={() => toggleSprintExpanded(sprint.id)}
                     >
                       expand_more
@@ -3254,7 +3239,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
     }`;
 
   return (
-    <div className="kanban-column group flex flex-col bg-[#F3F4FC] border border-outline-variant/50 rounded-xl p-2 min-w-[300px]" style={{ height: '100%', maxHeight: '100%', flex: '0 0 300px' }}>
+    <div className="task-management-column kanban-column group flex flex-col bg-[#F3F4FC] border border-outline-variant/50 rounded-xl p-2 min-w-[300px]">
       <div className={`flex justify-between items-center px-4 py-2 rounded-xl border-b-2 ${headerClass} mb-1`}>
         <span className="text-[11px] font-bold uppercase tracking-wider ">{title}</span>
       </div>
@@ -3263,8 +3248,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
           <div
             {...provided.droppableProps}
             ref={provided.innerRef}
-            className={`space-y-3 px-0.5 transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
-            style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
+            className={`task-management-column-body space-y-3 px-0.5 transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
           >
             {tasks.map((task, index) => (
               <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} onRemoveAssignee={onRemoveAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
@@ -3558,8 +3542,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           {showMenu && createPortal(
             <div
               ref={menuRef}
-              style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-              className="bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-48"
+              style={{ '--task-card-menu-top': `${menuPos.top}px`, '--task-card-menu-left': `${menuPos.left}px` }}
+              className="task-card-menu bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-48"
             >
               {/* 1. Move work item */}
               {/* ĐÃ XÓA onMouseEnter VÀ onMouseLeave Ở ĐÂY */}
@@ -3580,8 +3564,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                 {/* Menu con hiển thị khi showMoveSubMenu = true */}
                 {showMoveSubMenu && (
                   <div
-                    className="absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
-                    style={{ zIndex: 10000 }}
+                    className="task-card-submenu absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
                   >
                     {index > 0 && (
                       <>
@@ -3618,8 +3601,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                 {/* Submenu con hiển thị danh sách status (New, In Progress,...) */}
                 {showStatusSubMenu && (
                   <div
-                    className="absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
-                    style={{ zIndex: 10000 }}
+                    className="task-card-submenu absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
                   >
                     {statuses.map(s => (
                       <button
@@ -3724,7 +3706,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
               {priority === 'High' ? (
                 <span className="material-symbols-outlined text-[#BA1A1A] text-[20px] font-bold">keyboard_arrow_up</span>
               ) : priority === 'Medium' ? (
-                <span style={{ fontSize: '20px', color: '#F97316', fontWeight: 700 }}>=</span>
+                <span className="priority-medium-marker">=</span>
               ) : (
                 <span className="material-symbols-outlined text-[#4C2B74] text-[20px] font-bold">keyboard_arrow_down</span>
               )}
@@ -3741,8 +3723,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                           if (!canModifyTasks) return;
                           setShowAssigneeMenu(prev => !prev);
                         }}
-                        className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                        style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                        className={`avatar-surface w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                        style={{ '--avatar-bg': user.color || '#9CA3AF', '--avatar-color': user.textColor || '#FFFFFF' }}
                       >
                         {(user.avatarUrl || user.avatar_url) ? (
                           <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -3774,8 +3756,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                       if (!canModifyTasks) return;
                       setShowAssigneeMenu(prev => !prev);
                     }}
-                    className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                    style={{ backgroundColor: unassignedProfile.color, color: unassignedProfile.textColor || '#111' }}
+                    className={`avatar-surface w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                    style={{ '--avatar-bg': unassignedProfile.color, '--avatar-color': unassignedProfile.textColor || '#111' }}
                   >
                     <span className="material-symbols-outlined text-[16px]">person</span>
                   </button>
@@ -3905,8 +3887,7 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
             aria-label="Move task to another sprint"
             title="Move task to another sprint"
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-10 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-outline hover:bg-[#F0EDFF] hover:text-[#5e4db2] cursor-grab active:cursor-grabbing transition-colors"
-            style={{ touchAction: 'none' }}
+            className="task-drag-handle absolute left-10 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-outline hover:bg-[#F0EDFF] hover:text-[#5e4db2] cursor-grab active:cursor-grabbing transition-colors"
           >
             <span className="material-symbols-outlined text-[17px]">drag_indicator</span>
           </span>
@@ -3943,8 +3924,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                               title={user.name}
                             >
                               <span
-                                className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
-                                style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                                className="avatar-surface inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
+                                style={{ '--avatar-bg': user.color || '#9CA3AF', '--avatar-color': user.textColor || '#FFFFFF' }}
                               >
                                 {(user.avatarUrl || user.avatar_url) ? (
                                   <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -3963,8 +3944,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                   ) : (
                     <>
                       <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
+                        className="avatar-surface w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ '--avatar-bg': profile.color, '--avatar-color': profile.textColor || '#111' }}
                       >
                         {profile.initials}
                       </div>
@@ -3975,8 +3956,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                 {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
                     ref={assigneeMenuRef}
-                    style={{ position: 'fixed', top: assigneeMenuPos.top, left: assigneeMenuPos.left, zIndex: 10000 }}
-                    className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
+                    style={{ '--task-assignee-menu-top': `${assigneeMenuPos.top}px`, '--task-assignee-menu-left': `${assigneeMenuPos.left}px` }}
+                    className="task-assignee-menu w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {assigneeOptions.map(user => {
@@ -4012,7 +3993,7 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
         {priority === 'High' ? (
           <span className="material-symbols-outlined text-[#BA1A1A] font-bold text-[16px]">keyboard_arrow_up</span>
         ) : priority === 'Medium' ? (
-          <span style={{ fontSize: '16px', color: '#F97316', fontWeight: 700 }}>=</span>
+          <span className="priority-medium-marker-sm">=</span>
         ) : (
           <span className="material-symbols-outlined text-[#4C2B74] font-bold text-[16px]">keyboard_arrow_down</span>
         )}

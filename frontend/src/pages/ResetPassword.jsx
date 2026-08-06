@@ -4,18 +4,12 @@ import {
   resetPassword as resetPasswordRequest,
   verifyResetToken,
 } from '../api/authApi';
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to reset password. Please request a new reset link and try again.';
-}
+import { getApiErrorMessage } from '../utils/apiError';
+import {
+  getPasswordRequirements,
+  getResetPasswordStrength,
+  meetsAllPasswordRequirements,
+} from '../utils/passwordStrength';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -36,28 +30,8 @@ export default function ResetPassword() {
   const [isValidToken, setIsValidToken] = useState(false);
   const [verifyError, setVerifyError] = useState('');
 
-  const checks = useMemo(() => ({
-    length: newPassword.length >= 8,
-    upper: /[A-Z]/.test(newPassword),
-    lower: /[a-z]/.test(newPassword),
-    number: /[0-9]/.test(newPassword),
-    special: /[^A-Za-z0-9]/.test(newPassword),
-  }), [newPassword]);
-
-  const strength = useMemo(() => {
-    const score = Object.values(checks).filter(Boolean).length;
-
-    if (newPassword.length === 0) {
-      return { label: 'Strength: None', width: '0%', colorClass: 'bg-slate-200' };
-    }
-    if (score < 3) {
-      return { label: 'Strength: Weak', width: '33%', colorClass: 'bg-red-500' };
-    }
-    if (score < 5) {
-      return { label: 'Strength: Medium', width: '66%', colorClass: 'bg-amber-400' };
-    }
-    return { label: 'Strength: Strong', width: '100%', colorClass: 'bg-emerald-500' };
-  }, [checks, newPassword.length]);
+  const checks = useMemo(() => getPasswordRequirements(newPassword), [newPassword]);
+  const strength = useMemo(() => getResetPasswordStrength(newPassword, checks), [checks, newPassword]);
 
   const hasValidLink = Boolean(email && token);
 
@@ -78,7 +52,7 @@ export default function ResetPassword() {
       .catch((error) => {
         if (isMounted) {
           setIsValidToken(false);
-          setVerifyError(getErrorMessage(error));
+          setVerifyError(getApiErrorMessage(error, 'Unable to reset password. Please request a new reset link and try again.'));
         }
       })
       .finally(() => {
@@ -113,7 +87,7 @@ export default function ResetPassword() {
       return;
     }
 
-    if (!Object.values(checks).every(Boolean)) {
+    if (!meetsAllPasswordRequirements(checks)) {
       setErrorMessage('Password must meet all requirements.');
       return;
     }
@@ -137,7 +111,7 @@ export default function ResetPassword() {
         });
       }, 1200);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to reset password. Please request a new reset link and try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -249,8 +223,8 @@ export default function ResetPassword() {
                 </span>
                 <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-300 ease-in-out ${strength.colorClass}`}
-                    style={{ width: strength.width }}
+                    className={`progress-fill h-full rounded-full transition-all duration-300 ease-in-out ${strength.colorClass}`}
+                    style={{ '--progress-width': strength.width }}
                   />
                 </div>
               </div>
@@ -304,7 +278,7 @@ export default function ResetPassword() {
                   { key: 'special', label: 'One special character' },
                 ].map(({ key, label }) => (
                   <li key={key} className={`flex items-center gap-2 text-xs transition-colors ${checks[key] ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: checks[key] ? "'FILL' 1" : "'FILL' 0" }}>
+                    <span className={`material-symbols-outlined text-[16px] ${checks[key] ? 'material-symbols-filled' : 'material-symbols-unfilled'}`}>
                       {checks[key] ? 'check_circle' : 'circle'}
                     </span>
                     <span>{label}</span>

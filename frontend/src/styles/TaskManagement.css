@@ -1,0 +1,85 @@
+.task-management-canvas {
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.task-management-board-shell {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.task-management-board-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: stretch;
+}
+
+.task-management-list-shell {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+.priority-medium-marker {
+  font-size: 20px;
+  color: #F97316;
+  font-weight: 700;
+}
+
+.priority-medium-marker-sm {
+  font-size: 16px;
+  color: #F97316;
+  font-weight: 700;
+}
+
+.task-management-avatar {
+  background-color: var(--task-avatar-bg, #9CA3AF);
+  color: var(--task-avatar-color, #FFFFFF);
+}
+
+.task-management-rotate {
+  transform: rotate(var(--task-rotate, 0deg));
+}
+
+.task-management-column {
+  height: 100%;
+  max-height: 100%;
+  flex: 0 0 300px;
+}
+
+.task-management-column-body {
+  flex: 1 1 0;
+  min-height: 50px;
+  overflow-y: auto;
+  overflow-x: visible;
+  scrollbar-width: thin;
+}
+
+.task-card-menu {
+  position: fixed;
+  top: var(--task-card-menu-top);
+  left: var(--task-card-menu-left);
+  z-index: 9999;
+}
+
+.task-card-submenu {
+  z-index: 10000;
+}
+
+.task-drag-handle {
+  touch-action: none;
+}
+
+.task-assignee-menu {
+  position: fixed;
+  top: var(--task-assignee-menu-top);
+  left: var(--task-assignee-menu-left);
+  z-index: 10000;
+}
