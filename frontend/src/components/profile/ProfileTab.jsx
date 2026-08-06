@@ -5,48 +5,18 @@ import {
   updateProfile,
   uploadAvatar,
 } from '../../api/profileApi';
-import { API_BASE_URL } from '../../api/axiosClient';
 import { useAuth } from '../../context/AuthContext';
 import { clearAuth, setCurrentUser } from '../../services/tokenStorage';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { getInitials, normalizeAvatarUrl as normalizeSharedAvatarUrl } from '../../utils/avatar';
 import ChangePasswordSection from './ChangePasswordSection';
 
 const DEFAULT_AVATAR = 'https://via.placeholder.com/150';
 const PROFILE_CACHE_KEY = 'taskflow_profile_cache';
 const PROFILE_CACHE_TTL_MS = 60 * 1000;
 
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to update profile. Please try again.';
-}
-
-function getBackendOrigin() {
-  try {
-    const url = new URL(API_BASE_URL);
-    return url.origin;
-  } catch {
-    return ''; // relative URL — same origin, proxy handles it
-  }
-}
-
 function normalizeAvatarUrl(avatarUrl) {
-  if (!avatarUrl) return DEFAULT_AVATAR;
-  if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
-  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
-  if (path.startsWith('/media/')) return `${getBackendOrigin()}${path}`;
-  return avatarUrl;
-}
-
-function initialsForName(value = '') {
-  const words = value.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return 'U';
-  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('');
+  return normalizeSharedAvatarUrl(avatarUrl, DEFAULT_AVATAR);
 }
 
 function formatDate(value) {
@@ -166,7 +136,7 @@ export default function ProfileTab() {
         syncAuthUser(nextProfile);
       } catch (error) {
         if (isMounted) {
-          setErrorMessage(getErrorMessage(error));
+          setErrorMessage(getApiErrorMessage(error, 'Unable to update profile. Please try again.'));
         }
       } finally {
         if (isMounted) {
@@ -271,7 +241,7 @@ export default function ProfileTab() {
 
     // setSuccessMessage("Profile updated successfully.");
   } catch (error) {
-    setErrorMessage(getErrorMessage(error));
+    setErrorMessage(getApiErrorMessage(error, 'Unable to update profile. Please try again.'));
   } finally {
     setIsSaving(false);
   }
@@ -315,7 +285,7 @@ export default function ProfileTab() {
               <img src={activeAvatar} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <span className="text-white text-3xl font-bold">
-                {initialsForName(profileData.fullName)}
+                {getInitials(profileData.fullName)}
               </span>
             )}
           </div>
@@ -463,8 +433,8 @@ export default function ProfileTab() {
 
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-[#2D1B4E] h-2 rounded-full"
-                  style={{ width: `${profileCompletion.percentage}%` }}
+                  className="progress-fill bg-[#2D1B4E] h-2 rounded-full"
+                  style={{ '--progress-width': `${profileCompletion.percentage}%` }}
                 />
               </div>
             </div>

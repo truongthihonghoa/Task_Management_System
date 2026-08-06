@@ -1,0 +1,100 @@
+.edit-user-modal {
+  max-width: 800px;
+}
+
+.edit-user-modal .modal-header h2,
+.edit-user-modal .modal-title-strong {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #172B4D;
+}
+
+.edit-user-body {
+  max-height: calc(90vh - 160px);
+}
+
+.edit-user-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.edit-user-select-icon {
+  position: absolute;
+  inset-block: 0;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  color: #9CA3AF;
+}
+
+.edit-user-modal .form-label-comfortable {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5E6C84;
+}
+
+.edit-user-modal .input-custom-comfortable,
+.edit-user-modal .select-custom {
+  color: #172B4D;
+  font-size: 13px;
+  border-color: #DFE1E6;
+}
+
+.edit-user-modal .input-custom-comfortable::placeholder {
+  color: #A5ADBA;
+  font-size: 12px;
+}
+
+.edit-user-modal .input-custom-comfortable:focus,
+.edit-user-modal .select-custom:focus {
+  background-color: #fff;
+  border-color: #4C2B74;
+  outline: none;
+}
+
+.edit-user-modal .modal-footer {
+  border-top: 2px solid #F4F5F7;
+}
+
+.edit-user-modal .btn-cancel {
+  color: #42526E;
+}
+
+.edit-user-modal .btn-cancel:hover {
+  background-color: #EBECF0;
+}
+
+.edit-user-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: #42526E;
+}
+
+.edit-user-close-btn:hover {
+  color: #42526E;
+  background-color: #EBECF0;
+}
+
+.edit-user-save-btn {
+  background-color: #4C2B74;
+  box-shadow: none;
+}
+
+.edit-user-save-btn:hover {
+  background-color: #3D225E;
+}
+
+.edit-user-modal .form-error-banner {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .edit-user-grid {
+    grid-template-columns: 1fr;
+  }
+}

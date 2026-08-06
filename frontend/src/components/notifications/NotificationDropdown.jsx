@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BellOff, ChevronRight } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
+import '../../styles/NotificationDropdown.css';
 
 const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, onClose, onNotificationClick, onDeleteNotification }) => {
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
@@ -32,23 +33,23 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
   };
 
   return (
-    <div className="absolute top-full right-0 mt-3 w-[380px] bg-white/80 backdrop-blur-xl border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[20px] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="notification-dropdown animate-in fade-in slide-in-from-top-2 duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-white/40">
-        <h3 className="font-bold text-[#4C2B74]">Notifications</h3>
-        <div className="flex items-center space-x-4">
+      <div className="notification-dropdown__header">
+        <h3 className="notification-dropdown__title">Notifications</h3>
+        <div className="notification-dropdown__actions">
           <button 
             onClick={() => {
               setOpenActionMenuId(null);
               onMarkAllRead?.();
             }}
-            className="text-xs font-semibold text-[#4C2B74] hover:underline"
+            className="notification-dropdown__link notification-dropdown__link--primary"
           >
             Mark all as read
           </button>
           <button 
             onClick={handleNavigateToAll}
-            className="text-xs font-semibold text-gray-500 hover:text-[#4C2B74]"
+            className="notification-dropdown__link"
           >
             View all
           </button>
@@ -56,12 +57,12 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
       </div>
 
       {/* List */}
-      <div className="max-h-[450px] overflow-y-auto custom-scrollbar">
+      <div className="notification-dropdown__list custom-scrollbar">
         {hasNotifications ? (
           Object.entries(groupedNotifications).map(([group, items]) => (
             items.length > 0 && (
               <div key={group}>
-                <div className="px-4 py-2 bg-gray-50/50 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                <div className="notification-dropdown__group">
                   {group}
                 </div>
                 {items.map(item => (
@@ -87,16 +88,16 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
             )
           ))
         ) : (
-          <div className="p-10 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+          <div className="notification-dropdown__empty">
+            <div className="notification-dropdown__empty-icon">
               <BellOff className="w-8 h-8 text-gray-300" />
             </div>
-            <h4 className="font-bold text-gray-700 mb-1">You're all caught up!</h4>
-            <p className="text-xs text-gray-400">No new notifications.</p>
+            <h4 className="notification-dropdown__empty-title">You're all caught up!</h4>
+            <p className="notification-dropdown__empty-text">No new notifications.</p>
           </div>
         )}
         {hasNotifications && (
-          <div className="px-5 py-3 text-center text-[11px] font-semibold text-gray-400 border-t border-gray-100">
+          <div className="notification-dropdown__limit">
             {notificationLimitMessage}
           </div>
         )}
@@ -104,10 +105,10 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
 
       {/* Footer */}
       {hasNotifications && (
-        <div className="p-3 border-t border-gray-100 bg-white/40 flex justify-center">
+        <div className="notification-dropdown__footer">
           <button 
             onClick={handleNavigateToAll}
-            className="text-xs font-bold text-[#4C2B74] flex items-center"
+            className="notification-dropdown__see-all"
           >
             See all notifications
             <ChevronRight className="w-3 h-3 ml-1" />
@@ -115,21 +116,6 @@ const NotificationDropdown = ({ notifications = [], onMarkAllRead, onViewAll, on
         </div>
       )}
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #E5E7EB;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #D1D5DB;
-        }
-      `}</style>
     </div>
   );
 };

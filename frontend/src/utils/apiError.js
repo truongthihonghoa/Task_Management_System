@@ -1,6 +1,6 @@
 export function getApiErrorMessage(error, fallback = 'An unexpected error occurred.') {
   if (!error?.response) {
-    return 'Unable to connect to the server.';
+    return fallback;
   }
 
   const data = error.response.data;
@@ -15,10 +15,11 @@ export function getApiErrorMessage(error, fallback = 'An unexpected error occurr
   }
 
   if (Array.isArray(detail)) {
-    return detail
-      .map((item) => item?.msg)
-      .filter(Boolean)
-      .join(' ') || fallback;
+    return detail[0]?.msg || fallback;
+  }
+
+  if (detail?.message) {
+    return detail.message;
   }
 
   return fallback;

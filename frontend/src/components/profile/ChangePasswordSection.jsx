@@ -1,17 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { changePassword } from '../../api/profileApi';
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to change password. Please try again.';
-}
+import { getApiErrorMessage } from '../../utils/apiError';
+import {
+  getPasswordRequirements,
+  getProfilePasswordStrength,
+  meetsAllPasswordRequirements,
+} from '../../utils/passwordStrength';
 
 export default function ChangePasswordSection({ onPasswordChanged }) {
   const [passwordData, setPasswordData] = useState({
@@ -28,32 +22,11 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  const requirements = useMemo(() => ({
-    length: passwordData.newPassword.length >= 8,
-    upper: /[A-Z]/.test(passwordData.newPassword),
-    lower: /[a-z]/.test(passwordData.newPassword),
-    number: /[0-9]/.test(passwordData.newPassword),
-    special: /[^A-Za-z0-9]/.test(passwordData.newPassword),
-  }), [passwordData.newPassword]);
-
-  const passwordStrength = Object.values(requirements).filter(Boolean).length * 20;
-
-  const getStrengthColor = () => {
-    if (passwordStrength <= 20) return 'bg-red-500';
-    if (passwordStrength <= 40) return 'bg-orange-500';
-    if (passwordStrength <= 60) return 'bg-yellow-500';
-    if (passwordStrength <= 80) return 'bg-blue-500';
-    return 'bg-green-500';
-  };
-
-  const getStrengthText = () => {
-    if (!passwordData.newPassword) return 'None';
-    if (passwordStrength <= 20) return 'Weak';
-    if (passwordStrength <= 40) return 'Fair';
-    if (passwordStrength <= 60) return 'Good';
-    if (passwordStrength <= 80) return 'Strong';
-    return 'Very Strong';
-  };
+  const requirements = useMemo(() => getPasswordRequirements(passwordData.newPassword), [passwordData.newPassword]);
+  const passwordStrength = useMemo(
+    () => getProfilePasswordStrength(passwordData.newPassword, requirements),
+    [passwordData.newPassword, requirements]
+  );
 
   const handlePasswordChange = (event) => {
     const { name, value } = event.target;
@@ -95,7 +68,7 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
       return;
     }
 
-    if (!Object.values(requirements).every(Boolean)) {
+    if (!meetsAllPasswordRequirements(requirements)) {
       setErrorMessage('New password must meet all requirements.');
       return;
     }
@@ -108,7 +81,7 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
       setSuccessMessage(response.message || 'Password changed successfully.');
       onPasswordChanged?.(response);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to change password. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -181,12 +154,12 @@ export default function ChangePasswordSection({ onPasswordChanged }) {
         <div className="bg-gray-50 rounded-lg p-3">
           <div className="flex justify-between text-sm mb-2">
             <span>Password Strength</span>
-            <span className="font-semibold">{getStrengthText()}</span>
+            <span className="font-semibold">{passwordStrength.text}</span>
           </div>
           <div className="w-full h-2 bg-gray-200 rounded-full">
             <div
-              className={`h-2 rounded-full transition-all ${getStrengthColor()}`}
-              style={{ width: `${passwordStrength}%` }}
+              className={`progress-fill h-2 rounded-full transition-all ${passwordStrength.colorClass}`}
+              style={{ '--progress-width': `${passwordStrength.percentage}%` }}
             />
           </div>
         </div>

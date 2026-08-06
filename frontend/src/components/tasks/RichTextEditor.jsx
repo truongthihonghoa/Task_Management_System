@@ -7,15 +7,23 @@ import '../../styles/RichTextEditor.css';
 // Data
 // ─────────────────────────────────────────────
 const TEXT_COLORS = [
-  { label: 'Default', value: '#172B4D' },
-  { label: 'Red',     value: '#DE350B' },
-  { label: 'Orange',  value: '#FF8B00' },
-  { label: 'Yellow',  value: '#FF991F' },
-  { label: 'Green',   value: '#00875A' },
-  { label: 'Blue',    value: '#0052CC' },
-  { label: 'Purple',  value: '#6554C0' },
-  { label: 'Gray',    value: '#6B778C' },
+  { label: 'Default', value: '#172B4D', className: 'rte-color-default' },
+  { label: 'Red',     value: '#DE350B', className: 'rte-color-red' },
+  { label: 'Orange',  value: '#FF8B00', className: 'rte-color-orange' },
+  { label: 'Yellow',  value: '#FF991F', className: 'rte-color-yellow' },
+  { label: 'Green',   value: '#00875A', className: 'rte-color-green' },
+  { label: 'Blue',    value: '#0052CC', className: 'rte-color-blue' },
+  { label: 'Purple',  value: '#6554C0', className: 'rte-color-purple' },
+  { label: 'Gray',    value: '#6B778C', className: 'rte-color-gray' },
 ];
+
+const getTaskStatusClass = (status) => {
+  if (status === 'Done') return 'rte-task-status-done';
+  if (status === 'Need Revision') return 'rte-task-status-revision';
+  if (status === 'In Progress') return 'rte-task-status-progress';
+  if (!status || status === 'New') return 'rte-task-status-default';
+  return 'rte-task-status-progress';
+};
 
 
 const EMOJIS = [
@@ -26,19 +34,19 @@ const EMOJIS = [
 
 
 const MENTION_USERS = [
-  { id: 1, name: 'Alex Morgan',   avatar: 'AM', color: '#4C2B74' },
-  { id: 2, name: 'Sarah Johnson', avatar: 'SJ', color: '#0052CC' },
-  { id: 3, name: 'David Chen',    avatar: 'DC', color: '#00875A' },
-  { id: 4, name: 'Emma Wilson',   avatar: 'EW', color: '#FF8B00' },
-  { id: 5, name: 'Michael Brown', avatar: 'MB', color: '#DE350B' },
+  { id: 1, name: 'Alex Morgan',   avatar: 'AM', color: '#4C2B74', className: 'rte-mention-user-1' },
+  { id: 2, name: 'Sarah Johnson', avatar: 'SJ', color: '#0052CC', className: 'rte-mention-user-2' },
+  { id: 3, name: 'David Chen',    avatar: 'DC', color: '#00875A', className: 'rte-mention-user-3' },
+  { id: 4, name: 'Emma Wilson',   avatar: 'EW', color: '#FF8B00', className: 'rte-mention-user-4' },
+  { id: 5, name: 'Michael Brown', avatar: 'MB', color: '#DE350B', className: 'rte-mention-user-5' },
 ];
 
 
 const HEADING_OPTIONS = [
-  { label: 'Normal text', tag: 'p',  fontSize: '14px', fontWeight: '400' },
-  { label: 'Heading 1',   tag: 'h1', fontSize: '22px', fontWeight: '700' },
-  { label: 'Heading 2',   tag: 'h2', fontSize: '18px', fontWeight: '700' },
-  { label: 'Heading 3',   tag: 'h3', fontSize: '15px', fontWeight: '700' },
+  { label: 'Normal text', tag: 'p',  className: 'rte-heading-option-normal' },
+  { label: 'Heading 1',   tag: 'h1', className: 'rte-heading-option-h1' },
+  { label: 'Heading 2',   tag: 'h2', className: 'rte-heading-option-h2' },
+  { label: 'Heading 3',   tag: 'h3', className: 'rte-heading-option-h3' },
 ];
 
 
@@ -69,6 +77,10 @@ function escapeHtmlAttribute(value = '') {
 
 function getTaskDisplayId(task = {}) {
   return task.displayId || task.taskId || task.id || '';
+}
+
+function getTextColorClass(color) {
+  return TEXT_COLORS.find((item) => item.value === color)?.className || TEXT_COLORS[0].className;
 }
 
 /**
@@ -137,8 +149,8 @@ function PortalDropdown({ triggerRef, children, className = '', panelHeight, pan
   return ReactDOM.createPortal(
     <div
       ref={panelRef}
-      className={`rte-dropdown-panel ${className}`}
-      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 99999 }}
+      className={`rte-dropdown-panel rte-dropdown-panel-fixed ${className}`}
+      style={{ '--rte-panel-top': `${pos.top}px`, '--rte-panel-left': `${pos.left}px` }}
     >
       {children}
     </div>,
@@ -169,6 +181,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
   const editorRef     = useRef(null);
   const savedRangeRef = useRef(null);
   const rootRef       = useRef(null);
+  const hasInitializedValueRef = useRef(false);
 
 
   // Trigger button refs (for portal positioning)
@@ -227,18 +240,17 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
 
 
   // ── exec helpers ─────────────────────────────
+  const notifyChange = useCallback(() => {
+    if (onChange && editorRef.current) onChange(editorRef.current.innerHTML);
+  }, [onChange]);
+
+
   const exec = useCallback((cmd, val = null) => {
     editorRef.current?.focus();
     try { document.execCommand(cmd, false, val); } catch (_) {}
     notifyChange();
     updateActiveFormats();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateActiveFormats]);
-
-
-  const notifyChange = useCallback(() => {
-    if (onChange && editorRef.current) onChange(editorRef.current.innerHTML);
-  }, [onChange]);
+  }, [notifyChange, updateActiveFormats]);
 
 
   // ── Format actions ───────────────────────────
@@ -368,7 +380,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
   const insertMention = (user) => {
     restoreSelection(savedRangeRef.current);
     editorRef.current?.focus();
-    const html = `<span class="rte-mention" contenteditable="false" data-user-id="${user.id}" style="background:${user.color}22;color:${user.color}">@${user.name}</span>&nbsp;`;
+    const html = `<span class="rte-mention ${user.className}" contenteditable="false" data-user-id="${user.id}">@${user.name}</span>&nbsp;`;
     try { document.execCommand('insertHTML', false, html); } catch (_) {}
     notifyChange();
     setShowMention(false);
@@ -442,11 +454,13 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
 
   // ── Init with value ───────────────────────────
   useEffect(() => {
+    if (hasInitializedValueRef.current) return;
+    hasInitializedValueRef.current = true;
+
     if (editorRef.current && value !== undefined && editorRef.current.innerHTML !== value) {
       editorRef.current.innerHTML = value || '';
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [value]);
 
 
   const filteredMentions = MENTION_USERS.filter(u =>
@@ -505,8 +519,8 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           title="Text style"
           onMouseDown={(e) => { e.preventDefault(); toggleHeading(); }}
         >
-          <span style={{ fontSize: 15, fontWeight: 600 }}>Tt</span>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 2 }}>
+          <span className="rte-toolbar-text-style">Tt</span>
+          <svg className="rte-toolbar-caret" width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 4l3 3 3-3" stroke="#42526E" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </button>
@@ -521,7 +535,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           title="Bold (Ctrl+B)"
           onMouseDown={(e) => { e.preventDefault(); applyBold(); }}
         >
-          <strong style={{ fontSize: 14 }}>B</strong>
+          <strong className="rte-toolbar-strong">B</strong>
         </button>
 
 
@@ -530,7 +544,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           title="Italic (Ctrl+I)"
           onMouseDown={(e) => { e.preventDefault(); applyItalic(); }}
         >
-          <em style={{ fontSize: 14, fontFamily: 'Georgia,serif' }}>I</em>
+          <em className="rte-toolbar-italic">I</em>
         </button>
 
 
@@ -539,7 +553,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           title="Underline (Ctrl+U)"
           onMouseDown={(e) => { e.preventDefault(); applyUnderline(); }}
         >
-          <span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span>
+          <span className="rte-toolbar-underline">U</span>
         </button>
 
 
@@ -554,10 +568,10 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           onMouseDown={(e) => { e.preventDefault(); toggleColor(); }}
         >
           <span className="rte-color-a-wrap">
-            <span style={{ fontSize: 14, fontWeight: 700 }}>A</span>
-            <span className="rte-color-bar" style={{ background: currentColor }} />
+            <span className="rte-toolbar-color-label">A</span>
+            <span className={`rte-color-bar rte-color-bar-current ${getTextColorClass(currentColor)}`} />
           </span>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 2 }}>
+          <svg className="rte-toolbar-caret" width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 4l3 3 3-3" stroke="#42526E" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </button>
@@ -576,7 +590,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M3 4h10M3 8h10M3 12h10M1 4h.01M1 8h.01M1 12h.01" stroke="#42526E" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 1 }}>
+          <svg className="rte-toolbar-caret-tight" width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 4l3 3 3-3" stroke="#42526E" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </button>
@@ -626,7 +640,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           title="Mention someone"
           onClick={triggerMentionFromToolbar}
         >
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#42526E' }}>@</span>
+          <span className="rte-mention-symbol">@</span>
         </button>
 
 
@@ -640,7 +654,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 1v12M1 7h12" stroke="#42526E" strokeWidth="2" strokeLinecap="round"/>
           </svg>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 1 }}>
+          <svg className="rte-toolbar-caret-tight" width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 4l3 3 3-3" stroke="#42526E" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </button>
@@ -677,8 +691,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           {HEADING_OPTIONS.map(opt => (
             <div
               key={opt.tag}
-              className="rte-dropdown-item"
-              style={{ fontSize: opt.fontSize, fontWeight: opt.fontWeight }}
+              className={`rte-dropdown-item ${opt.className}`}
               onMouseDown={(e) => { e.preventDefault(); applyHeading(opt); }}
             >
               {opt.label}
@@ -702,9 +715,8 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
             {TEXT_COLORS.map(c => (
               <button
                 key={c.value}
-                className="rte-color-swatch"
+                className={`rte-color-swatch ${c.className}`}
                 title={c.label}
-                style={{ background: c.value }}
                 onMouseDown={(e) => { e.preventDefault(); applyColor(c.value); }}
               />
             ))}
@@ -772,7 +784,7 @@ export default function RichTextEditor({ value, onChange, placeholder, tasks = [
           <div className="rte-dropdown-item" onMouseDown={(e) => { e.preventDefault(); insertQuote(); }}>
             <span className="rte-plus-icon">❝</span> Quote
           </div>
-          <div className="rte-plus-section-title" style={{ marginTop: 4 }}>Panel</div>
+          <div className="rte-plus-section-title rte-plus-section-title-spaced">Panel</div>
           <div className="rte-dropdown-item" onMouseDown={(e) => { e.preventDefault(); insertPanel('info'); }}>
             <span className="rte-plus-icon">ℹ️</span> Info panel
           </div>
@@ -879,7 +891,7 @@ function MentionPortal({ editorRef, filteredMentions, onSelect, onClose }) {
     <div
       ref={panelRef}
       className="rte-mention-dropdown"
-      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 99999, transform: 'translateY(-100%)' }}
+      style={{ '--rte-mention-top': `${pos.top}px`, '--rte-mention-left': `${pos.left}px` }}
     >
       <div className="rte-mention-title">Mention</div>
       {filteredMentions.length === 0 && (
@@ -891,7 +903,7 @@ function MentionPortal({ editorRef, filteredMentions, onSelect, onClose }) {
           className="rte-mention-item"
           onMouseDown={(e) => { e.preventDefault(); onSelect(user); }}
         >
-          <span className="rte-mention-avatar" style={{ background: user.color }}>{user.avatar}</span>
+          <span className={`rte-mention-avatar ${user.className}`}>{user.avatar}</span>
           <span>{user.name}</span>
         </div>
       ))}
@@ -937,17 +949,6 @@ function LinkDialog({
     setLinkSearch(val);
   };
 
-
-  const statusColor = (status) => {
-    if (!status) return { bg: '#F4F5F7', text: '#42526E' };
-    if (status === 'Done') return { bg: '#E3FCEF', text: '#006D3A' };
-    if (status === 'In Progress') return { bg: '#DEEBFF', text: '#0052CC' };
-    if (status === 'Need Revision') return { bg: '#FFEBE6', text: '#DE350B' };
-    if (status === 'New') return { bg: '#F4F5F7', text: '#42526E' };
-    return { bg: '#DEEBFF', text: '#0052CC' };
-  };
-
-
   return ReactDOM.createPortal(
     <div
       className="rte-dialog-overlay"
@@ -958,7 +959,7 @@ function LinkDialog({
 
         {/* Tiêu đề */}
         <div className="rte-link-dialog-header">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+          <svg className="rte-link-dialog-icon" width="18" height="18" viewBox="0 0 16 16" fill="none">
             <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" stroke="#4C2B74" strokeWidth="1.5" strokeLinecap="round"/>
             <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" stroke="#4C2B74" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
@@ -1005,7 +1006,7 @@ function LinkDialog({
 
 
         {/* Ô hiển thị text */}
-        <div className="rte-link-url-section" style={{ marginTop: 10 }}>
+        <div className="rte-link-url-section rte-link-url-section-spaced">
           <label className="rte-link-label">Display text (optional)</label>
           <input
             className="rte-link-display-input"
@@ -1030,7 +1031,6 @@ function LinkDialog({
                 </div>
                 <div className="rte-link-task-list">
                   {filteredTasks.map(task => {
-                    const sc = statusColor(task.status);
                     return (
                       <div
                         key={task.id}
@@ -1040,8 +1040,7 @@ function LinkDialog({
                         <span className="rte-task-item-id">{getTaskDisplayId(task)}</span>
                         <span className="rte-task-item-title">{task.title}</span>
                         <span
-                          className="rte-task-item-status"
-                          style={{ background: sc.bg, color: sc.text }}
+                          className={`rte-task-item-status ${getTaskStatusClass(task.status)}`}
                         >{task.status}</span>
                       </div>
                     );
@@ -1059,13 +1058,12 @@ function LinkDialog({
             {/* Task gần đây */}
             {!linkSearch && recentTasks.length > 0 && (
               <>
-                <div className="rte-link-section-title" style={{ marginTop: filteredTasks.length > 0 ? 8 : 0 }}>
+                <div className={`rte-link-section-title ${filteredTasks.length > 0 ? 'rte-link-section-title-spaced' : ''}`}>
                   <span className="rte-link-section-icon">🕐</span>
                   Recent tasks
                 </div>
                 <div className="rte-link-task-list">
                   {recentTasks.map(task => {
-                    const sc = statusColor(task.status);
                     return (
                       <div
                         key={task.id}
@@ -1075,8 +1073,7 @@ function LinkDialog({
                         <span className="rte-task-item-id">{getTaskDisplayId(task)}</span>
                         <span className="rte-task-item-title">{task.title}</span>
                         <span
-                          className="rte-task-item-status"
-                          style={{ background: sc.bg, color: sc.text }}
+                          className={`rte-task-item-status ${getTaskStatusClass(task.status)}`}
                         >{task.status}</span>
                       </div>
                     );
@@ -1182,7 +1179,7 @@ function ImageDialog({
                 <input
                   type="file"
                   ref={fileInputRef}
-                  style={{ display: 'none' }}
+                  className="hidden-file-input"
                   accept="image/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   onChange={handleFileChange}
                 />
@@ -1197,12 +1194,12 @@ function ImageDialog({
                   {isUploading ? 'Uploading...' : 'Upload file'}
                 </button>
                 {uploadError && (
-                  <div style={{ marginTop: 10, fontSize: 12, color: '#DE350B', fontWeight: 600 }}>
+                  <div className="rte-upload-error">
                     {uploadError}
                   </div>
                 )}
               </div>
-              <div className="rte-dialog-actions" style={{ marginTop: 16 }}>
+              <div className="rte-dialog-actions rte-dialog-actions-tight">
                 <button className="rte-dialog-cancel" onClick={onClose}>Cancel</button>
               </div>
             </div>
@@ -1216,7 +1213,7 @@ function ImageDialog({
                 onChange={e => setImageUrl(e.target.value)}
                 autoFocus
               />
-              <label className="rte-dialog-label" style={{ marginTop: 12 }}>Alt text (optional)</label>
+              <label className="rte-dialog-label">Alt text (optional)</label>
               <input
                 className="rte-dialog-input"
                 placeholder="Describe the image"
@@ -1224,7 +1221,7 @@ function ImageDialog({
                 onChange={e => setImageAlt(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && onInsert()}
               />
-              <div className="rte-dialog-actions" style={{ marginTop: 24 }}>
+              <div className="rte-dialog-actions rte-dialog-actions-loose">
                 <button className="rte-dialog-cancel" onClick={onClose}>Cancel</button>
                 <button className="rte-dialog-save" onClick={() => onInsert()}>Insert</button>
               </div>

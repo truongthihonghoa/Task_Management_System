@@ -2,18 +2,7 @@ import React, { useState, useEffect } from 'react';
 import taskflowLogo from '../assets/taskflow-logo.png';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-function getErrorMessage(error) {
-    const detail = error?.response?.data?.detail;
-    const message = error?.response?.data?.message;
-
-    if (message) return message;
-    if (typeof detail === 'string') return detail;
-    if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-    if (detail?.message) return detail.message;
-
-    return 'Unable to sign in. Please check your email and password.';
-}
+import { getApiErrorMessage } from '../utils/apiError';
 
 function normalizeRole(role) {
     return String(role || '').trim().toUpperCase().replace(/\s+/g, '_');
@@ -78,7 +67,7 @@ export default function LoginPage() {
 
             navigate(redirectPath, { replace: true });
         } catch (error) {
-            setFormError(getErrorMessage(error));
+            setFormError(getApiErrorMessage(error, 'Unable to sign in. Please check your email and password.'));
         } finally {
             setIsLoading(false);
         }

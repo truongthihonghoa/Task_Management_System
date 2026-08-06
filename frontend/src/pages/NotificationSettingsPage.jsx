@@ -20,6 +20,7 @@ import {
   updateNotificationPreference,
 } from "../api/notificationPreferencesApi";
 import { useAuth } from "../context/AuthContext";
+import "../styles/NotificationSettingsPage.css";
 
 const MEMBER_NOTIFICATION_GROUPS = [
   {
@@ -322,7 +323,7 @@ const NotificationSettingsPage = () => {
   );
 
   return (
-    <div className="p-8 w-full h-[calc(100vh-64px)] flex flex-col overflow-hidden">
+    <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 w-full h-[calc(100vh-64px)] flex flex-col overflow-hidden">
       <div className="mb-8 flex-shrink-0">
         <h1 className="text-2xl font-bold text-[#4C2B74]">Notification Settings</h1>
         <p className="text-sm text-gray-500">
@@ -352,7 +353,7 @@ const NotificationSettingsPage = () => {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8 pr-2">
+      <div className="flex-1 overflow-y-auto notification-settings-scrollbar space-y-8 pr-2">
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100">
             <div className="flex items-center gap-3">
@@ -501,24 +502,6 @@ const NotificationSettingsPage = () => {
         </button>
       </div>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #E4E4E7;
-          border-radius: 10px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #D4D4D8;
-        }
-      `}</style>
     </div>
   );
 };

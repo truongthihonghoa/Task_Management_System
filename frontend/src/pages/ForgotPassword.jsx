@@ -1,18 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { checkEmail, forgotPassword } from '../api/authApi';
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to send reset link. Please try again.';
-}
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -55,7 +44,7 @@ export default function ForgotPassword() {
         setSentEmail(normalizedEmail);
       }
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to send reset link. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -70,7 +59,7 @@ export default function ForgotPassword() {
               {sentEmail && !isRegisterFlow ? (
                 <div className="mt-10">
                   <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-green-700">
-                    <span className="material-symbols-outlined text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    <span className="material-symbols-filled material-symbols-outlined text-[28px]">
                       mark_email_read
                     </span>
                   </div>
