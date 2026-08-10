@@ -428,7 +428,7 @@ export default function SpaceDetailModal({
                   <button
                     type="button"
                     disabled={!canOpenTasks}
-                    onClick={() => onViewTasks(displaySpace, resolvedRoleLabel === 'OWNER')}
+                    onClick={() => onViewTasks(displaySpace, String(resolvedRoleLabel || '').toUpperCase() === 'OWNER')}
                     className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#4C2B74] px-4 py-2.5 text-[12px] font-bold text-white shadow-md transition-all hover:bg-[#3D225E] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span className="material-symbols-outlined text-[17px] leading-none">task_alt</span>

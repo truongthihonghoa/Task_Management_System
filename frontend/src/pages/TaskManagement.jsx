@@ -542,6 +542,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [expandedSprints, setExpandedSprints] = useState({});
   // Which sprint's ... menu is open (null = none, 'sprint-1' = Sprint 1, sprint.id = extra sprint)
   const [openSprintMenuId, setOpenSprintMenuId] = useState(null);
+  const [sprintMenuPos, setSprintMenuPos] = useState({ top: 0, left: 0 });
 
   // Sprint 1 data (editable)
   const [sprint1Data, setSprint1Data] = useState({
@@ -1469,6 +1470,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const handleDeleteSprint = async (sprintId) => {
     if (!canModifyTasks || !sprintId) return;
+    const sprintTaskCount = tasks.filter(task => task.sprintId === sprintId).length;
+    if (sprintTaskCount > 0) {
+      setTasksError('Cannot delete a sprint that still has tasks.');
+      setDeleteSprintConfirmId(null);
+      return;
+    }
 
     setTasksError('');
     try {
@@ -1498,6 +1505,33 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSprintToEdit(sprintData);
     setIsEditSprintOpen(true);
     setOpenSprintMenuId(null);
+  };
+
+  const handleToggleSprintMenu = (sprintId, event) => {
+    event.stopPropagation();
+
+    if (openSprintMenuId === sprintId) {
+      setOpenSprintMenuId(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 160;
+    const menuHeight = 124;
+    const viewportPadding = 8;
+    const left = Math.min(
+      Math.max(rect.right - menuWidth, viewportPadding),
+      window.innerWidth - menuWidth - viewportPadding
+    );
+    const top = rect.bottom + menuHeight + viewportPadding > window.innerHeight
+      ? Math.max(rect.top - menuHeight - 6, viewportPadding)
+      : rect.bottom + 6;
+
+    setSprintMenuPos({
+      top,
+      left,
+    });
+    setOpenSprintMenuId(sprintId);
   };
 
   const handleUpdateSprint = async (updatedSprint) => {
@@ -2742,13 +2776,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 {canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
                   <div className="relative" data-sprint-menu>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
+                      onClick={(e) => handleToggleSprintMenu('sprint-1', e)}
                       className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
                     >
                       <span className="material-symbols-outlined text-[18px]">more_horiz</span>
                     </button>
                     {openSprintMenuId === 'sprint-1' && (
-                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                      <div
+                        className="fixed w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]"
+                        style={{ top: `${sprintMenuPos.top}px`, left: `${sprintMenuPos.left}px` }}
+                      >
                         {canStartSprint(sprint1Data) && (
                           <button
                             onClick={() => handleActivateSprint(sprint1Data.id)}
@@ -2764,8 +2801,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           Edit sprint
                         </button>
                         <button
-                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                          onClick={() => {
+                            if (tasks.some(task => task.sprintId === sprint1Data.id)) return;
+                            setOpenSprintMenuId(null);
+                            setDeleteSprintConfirmId(sprint1Data.id);
+                          }}
+                          disabled={tasks.some(task => task.sprintId === sprint1Data.id)}
+                          title={tasks.some(task => task.sprintId === sprint1Data.id) ? 'Cannot delete a sprint that still has tasks.' : undefined}
+                          className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${tasks.some(task => task.sprintId === sprint1Data.id) ? 'text-outline opacity-50 cursor-not-allowed' : 'text-error hover:bg-red-50'}`}
                         >
                           Delete sprint
                         </button>
@@ -2915,13 +2958,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     {canModifyTasks && sprint.status !== 'Completed' && (
                       <div className="relative" data-sprint-menu>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
+                          onClick={(e) => handleToggleSprintMenu(sprint.id, e)}
                           className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
                         >
                           <span className="material-symbols-outlined text-[18px]">more_horiz</span>
                         </button>
                         {openSprintMenuId === sprint.id && (
-                          <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                          <div
+                            className="fixed w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]"
+                            style={{ top: `${sprintMenuPos.top}px`, left: `${sprintMenuPos.left}px` }}
+                          >
                             {shouldShowStartSprint(sprint) && (
                               <button
                                 disabled={!canStartSprint(sprint)}
@@ -2941,8 +2987,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                               Edit sprint
                             </button>
                             <button
-                              onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
-                              className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                              onClick={() => {
+                                if (tasks.some(task => task.sprintId === sprint.id)) return;
+                                setOpenSprintMenuId(null);
+                                setDeleteSprintConfirmId(sprint.id);
+                              }}
+                              disabled={tasks.some(task => task.sprintId === sprint.id)}
+                              title={tasks.some(task => task.sprintId === sprint.id) ? 'Cannot delete a sprint that still has tasks.' : undefined}
+                              className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${tasks.some(task => task.sprintId === sprint.id) ? 'text-outline opacity-50 cursor-not-allowed' : 'text-error hover:bg-red-50'}`}
                             >
                               Delete sprint
                             </button>
