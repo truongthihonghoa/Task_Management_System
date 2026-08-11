@@ -63,14 +63,88 @@
   transition: background 0.2s;
 }
 
+.rte-color-bar-current {
+  background: currentColor;
+}
+
+.rte-color-default {
+  color: #172B4D;
+}
+
+.rte-color-red {
+  color: #DE350B;
+}
+
+.rte-color-orange {
+  color: #FF8B00;
+}
+
+.rte-color-yellow {
+  color: #FF991F;
+}
+
+.rte-color-green {
+  color: #00875A;
+}
+
+.rte-color-blue {
+  color: #0052CC;
+}
+
+.rte-color-purple {
+  color: #6554C0;
+}
+
+.rte-color-gray {
+  color: #6B778C;
+}
+
 .rte-mention-trigger {
   min-width: 24px;
   height: 28px;
 }
 
+.rte-toolbar-text-style {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rte-toolbar-strong,
+.rte-toolbar-italic,
+.rte-toolbar-underline,
+.rte-toolbar-color-label {
+  font-size: 14px;
+}
+
+.rte-toolbar-italic {
+  font-family: Georgia, serif;
+}
+
+.rte-toolbar-underline {
+  text-decoration: underline;
+}
+
+.rte-toolbar-color-label {
+  font-weight: 700;
+}
+
+.rte-toolbar-caret {
+  margin-left: 2px;
+}
+
+.rte-toolbar-caret-tight {
+  margin-left: 1px;
+}
+
+.rte-mention-symbol {
+  font-size: 13px;
+  font-weight: 600;
+  color: #42526E;
+}
+
 /* ── Dropdown Panel ───────────────────────────── */
-/* position:fixed + top/left are injected inline by PortalDropdown */
 .rte-dropdown-panel {
+  position: fixed;
   min-width: 160px;
   background: #fff;
   border: 1px solid #DFE1E6;
@@ -79,6 +153,11 @@
   z-index: 99999;
   padding: 4px 0;
   animation: rteDropIn 0.12s ease-out;
+}
+
+.rte-dropdown-panel-fixed {
+  top: var(--rte-panel-top);
+  left: var(--rte-panel-left);
 }
 
 @keyframes rteDropIn {
@@ -100,6 +179,26 @@
 
 .rte-dropdown-item:hover {
   background-color: #F4F5F7;
+}
+
+.rte-heading-option-normal {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.rte-heading-option-h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.rte-heading-option-h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rte-heading-option-h3 {
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .rte-menu-icon {
@@ -140,6 +239,7 @@
   border: 2px solid transparent;
   cursor: pointer;
   transition: transform 0.15s, border-color 0.15s;
+  background: currentColor;
 }
 
 .rte-color-swatch:hover {
@@ -186,6 +286,10 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 6px 14px 2px;
+}
+
+.rte-plus-section-title-spaced {
+  margin-top: 4px;
 }
 
 .rte-plus-icon {
@@ -349,6 +453,21 @@
   margin-top: 20px;
 }
 
+.rte-dialog-actions-tight {
+  margin-top: 16px;
+}
+
+.rte-dialog-actions-loose {
+  margin-top: 24px;
+}
+
+.rte-upload-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #DE350B;
+  font-weight: 600;
+}
+
 .rte-dialog-cancel {
   background: none;
   border: none;
@@ -382,8 +501,10 @@
 }
 
 /* ── Mention Dropdown ────────────────────────── */
-/* position:fixed + top/left are injected inline by MentionPortal */
 .rte-mention-dropdown {
+  position: fixed;
+  top: var(--rte-mention-top);
+  left: var(--rte-mention-left);
   min-width: 230px;
   background: #fff;
   border: 1px solid #DFE1E6;
@@ -392,6 +513,7 @@
   z-index: 99999;
   padding: 4px 0;
   animation: rteDropIn 0.12s ease-out;
+  transform: translateY(-100%);
 }
 
 .rte-mention-title {
@@ -435,6 +557,88 @@
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
+}
+
+.rte-mention-user-1 {
+  background-color: rgba(76, 43, 116, 0.13);
+  color: #4C2B74;
+}
+
+.rte-mention-avatar.rte-mention-user-1 {
+  background-color: #4C2B74;
+  color: #FFFFFF;
+}
+
+.rte-mention-user-2 {
+  background-color: rgba(0, 82, 204, 0.13);
+  color: #0052CC;
+}
+
+.rte-mention-avatar.rte-mention-user-2 {
+  background-color: #0052CC;
+  color: #FFFFFF;
+}
+
+.rte-mention-user-3 {
+  background-color: rgba(0, 135, 90, 0.13);
+  color: #00875A;
+}
+
+.rte-mention-avatar.rte-mention-user-3 {
+  background-color: #00875A;
+  color: #FFFFFF;
+}
+
+.rte-mention-user-4 {
+  background-color: rgba(255, 139, 0, 0.13);
+  color: #FF8B00;
+}
+
+.rte-mention-avatar.rte-mention-user-4 {
+  background-color: #FF8B00;
+  color: #FFFFFF;
+}
+
+.rte-mention-user-5 {
+  background-color: rgba(222, 53, 11, 0.13);
+  color: #DE350B;
+}
+
+.rte-mention-avatar.rte-mention-user-5 {
+  background-color: #DE350B;
+  color: #FFFFFF;
+}
+
+.rte-link-dialog-icon {
+  flex-shrink: 0;
+}
+
+.rte-link-url-section-spaced {
+  margin-top: 10px;
+}
+
+.rte-link-section-title-spaced {
+  margin-top: 8px;
+}
+
+.rte-task-status-default {
+  background: #F4F5F7;
+  color: #42526E;
+}
+
+.rte-task-status-done {
+  background: #E3FCEF;
+  color: #006D3A;
+}
+
+.rte-task-status-progress {
+  background: #DEEBFF;
+  color: #0052CC;
+}
+
+.rte-task-status-revision {
+  background: #FFEBE6;
+  color: #DE350B;
 }
 
 /* ── Editor area ─────────────────────────────── */

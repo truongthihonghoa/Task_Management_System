@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import '../../styles/CreateTaskModal.css';
 
@@ -102,13 +102,11 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-black/40" onClick={onClose}>
+    <div className="modal-overlay modal-overlay-strong" onClick={onClose}>
       <div className="create-task-modal" onClick={(e) => e.stopPropagation()}>
         <form className="flex h-full flex-col" onSubmit={handleSubmit}>
           <div className="modal-header">
-            <div>
-              <span className="block text-[12px] font-medium tracking-widest text-[#4a454f]">EDIT SPRINT</span>
-            </div>
+            <h2>Edit Sprint</h2>
             <div className="header-actions">
               <button type="button" className="header-btn" onClick={onClose} title="Close">
                 <span className="material-symbols-outlined block">close</span>
@@ -148,7 +146,7 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                         <option value="4 weeks">4 weeks</option>
                         <option value="Custom">Custom</option>
                       </select>
-                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#4a454f]">expand_more</span>
+                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#42526E]">expand_more</span>
                     </div>
                   </div>
 
@@ -194,13 +192,13 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
               </div>
 
               <div className="md:col-span-4 space-y-3">
-                <div className="rounded-xl border border-[#ccc4d0]/30 bg-[#eff4ff] p-6 space-y-3">
-                  <h3 className="text-[20px] font-semibold text-[#121c2a]">Sprint settings</h3>
+                <div className="sprint-settings-panel space-y-3">
+                  <h3 className="sprint-settings-title">Sprint settings</h3>
 
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <p className="text-[14px] font-semibold text-[#121c2a]">Automatically start sprint</p>
-                      <p className="text-[12px] leading-tight text-[#5e6572]">Start this sprint once all prerequisites are ready.</p>
+                      <p className="sprint-setting-title">Automatically start sprint</p>
+                      <p className="sprint-setting-help">Start this sprint once all prerequisites are ready.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer mt-1 flex-shrink-0">
                       <input
@@ -209,15 +207,15 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                         onChange={(e) => setAutoStart(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 rounded-full bg-[#dce2f3] peer-focus:outline-none peer-checked:bg-[#331b55] transition-colors"></div>
+                      <div className="w-11 h-6 rounded-full bg-[#dce2f3] peer-focus:outline-none peer-checked:bg-[#4C2B74] transition-colors"></div>
                       <div className="absolute left-[2px] top-[2px] h-5 w-5 rounded-full border border-gray-300 bg-white transition-transform peer-checked:translate-x-full"></div>
                     </label>
                   </div>
 
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <p className="text-[14px] font-semibold text-[#121c2a]">Complete sprint automatically</p>
-                      <p className="text-[12px] leading-tight text-[#5e6572]">Close the sprint when all tasks meet done criteria.</p>
+                      <p className="sprint-setting-title">Complete sprint automatically</p>
+                      <p className="sprint-setting-help">Close the sprint when all tasks meet done criteria.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer mt-1 flex-shrink-0">
                       <input
@@ -226,23 +224,23 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                         onChange={(e) => setAutoComplete(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className="w-11 h-6 rounded-full bg-[#dce2f3] peer-focus:outline-none peer-checked:bg-[#331b55] transition-colors"></div>
+                      <div className="w-11 h-6 rounded-full bg-[#dce2f3] peer-focus:outline-none peer-checked:bg-[#4C2B74] transition-colors"></div>
                       <div className="absolute left-[2px] top-[2px] h-5 w-5 rounded-full border border-gray-300 bg-white transition-transform peer-checked:translate-x-full"></div>
                     </label>
                   </div>
 
-                  <div className="rounded-lg border border-[#ccc4d0]/50 bg-white p-4 space-y-3">
-                    <h4 className="border-b border-[#ccc4d0] pb-2 text-[11px] font-bold uppercase tracking-wider text-[#4a454f]">Summary</h4>
-                    <div className="space-y-1 text-sm text-[#5e6572]">
-                      <div className="flex justify-between text-[14px]">
+                  <div className="sprint-summary-box space-y-3">
+                    <h4 className="sprint-summary-title">Summary</h4>
+                    <div className="space-y-1">
+                      <div className="sprint-summary-row">
                         <span>Sprint name</span>
                         <span className="font-semibold text-[#121c2a]">{sprintName || '—'}</span>
                       </div>
-                      <div className="flex justify-between text-[14px]">
+                      <div className="sprint-summary-row">
                         <span>Duration</span>
                         <span className="font-semibold text-[#121c2a]">{duration}</span>
                       </div>
-                      <div className="flex flex-col gap-1 text-[14px]">
+                      <div className="sprint-summary-stack">
                         <span>Roadmap</span>
                         <span className="font-semibold text-[#121c2a] text-right">{formatSummaryDate(startDate)} → {endDate}</span>
                       </div>
@@ -253,17 +251,17 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 border-t border-[#ccc4d0] bg-white px-6 py-4 sm:flex-row sm:justify-end">
+          <div className="modal-footer modal-footer-end">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-[#ccc4d0] bg-white px-6 py-2 text-[14px] font-semibold text-[#331b55] transition hover:bg-[#eff4ff] active:scale-95"
+              className="btn-cancel"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-[#4a326d] px-6 py-2 text-[14px] font-semibold text-white transition hover:opacity-90 shadow-md active:scale-95"
+              className="btn-create"
             >
               Update sprint
             </button>

@@ -9,24 +9,12 @@ import TaskDetailModal from '../components/tasks/TaskDetailModal';
 import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 import Dashboard from './Dashboard';
 import axiosClient, { API_BASE_URL } from '../api/axiosClient';
+import { getInitials as getSharedInitials, normalizeAvatarUrl } from '../utils/avatar';
+import '../styles/TaskManagement.css';
 
 const availableAssignees = [
   { name: 'Unassigned', initials: '', color: '#8e8f90', icon: 'person', textColor: '#FFFFFF' },
 ];
-
-const normalizeAvatarUrl = (avatarUrl) => {
-  if (!avatarUrl) return '';
-  if (/^(blob:|data:|https?:\/\/)/i.test(avatarUrl)) return avatarUrl;
-  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
-  if (/^https?:\/\//i.test(API_BASE_URL)) {
-    try {
-      return `${new URL(API_BASE_URL).origin}${path}`;
-    } catch {
-      return avatarUrl;
-    }
-  }
-  return path;
-};
 
 const parseNonNegativeStoryPoints = (value) => {
   if (value === '' || value === null || value === undefined) return 0;
@@ -63,10 +51,7 @@ const assigneeProfiles = {
 };
 
 const getInitials = (name) => {
-  if (!name) return 'UN';
-  const parts = name.trim().split(' ').filter(Boolean);
-  if (parts.length === 0) return 'UN';
-  return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  return getSharedInitials(name, 'UN');
 };
 
 const getAssigneeProfile = (assignee) => {
@@ -83,8 +68,8 @@ const AssigneeAvatar = ({ user = {}, sizeClass = 'w-6 h-6', textClass = 'text-[1
   const name = user.name || user.full_name || 'Unassigned';
   return (
     <span
-      className={`${sizeClass} ${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
-      style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+      className={`${sizeClass} ${className} task-management-avatar inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${textClass}`}
+      style={{ '--task-avatar-bg': user.color || '#9CA3AF', '--task-avatar-color': user.textColor || '#FFFFFF' }}
       title={name}
     >
       {avatarUrl ? (
@@ -400,7 +385,10 @@ const mapApiTask = (task) => {
   };
 };
 
-const normalizeDisplaySpaceKey = (spaceKey) => String(spaceKey || '').trim().toUpperCase();
+const normalizeDisplaySpaceKey = (spaceKey) => {
+  const normalized = String(spaceKey || '').trim().toUpperCase();
+  return /^SP0+\d+$/.test(normalized) ? 'SP' : normalized;
+};
 
 const formatScopedTaskId = (sequence, spaceKey) => {
   const key = normalizeDisplaySpaceKey(spaceKey);
@@ -408,6 +396,12 @@ const formatScopedTaskId = (sequence, spaceKey) => {
 };
 
 const isSpaceKeyTaskId = (taskId) => /^[A-Z][A-Z0-9]{0,9}-[1-9]\d*$/.test(String(taskId || ''));
+
+const getDisplayTaskId = (taskId) => {
+  const match = /^([A-Z][A-Z0-9]{0,9})-([1-9]\d*)$/.exec(String(taskId || '').trim().toUpperCase());
+  if (!match) return '';
+  return `${normalizeDisplaySpaceKey(match[1])}-${match[2]}`;
+};
 
 const getTaskSequenceTime = (task) => {
   const timestamp = Date.parse(task.created_at || task.createdAt || task.date || '');
@@ -443,10 +437,17 @@ const assignScopedTaskDisplayIds = (tasks, fallbackSpaceKey = '') => {
   return tasks.map((task, index) => ({
     ...task,
     spaceKey: task.spaceKey || fallbackSpaceKey,
-    displayId: isSpaceKeyTaskId(task.id) ? task.id : displayIdsByIndex.get(index) || task.displayId || task.id,
+    displayId: isSpaceKeyTaskId(task.id) ? getDisplayTaskId(task.id) : displayIdsByIndex.get(index) || task.displayId || task.id,
     rawTaskId: task.rawTaskId || task.id,
   }));
 };
+
+const preserveTaskDisplayIdentity = (task, sourceTask = {}, fallbackSpaceKey = '') => ({
+  ...task,
+  spaceKey: task.spaceKey || sourceTask.spaceKey || fallbackSpaceKey,
+  displayId: sourceTask.displayId || task.displayId || (isSpaceKeyTaskId(task.id) ? getDisplayTaskId(task.id) : task.id),
+  rawTaskId: sourceTask.rawTaskId || task.rawTaskId || task.id,
+});
 
 const getSprintNumber = (sprintName) => {
   const match = new RegExp(`^${SPRINT_NAME_PREFIX}\\s+(\\d+)$`, 'i').exec(sprintName || '');
@@ -541,6 +542,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [expandedSprints, setExpandedSprints] = useState({});
   // Which sprint's ... menu is open (null = none, 'sprint-1' = Sprint 1, sprint.id = extra sprint)
   const [openSprintMenuId, setOpenSprintMenuId] = useState(null);
+  const [sprintMenuPos, setSprintMenuPos] = useState({ top: 0, left: 0 });
 
   // Sprint 1 data (editable)
   const [sprint1Data, setSprint1Data] = useState({
@@ -776,14 +778,15 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const updateTaskRequest = useCallback(async (taskId, updates) => {
     const response = await axiosClient.patch(`/tasks/${taskId}`, updates);
-    const updatedTask = mapApiTask(response.data);
+    const previousTask = tasks.find(task => task.id === taskId) || selectedTaskDetail || {};
+    const updatedTask = preserveTaskDisplayIdentity(mapApiTask(response.data), previousTask, apiSpace?.key || '');
     setTasks(prev => assignScopedTaskDisplayIds(
       prev.map(task => task.id === taskId ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
       apiSpace?.key || ''
     ));
     setSelectedTaskDetail(prev => prev?.id === taskId ? updatedTask : prev);
     return updatedTask;
-  }, [apiSpace?.key]);
+  }, [apiSpace?.key, selectedTaskDetail, tasks]);
 
   useEffect(() => {
     if (!selectedTaskDetail?.id) return;
@@ -1201,16 +1204,19 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         axiosClient.get(`/tasks/${task.id}/assignment-history`),
       ]);
       const detailedTask = {
-        ...mapApiTask(response.data),
+        ...preserveTaskDisplayIdentity(mapApiTask(response.data), task, apiSpace?.key || ''),
         ...buildTaskAssigneeUpdates(assigneeResponse.data?.assignees || response.data?.assignees || []),
         assignmentHistory: historyResponse.data?.history || response.data?.assignment_history || [],
       };
       setSelectedTaskDetail(detailedTask);
-      setTasks(prev => prev.map(item => item.id === detailedTask.id ? detailedTask : item));
+      setTasks(prev => assignScopedTaskDisplayIds(
+        prev.map(item => item.id === detailedTask.id ? preserveTaskDisplayIdentity(detailedTask, item, apiSpace?.key || '') : item),
+        apiSpace?.key || ''
+      ));
     } catch (error) {
       setTasksError(getErrorMessage(error, 'Unable to load task details.'));
     }
-  }, []);
+  }, [apiSpace?.key]);
 
   // Keep selected task detail in sync with the latest task state
   useEffect(() => {
@@ -1464,6 +1470,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
   const handleDeleteSprint = async (sprintId) => {
     if (!canModifyTasks || !sprintId) return;
+    const sprintTaskCount = tasks.filter(task => task.sprintId === sprintId).length;
+    if (sprintTaskCount > 0) {
+      setTasksError('Cannot delete a sprint that still has tasks.');
+      setDeleteSprintConfirmId(null);
+      return;
+    }
 
     setTasksError('');
     try {
@@ -1493,6 +1505,33 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     setSprintToEdit(sprintData);
     setIsEditSprintOpen(true);
     setOpenSprintMenuId(null);
+  };
+
+  const handleToggleSprintMenu = (sprintId, event) => {
+    event.stopPropagation();
+
+    if (openSprintMenuId === sprintId) {
+      setOpenSprintMenuId(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 160;
+    const menuHeight = 124;
+    const viewportPadding = 8;
+    const left = Math.min(
+      Math.max(rect.right - menuWidth, viewportPadding),
+      window.innerWidth - menuWidth - viewportPadding
+    );
+    const top = rect.bottom + menuHeight + viewportPadding > window.innerHeight
+      ? Math.max(rect.top - menuHeight - 6, viewportPadding)
+      : rect.bottom + 6;
+
+    setSprintMenuPos({
+      top,
+      left,
+    });
+    setOpenSprintMenuId(sprintId);
   };
 
   const handleUpdateSprint = async (updatedSprint) => {
@@ -1863,11 +1902,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
     if (Object.keys(updates).length === 0) {
       if (assigneeChanged) return;
+      const nextTask = preserveTaskDisplayIdentity(updatedTask, currentTask, apiSpace?.key || '');
       setTasks(prev => assignScopedTaskDisplayIds(
-        prev.map(task => task.id === updatedTask.id ? { ...updatedTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
+        prev.map(task => task.id === updatedTask.id ? { ...nextTask, spaceKey: task.spaceKey || apiSpace?.key || '' } : task),
         apiSpace?.key || ''
       ));
-      setSelectedTaskDetail(updatedTask);
+      setSelectedTaskDetail(nextTask);
       return;
     }
 
@@ -2013,7 +2053,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   );
 
   return (
-    <div className="px-6 pb-6 pt-10 flex flex-col bg-[#F4F6F8] text-on-surface" style={{ height: '100%', overflow: 'hidden', position: 'relative' }} id="app-canvas">
+    <div className="task-management-canvas px-6 pb-6 pt-10 flex flex-col bg-[#F4F6F8] text-on-surface" id="app-canvas">
       {/* Header Section */}
       <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${view === 'summary' ? 'mb-4' : 'mb-8'}`}>
         <div>
@@ -2636,9 +2676,9 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       {/* BOARD VIEW */}
       {view === 'board' && (
-        <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="task-management-board-shell">
           <DragDropContext onDragStart={startBoardAutoScroll} onDragEnd={onDragEnd}>
-            <div ref={boardScrollRef} className="flex gap-4 pb-4 scrollbar-hide" id="board-view-container" style={{ flex: '1 1 0', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', alignItems: 'stretch' }}>
+            <div ref={boardScrollRef} className="task-management-board-scroll flex gap-4 pb-4 scrollbar-hide" id="board-view-container">
               {visibleStatuses.map(status => (
                 <KanbanColumn
                   key={status}
@@ -2665,7 +2705,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
 
       {/* LIST VIEW */}
       {view === 'list' && (
-        <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', paddingBottom: '16px' }}>
+        <div className="task-management-list-shell">
           <DragDropContext onDragEnd={handleListSprintDragEnd}>
             <div>
           <div className="bg-white border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-sm" id="list-view-container">
@@ -2680,8 +2720,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   />
                 )}
                 <span
-                  className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                  style={{ transform: isSprintExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  className="task-management-rotate material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                  style={{ '--task-rotate': isSprintExpanded ? '0deg' : '-90deg' }}
                   onClick={() => setIsSprintExpanded(!isSprintExpanded)}
                 >
                   expand_more
@@ -2736,13 +2776,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 {canModifyTasks && sprint1Data.id && sprint1Data.status !== 'Completed' && (
                   <div className="relative" data-sprint-menu>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === 'sprint-1' ? null : 'sprint-1'); }}
+                      onClick={(e) => handleToggleSprintMenu('sprint-1', e)}
                       className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === 'sprint-1' ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
                     >
                       <span className="material-symbols-outlined text-[18px]">more_horiz</span>
                     </button>
                     {openSprintMenuId === 'sprint-1' && (
-                      <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                      <div
+                        className="fixed w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]"
+                        style={{ top: `${sprintMenuPos.top}px`, left: `${sprintMenuPos.left}px` }}
+                      >
                         {canStartSprint(sprint1Data) && (
                           <button
                             onClick={() => handleActivateSprint(sprint1Data.id)}
@@ -2758,8 +2801,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                           Edit sprint
                         </button>
                         <button
-                          onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint1Data.id); }}
-                          className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                          onClick={() => {
+                            if (tasks.some(task => task.sprintId === sprint1Data.id)) return;
+                            setOpenSprintMenuId(null);
+                            setDeleteSprintConfirmId(sprint1Data.id);
+                          }}
+                          disabled={tasks.some(task => task.sprintId === sprint1Data.id)}
+                          title={tasks.some(task => task.sprintId === sprint1Data.id) ? 'Cannot delete a sprint that still has tasks.' : undefined}
+                          className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${tasks.some(task => task.sprintId === sprint1Data.id) ? 'text-outline opacity-50 cursor-not-allowed' : 'text-error hover:bg-red-50'}`}
                         >
                           Delete sprint
                         </button>
@@ -2866,8 +2915,8 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                       />
                     )}
                     <span
-                      className="material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
-                      style={{ transform: expandedSprints[sprint.id] ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                      className="task-management-rotate material-symbols-outlined text-[18px] text-outline cursor-pointer transition-transform duration-200"
+                      style={{ '--task-rotate': expandedSprints[sprint.id] ? '0deg' : '-90deg' }}
                       onClick={() => toggleSprintExpanded(sprint.id)}
                     >
                       expand_more
@@ -2909,13 +2958,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     {canModifyTasks && sprint.status !== 'Completed' && (
                       <div className="relative" data-sprint-menu>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setOpenSprintMenuId(openSprintMenuId === sprint.id ? null : sprint.id); }}
+                          onClick={(e) => handleToggleSprintMenu(sprint.id, e)}
                           className={`p-1 rounded hover:bg-surface-container transition-colors ${openSprintMenuId === sprint.id ? 'bg-surface-container text-on-surface' : 'text-outline'}`}
                         >
                           <span className="material-symbols-outlined text-[18px]">more_horiz</span>
                         </button>
                         {openSprintMenuId === sprint.id && (
-                          <div className="absolute right-0 top-full mt-1 w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]">
+                          <div
+                            className="fixed w-[160px] bg-white border border-outline-variant rounded-lg shadow-2xl py-1 z-[200]"
+                            style={{ top: `${sprintMenuPos.top}px`, left: `${sprintMenuPos.left}px` }}
+                          >
                             {shouldShowStartSprint(sprint) && (
                               <button
                                 disabled={!canStartSprint(sprint)}
@@ -2935,8 +2987,14 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                               Edit sprint
                             </button>
                             <button
-                              onClick={() => { setOpenSprintMenuId(null); setDeleteSprintConfirmId(sprint.id); }}
-                              className="w-full px-4 py-2.5 text-[13px] text-left text-error hover:bg-red-50 transition-colors"
+                              onClick={() => {
+                                if (tasks.some(task => task.sprintId === sprint.id)) return;
+                                setOpenSprintMenuId(null);
+                                setDeleteSprintConfirmId(sprint.id);
+                              }}
+                              disabled={tasks.some(task => task.sprintId === sprint.id)}
+                              title={tasks.some(task => task.sprintId === sprint.id) ? 'Cannot delete a sprint that still has tasks.' : undefined}
+                              className={`w-full px-4 py-2.5 text-[13px] text-left transition-colors ${tasks.some(task => task.sprintId === sprint.id) ? 'text-outline opacity-50 cursor-not-allowed' : 'text-error hover:bg-red-50'}`}
                             >
                               Delete sprint
                             </button>
@@ -3079,7 +3137,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
+                  className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                 >
                   {selectableTaskIds.length > 0 && selectableTaskIds.every(taskId => selectedTasks.includes(taskId)) ? 'Unselect all' : 'Select all'}
                 </button>
@@ -3088,7 +3146,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setShowToolbarStatusMenu(prev => !prev); }}
-                      className="px-3 py-1.5 text-[12px] font-semibold rounded-lg bg-[#5E4DB2] hover:bg-[#4C3A9E] text-white border border-[#5E4DB2] transition shadow-sm"
+                      className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-white hover:bg-[#F0EDFF] text-[#4C2B74] border border-[#D8D1FF] transition shadow-sm"
                     >
                       Change status
                     </button>
@@ -3114,7 +3172,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   <button
                     type="button"
                     onClick={handleDeleteSelectedTasks}
-                    className="px-3 py-1 text-[12px] font-semibold rounded-md bg-red-600 hover:bg-red-700 text-white shadow-sm transition"
+                    className="inline-flex h-8 min-w-[96px] items-center justify-center px-2.5 text-[12px] font-semibold rounded-lg bg-[#B42318] hover:bg-[#A11F17] text-white shadow-sm transition"
                   >
                     Delete
                   </button>
@@ -3233,7 +3291,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
     }`;
 
   return (
-    <div className="kanban-column group flex flex-col bg-[#F3F4FC] border border-outline-variant/50 rounded-xl p-2 min-w-[300px]" style={{ height: '100%', maxHeight: '100%', flex: '0 0 300px' }}>
+    <div className="task-management-column kanban-column group flex flex-col bg-[#F3F4FC] border border-outline-variant/50 rounded-xl p-2 min-w-[300px]">
       <div className={`flex justify-between items-center px-4 py-2 rounded-xl border-b-2 ${headerClass} mb-1`}>
         <span className="text-[11px] font-bold uppercase tracking-wider ">{title}</span>
       </div>
@@ -3242,8 +3300,7 @@ function KanbanColumn({ title, tasks, setTasks, onCreateTask, onOpenDetail, onMo
           <div
             {...provided.droppableProps}
             ref={provided.innerRef}
-            className={`space-y-3 px-0.5 transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
-            style={{ flex: '1 1 0', minHeight: '50px', overflowY: 'auto', overflowX: 'visible', scrollbarWidth: 'thin' }}
+            className={`task-management-column-body space-y-3 px-0.5 transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
           >
             {tasks.map((task, index) => (
               <TaskCard key={task.id} task={task} index={index} totalCount={tasks.length} setTasks={setTasks} onOpenDetail={onOpenDetail} onMoveTask={onMoveTask} onPatchTask={onPatchTask} onUpdateAssignee={onUpdateAssignee} onRemoveAssignee={onRemoveAssignee} currentRole={currentRole} canModifyTasks={canModifyTasks} canUseCancelledStatus={canUseCancelledStatus} assigneeOptions={assigneeOptions} />
@@ -3537,8 +3594,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
           {showMenu && createPortal(
             <div
               ref={menuRef}
-              style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-              className="bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-48"
+              style={{ '--task-card-menu-top': `${menuPos.top}px`, '--task-card-menu-left': `${menuPos.left}px` }}
+              className="task-card-menu bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-48"
             >
               {/* 1. Move work item */}
               {/* ĐÃ XÓA onMouseEnter VÀ onMouseLeave Ở ĐÂY */}
@@ -3559,8 +3616,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                 {/* Menu con hiển thị khi showMoveSubMenu = true */}
                 {showMoveSubMenu && (
                   <div
-                    className="absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
-                    style={{ zIndex: 10000 }}
+                    className="task-card-submenu absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
                   >
                     {index > 0 && (
                       <>
@@ -3597,8 +3653,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                 {/* Submenu con hiển thị danh sách status (New, In Progress,...) */}
                 {showStatusSubMenu && (
                   <div
-                    className="absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
-                    style={{ zIndex: 10000 }}
+                    className="task-card-submenu absolute top-0 left-full ml-2 bg-white border border-outline-variant shadow-2xl rounded-lg py-2 w-[160px]"
                   >
                     {statuses.map(s => (
                       <button
@@ -3703,7 +3758,7 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
               {priority === 'High' ? (
                 <span className="material-symbols-outlined text-[#BA1A1A] text-[20px] font-bold">keyboard_arrow_up</span>
               ) : priority === 'Medium' ? (
-                <span style={{ fontSize: '20px', color: '#F97316', fontWeight: 700 }}>=</span>
+                <span className="priority-medium-marker">=</span>
               ) : (
                 <span className="material-symbols-outlined text-[#4C2B74] text-[20px] font-bold">keyboard_arrow_down</span>
               )}
@@ -3720,8 +3775,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                           if (!canModifyTasks) return;
                           setShowAssigneeMenu(prev => !prev);
                         }}
-                        className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                        style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                        className={`avatar-surface w-6 h-6 rounded-full border-2 border-white flex items-center justify-center overflow-hidden text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                        style={{ '--avatar-bg': user.color || '#9CA3AF', '--avatar-color': user.textColor || '#FFFFFF' }}
                       >
                         {(user.avatarUrl || user.avatar_url) ? (
                           <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -3753,8 +3808,8 @@ function TaskCard({ task, index, totalCount, setTasks, onOpenDetail, onMoveTask,
                       if (!canModifyTasks) return;
                       setShowAssigneeMenu(prev => !prev);
                     }}
-                    className={`w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
-                    style={{ backgroundColor: unassignedProfile.color, color: unassignedProfile.textColor || '#111' }}
+                    className={`avatar-surface w-6 h-6 rounded-full border border-outline-variant flex items-center justify-center text-[10px] font-bold ${canModifyTasks ? '' : 'cursor-default'}`}
+                    style={{ '--avatar-bg': unassignedProfile.color, '--avatar-color': unassignedProfile.textColor || '#111' }}
                   >
                     <span className="material-symbols-outlined text-[16px]">person</span>
                   </button>
@@ -3884,8 +3939,7 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
             aria-label="Move task to another sprint"
             title="Move task to another sprint"
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-10 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-outline hover:bg-[#F0EDFF] hover:text-[#5e4db2] cursor-grab active:cursor-grabbing transition-colors"
-            style={{ touchAction: 'none' }}
+            className="task-drag-handle absolute left-10 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-outline hover:bg-[#F0EDFF] hover:text-[#5e4db2] cursor-grab active:cursor-grabbing transition-colors"
           >
             <span className="material-symbols-outlined text-[17px]">drag_indicator</span>
           </span>
@@ -3922,8 +3976,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                               title={user.name}
                             >
                               <span
-                                className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
-                                style={{ backgroundColor: user.color || '#9CA3AF', color: user.textColor || '#FFFFFF' }}
+                                className="avatar-surface inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border-2 border-white text-[9px] font-bold"
+                                style={{ '--avatar-bg': user.color || '#9CA3AF', '--avatar-color': user.textColor || '#FFFFFF' }}
                               >
                                 {(user.avatarUrl || user.avatar_url) ? (
                                   <img src={user.avatarUrl || user.avatar_url} alt={user.name} className="h-full w-full object-cover" />
@@ -3942,8 +3996,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                   ) : (
                     <>
                       <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{ backgroundColor: profile.color, color: profile.textColor || '#111' }}
+                        className="avatar-surface w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ '--avatar-bg': profile.color, '--avatar-color': profile.textColor || '#111' }}
                       >
                         {profile.initials}
                       </div>
@@ -3954,8 +4008,8 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
                 {showAssigneeMenu && canModifyTasks && createPortal(
                   <div
                     ref={assigneeMenuRef}
-                    style={{ position: 'fixed', top: assigneeMenuPos.top, left: assigneeMenuPos.left, zIndex: 10000 }}
-                    className="w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
+                    style={{ '--task-assignee-menu-top': `${assigneeMenuPos.top}px`, '--task-assignee-menu-left': `${assigneeMenuPos.left}px` }}
+                    className="task-assignee-menu w-44 bg-white border border-outline-variant rounded-xl shadow-2xl overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {assigneeOptions.map(user => {
@@ -3991,7 +4045,7 @@ function TaskRow({ id, displayId, title, assignee, assignees = [], assigneeId, p
         {priority === 'High' ? (
           <span className="material-symbols-outlined text-[#BA1A1A] font-bold text-[16px]">keyboard_arrow_up</span>
         ) : priority === 'Medium' ? (
-          <span style={{ fontSize: '16px', color: '#F97316', fontWeight: 700 }}>=</span>
+          <span className="priority-medium-marker-sm">=</span>
         ) : (
           <span className="material-symbols-outlined text-[#4C2B74] font-bold text-[16px]">keyboard_arrow_down</span>
         )}

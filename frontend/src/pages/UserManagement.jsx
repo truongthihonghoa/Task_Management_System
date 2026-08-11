@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE_URL } from '../api/axiosClient';
 import {
   getManagedUser,
   listManagedUsers,
@@ -10,44 +9,12 @@ import {
 } from '../api/userManagementApi';
 import UserModal from '../components/tasks/EditUserModal';
 import { useAuth } from '../context/AuthContext';
+import { getApiErrorMessage } from '../utils/apiError';
+import { getInitials, normalizeAvatarUrl } from '../utils/avatar';
 
 const PAGE_SIZE = 20;
 const ROLE_FILTERS = ['All Roles', 'Super Admin', 'User'];
 const STATUS_FILTERS = ['All Status', 'Pending', 'Active', 'Inactive', 'Locked'];
-
-function getErrorMessage(error) {
-  const detail = error?.response?.data?.detail;
-  const message = error?.response?.data?.message;
-
-  if (message) return message;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
-  if (detail?.message) return detail.message;
-
-  return 'Unable to load user management data. Please try again.';
-}
-
-function getBackendOrigin() {
-  try {
-    return new URL(API_BASE_URL).origin;
-  } catch {
-    return '';
-  }
-}
-
-function normalizeAvatarUrl(avatarUrl) {
-  if (!avatarUrl) return '';
-  if (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:')) return avatarUrl;
-  const path = avatarUrl.startsWith('media/') ? `/${avatarUrl}` : avatarUrl;
-  if (path.startsWith('/media/')) return `${getBackendOrigin()}${path}`;
-  return avatarUrl;
-}
-
-function initialsForName(value = '') {
-  const words = value.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return 'U';
-  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('');
-}
 
 function displayRole(role) {
   return role === 'SUPER_ADMIN' ? 'Super Admin' : 'User';
@@ -143,7 +110,7 @@ export default function UserManagement() {
       setUsers((response.items || []).map(mapApiUser));
       setTotal(response.total || 0);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load user management data. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +190,7 @@ export default function UserManagement() {
       .then((response) => openEditModal(mapApiUser(response)))
       .catch((error) => {
         routeOpenRef.current = '';
-        setErrorMessage(getErrorMessage(error));
+        setErrorMessage(getApiErrorMessage(error, 'Unable to load user management data. Please try again.'));
       });
   }, [isSuperAdmin, routeMode, routeUserId, users]);
 
@@ -271,7 +238,7 @@ export default function UserManagement() {
   };
 
   return (
-    <div className="mt-4 mb-4 px-6 pt-6 pb-6 space-y-6 max-w-[1400px] w-full mx-auto font-sans relative">
+    <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 space-y-6 font-sans relative">
       <div>
         <h2 className="text-2xl font-bold text-[#4C2B74]">User Management</h2>
         <p className="text-sm text-gray-500">Manage users, roles, account status, and permissions.</p>
@@ -421,7 +388,7 @@ export default function UserManagement() {
                         <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
                       ) : (
                         <div className="w-12 h-12 rounded-full border border-purple-100 bg-purple-50 text-[#4C2B74] flex items-center justify-center text-xs font-bold">
-                          {initialsForName(user.name)}
+                          {getInitials(user.name)}
                         </div>
                       )}
                       <div>

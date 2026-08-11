@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { X } from 'lucide-react';
 import {
   getSpaceSummaryDashboard,
   getSuperAdminAssignmentHistory,
@@ -12,6 +13,7 @@ import {
 } from '../api/dashboardApi';
 import { API_BASE_URL } from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
+import '../styles/Dashboard.css';
 
 const getLayoutQueryString = (search) => {
   const currentParams = new URLSearchParams(search);
@@ -64,6 +66,22 @@ const toTitleCase = (value = '') => String(value)
   .replace(/_/g, ' ')
   .toLowerCase()
   .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const normalizeDisplaySpaceKey = (spaceKey) => {
+  const normalized = String(spaceKey || '').trim().toUpperCase();
+  return /^SP0+\d+$/.test(normalized) ? 'SP' : normalized;
+};
+
+const getDisplayTaskId = (taskId) => {
+  const match = /^([A-Z][A-Z0-9]{0,9})-([1-9]\d*)$/.exec(String(taskId || '').trim().toUpperCase());
+  if (!match) return taskId || '';
+  return `${normalizeDisplaySpaceKey(match[1])}-${match[2]}`;
+};
+
+const normalizeTaskIdsInText = (value = '') => String(value || '').replace(
+  /\b([A-Z][A-Z0-9]{0,9})-([1-9]\d*)\b/g,
+  (fullId) => getDisplayTaskId(fullId)
+);
 
 const normalizeDate = (value) => {
   if (!value) return null;
@@ -595,11 +613,11 @@ const mapRecentActivityTask = (activity, uppercaseGroup = true, { showSpaceConte
     const user = normalizeUser(assignee);
     return { name: user.full_name, full_name: user.full_name, initials: user.initials, color: user.color, avatarUrl: user.avatarUrl };
   });
-  const subtitleParts = [activity?.target_id];
+  const subtitleParts = [getDisplayTaskId(activity?.target_id)];
   if (showSpaceContext) subtitleParts.push(activity?.space_name);
   return {
-    title: activity?.target_title || activity?.action || activity?.target_id || 'Activity',
-    subtitle: activity?.subtitle || subtitleParts.filter(Boolean).join(' - '),
+    title: normalizeTaskIdsInText(activity?.target_title || activity?.action || activity?.target_id || 'Activity'),
+    subtitle: normalizeTaskIdsInText(activity?.subtitle || subtitleParts.filter(Boolean).join(' - ')),
     status: activity?.status || '',
     group: groupFromDate(activity?.created_at, uppercaseGroup),
     time: formatRelativeTime(activity?.created_at),
@@ -658,6 +676,7 @@ const mapAssignmentHistory = (history, { showSpaceContext = true } = {}) => {
   return {
     assignment_history_id: history?.assignment_history_id,
     task_id: history?.task_id,
+    display_task_id: getDisplayTaskId(history?.task_id),
     task_title: history?.task_title || history?.task_id,
     space_name: showSpaceContext ? (history?.space_name || '') : '',
     previous_assignee: previousAssignee,
@@ -783,8 +802,8 @@ const UserAvatar = ({
   const label = user?.full_name || user?.name || user?.email || "User";
   return (
     <div
-      className={`${sizeClass} rounded-full border-2 border-white flex items-center justify-center ${textClass} font-bold text-white shadow-md overflow-hidden shrink-0 ${className}`}
-      style={{ backgroundColor: user?.color || getAvatarColor(user?.user_id || label) }}
+      className={`${sizeClass} dashboard-avatar rounded-full border-2 border-white flex items-center justify-center ${textClass} font-bold text-white shadow-md overflow-hidden shrink-0 ${className}`}
+      style={{ '--dashboard-avatar-bg': user?.color || getAvatarColor(user?.user_id || label) }}
       title={label}
     >
       {avatarUrl ? (
@@ -870,7 +889,7 @@ const AssignmentChangeSummary = ({ task }) => {
 };
 
 const StatCard = ({ icon, label, value, colorClass, gradientClass, delay, compact = false }) => (
-  <div className={`${gradientClass} ${compact ? 'px-5 py-4 rounded-2xl gap-3.5 min-h-[86px]' : 'p-6 rounded-2xl gap-4'} border border-white shadow-sm flex items-center interactive-card animate-card min-w-0`} style={{ animationDelay: delay }}>
+  <div className={`${gradientClass} ${compact ? 'px-5 py-4 rounded-2xl gap-3.5 min-h-[86px]' : 'p-6 rounded-2xl gap-4'} dashboard-delay border border-white shadow-sm flex items-center interactive-card animate-card min-w-0`} style={{ '--dashboard-delay': delay }}>
     <div className={`${compact ? 'w-11 h-11 rounded-xl' : 'w-12 h-12 rounded-xl'} bg-white/70 flex items-center justify-center ${colorClass} shadow-sm ring-1 ring-white/70 shrink-0`}>
       <span className={`material-symbols-outlined ${compact ? 'text-[23px]' : 'text-[24px]'}`}>{icon}</span>
     </div>
@@ -886,8 +905,8 @@ const ActivityItem = ({ activity, isCompact = true, authUser = null }) => {
   return (
     <div className="flex gap-4 group">
       <div
-        className={`rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border border-white shadow-sm ${isCompact ? 'w-10 h-10' : 'w-10 h-10 rounded-full'}`}
-        style={{ backgroundColor: activity.avatarColor, color: activity.textColor }}
+        className={`dashboard-avatar rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border border-white shadow-sm ${isCompact ? 'w-10 h-10' : 'w-10 h-10 rounded-full'}`}
+        style={{ '--dashboard-avatar-bg': activity.avatarColor, '--dashboard-avatar-color': activity.textColor }}
       >
         {activity.avatarUrl ? (
           <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full rounded-xl object-cover" />
@@ -928,8 +947,8 @@ const AuditLogPreviewItem = ({ activity }) => (
   <div className="group flex items-center justify-between gap-3 rounded-lg border border-transparent px-2.5 py-2 transition-all hover:border-purple-100 hover:bg-[#faf7ff]">
     <div className="flex min-w-0 items-center gap-2.5">
       <div
-        className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-white shadow-sm flex items-center justify-center text-[11px] font-black"
-        style={{ backgroundColor: activity.avatarColor, color: activity.textColor }}
+        className="dashboard-avatar h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-white shadow-sm flex items-center justify-center text-[11px] font-black"
+        style={{ '--dashboard-avatar-bg': activity.avatarColor, '--dashboard-avatar-color': activity.textColor }}
       >
         {activity.avatarUrl ? (
           <img src={activity.avatarUrl} alt={activity.user} className="h-full w-full object-cover" />
@@ -966,10 +985,10 @@ const AuditLogPreviewItem = ({ activity }) => (
 const RecentActivityTimelineItem = ({ activity, authUser = null }) => {
   const displayUser = getActivityDisplayUser(activity, authUser);
   return (
-    <div className="flex gap-3 py-1.5">
+    <div className="recent-activity-item flex gap-3 py-1.5">
       <div
-        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-black text-white"
-        style={{ backgroundColor: activity.avatarColor }}
+        className="dashboard-avatar mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-black text-white"
+        style={{ '--dashboard-avatar-bg': activity.avatarColor }}
         title={activity.user}
       >
         {activity.avatarUrl ? (
@@ -978,26 +997,26 @@ const RecentActivityTimelineItem = ({ activity, authUser = null }) => {
           activity.initials
         )}
       </div>
-      <div className="min-w-0 flex-1 text-[13px] leading-5 text-[#3f3f46]">
+      <div className="recent-activity-item__content min-w-0 flex-1 text-[13px] leading-5 text-[#3f3f46]">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-          <span className="font-semibold text-[#4f46e5]">{displayUser}</span>
-        <span className="text-[#3f3f46]">{activity.action}</span>
+          <span className="recent-activity-item__user font-semibold text-[#4f46e5]">{displayUser}</span>
+        <span className="recent-activity-item__action text-[#3f3f46]">{activity.action}</span>
         {activity.target && (
           <>
-            <span className="text-[#3f3f46]">on</span>
-            <span className="inline-flex max-w-full items-center gap-1 rounded border border-[#c7d2fe] bg-white px-1.5 py-0.5 text-[13px] font-medium leading-4 text-[#4f46e5]">
+            <span className="recent-activity-item__preposition text-[#3f3f46]">on</span>
+            <span className="recent-activity-item__target inline-flex max-w-full items-center gap-1 rounded border border-[#c7d2fe] bg-white px-1.5 py-0.5 text-[13px] font-medium leading-4 text-[#4f46e5]">
               <span className="material-symbols-outlined text-[14px] leading-none">check_box</span>
               <span className="min-w-0 break-words">{activity.target}</span>
             </span>
           </>
         )}
         {activity.status && (
-          <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black leading-3 ${activity.statusColor}`}>
+          <span className={`recent-activity-item__status inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black leading-3 ${activity.statusColor}`}>
             {activity.status}
           </span>
         )}
       </div>
-      <div className="mt-0.5 text-[13px] text-[#5e636e]">{activity.relativeTime || activity.time}</div>
+      <div className="recent-activity-item__time mt-0.5 text-[13px] text-[#5e636e]">{activity.relativeTime || activity.time}</div>
     </div>
     </div>
   );
@@ -1436,18 +1455,16 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     onMouseLeave={() => setHoveredPriority(null)}
                   >
                     <div
-                      className={`w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
+                      className={`dashboard-priority-bar w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
                         }`}
-                      style={{
-                        height: `${(item.value / maxPriorityValue) * 100}%`,
-                      }}
+                      style={{ '--dashboard-bar-height': `${(item.value / maxPriorityValue) * 100}%` }}
                     >
                       {hoveredPriority?.label === item.label && item.value > 0 && (
                         <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-50 animate-in fade-in zoom-in slide-in-from-bottom-1 duration-200 pointer-events-none">
                           <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 min-w-[90px] flex flex-col items-center gap-1 relative">
                             <span className="text-[9px] font-bold text-[#5e636e] uppercase tracking-wider">{item.label}</span>
                             <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: item.color }}></div>
+                              <div className="dashboard-swatch w-3 h-3 rounded-sm shadow-sm" style={{ '--dashboard-swatch-color': item.color }}></div>
                               <span className="text-lg font-black text-[#170338]">{item.value}</span>
                             </div>
                             <div className="absolute top-[99%] left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-white"></div>
@@ -1467,7 +1484,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
         <div className="flex justify-around pl-14 mt-6">
           {priorityBreakdownData.map((item, idx) => (
             <div key={idx} className="flex items-center gap-1.5 text-[#5e636e] group cursor-pointer hover:text-[#170338] transition-colors">
-              <span className="material-symbols-outlined text-[16px] font-bold" style={{ color: item.color }}>{item.icon}</span>
+              <span className="dashboard-icon-accent material-symbols-outlined text-[16px] font-bold" style={{ '--dashboard-icon-color': item.color }}>{item.icon}</span>
               <span className="text-[11px] font-bold">{item.label}</span>
             </div>
           ))}
@@ -1500,8 +1517,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                  style={{ backgroundColor: item.color }}
+                  className="dashboard-avatar w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
+                  style={{ '--dashboard-avatar-bg': item.color }}
                 >
                   <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
                 </div>
@@ -1512,11 +1529,11 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
               <div className="flex items-center gap-4 relative">
                 <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
                   <div
-                    className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
+                    className="dashboard-bar-fill absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
                     style={{
-                      width: `${item.percentage}%`,
-                      background: item.gradient,
-                      boxShadow: `4px 0 12px ${item.glow}`
+                      '--dashboard-bar-width': `${item.percentage}%`,
+                      '--dashboard-bar-bg': item.gradient,
+                      '--dashboard-bar-shadow': `4px 0 12px ${item.glow}`
                     }}
                   >
                     {item.count > 0 && <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>}
@@ -1582,154 +1599,20 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
   const paginatedAuditLogs = modalAuditRows;
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 space-y-6 custom-scrollbar bg-[#FAFBFF]">
-      {/* CSS Styles extracted from the snippet */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;900&display=swap');
-
-        .dashboard-container {
-        }
-
-        .glass-card {
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7));
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.5);
-          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
-          transition: all 0.3s ease;
-        }
-
-        .glass-card:hover {
-          box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.06);
-          transform: translateY(-2px);
-        }
-
-        .interactive-card {
-          transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          cursor: pointer;
-        }
-
-        .interactive-card:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.1);
-        }
-
-        .interactive-card:active {
-          transform: scale(0.96);
-        }
-
-        @keyframes fadeInScale {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-
-        .animate-card {
-          animation: fadeInScale 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-        }
-
-        .donut-segment {
-          transition: stroke-width 0.3s ease, opacity 0.3s ease;
-          cursor: pointer;
-        }
-
-        .donut-segment:hover {
-          stroke-width: 6;
-          opacity: 0.8;
-        }
-
-        .status-pill {
-          transition: all 0.2s ease;
-          cursor: pointer;
-          letter-spacing: 0.02em;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-          height: 4px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #cdd5deff;
-          border-radius: 10px;
-        }
-
-        .gradient-purple { background: linear-gradient(135deg, #f3ebf7 0%, #ffffff 100%); }
-        .gradient-blue { background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%); }
-        .gradient-green { background: linear-gradient(135deg, #e8f5e9 0%, #ffffff 100%); }
-        .gradient-red { background: linear-gradient(135deg, #ffebee 0%, #ffffff 100%); }
-        .gradient-indigo { background: linear-gradient(135deg, #e8eaf6 0%, #ffffff 100%); }
-        .gradient-amber { background: linear-gradient(135deg, #fff8e1 0%, #ffffff 100%); }
-
-        .material-symbols-outlined {
-          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-
-        /* Audit Log Styles */
-        .mb-stack-lg { margin-bottom: 1.5rem; }
-        .py-stack-lg { padding-top: 1.5rem; padding-bottom: 1.5rem; }
-        .gap-stack-lg { gap: 1.5rem; }
-        .px-margin-page { padding-left: 2rem; padding-right: 2rem; }
-        .max-w-container-max { max-width: 1440px; }
-        
-        /* Font styles */
-        .font-headline-md { font-family: 'Inter', sans-serif; font-size: 24px; font-weight: 600; line-height: 32px; letter-spacing: -0.01em; }
-        .font-body-md { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 400; line-height: 20px; }
-        .font-body-sm { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 400; line-height: 18px; }
-        .font-label-sm { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; line-height: 16px; letter-spacing: 0.05em; }
-        .font-label-md { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500; line-height: 20px; }
-        
-        /* Border and Colors */
-        .border-outline-variant { border: 1px solid #c7c4d8; }
-        .border-r-outline-variant { border-right: 1px solid #c7c4d8; }
-        .border-b-outline-variant { border-bottom: 1px solid #c7c4d8; }
-        .bg-surface-container-low { background-color: #f5f2ff; }
-        .bg-surface-container-lowest { background-color: #ffffff; }
-        .text-on-surface-variant { color: #464555; }
-        
-        .divide-outline-variant\/30 > :not([hidden]) ~ :not([hidden]) {
-          border-color: rgba(199, 196, 216, 0.3);
-        }
-        
-        th.border-r, td.border-r {
-          border-right-width: 1px;
-          border-right-color: #c7c4d8;
-        }
-
-        .table-row-hover:hover {
-          background-color: rgba(245, 242, 255, 0.4);
-        }
-      `}</style>
-
+    <div className="dashboard-scrollbar flex-1 overflow-y-auto px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8 space-y-6 bg-[#FAFBFF]">
       {/* Activity Modal / Audit Log Table */}
       {isActivityModalOpen && createPortal(
         <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-hidden p-4 sm:p-6 bg-[#170338]/40 backdrop-blur-sm animate-in fade-in duration-300">
           {isAdmin ? (
-            <div className="bg-white w-full max-w-[1240px] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 relative">
+            <div className="audit-logs-modal bg-white w-full max-w-[1240px] rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 relative">
               {/* TOP CLOSE BUTTON */}
               <div className="absolute top-6 right-6 z-50">
                 <button
                   type="button"
                   onClick={() => setIsActivityModalOpen(false)}
-                  className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
+                  className="audit-logs-modal__close w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
                 >
-                  <span className="material-symbols-outlined text-[24px]">close</span>
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -1737,8 +1620,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
               <div className="flex-1 flex flex-col overflow-hidden p-5 lg:p-6">
                 {/* Header & Description */}
                 <div className="mb-4 pr-12">
-                  <h2 className="font-headline-md text-on-surface font-bold text-[30px] text-black">Audit Logs</h2>
-                  <p className="font-body-md text-on-surface-variant mt-1">Stay up to date with what's happening across the space.</p>
+                  <h2 className="audit-logs-modal__title">Audit Logs</h2>
+                  <p className="audit-logs-modal__description">Stay up to date with what's happening across the space.</p>
                 </div>
 
                 {/* Filter & Search Section */}
@@ -1746,7 +1629,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-end justify-between">
                     {/* Search Bar */}
                     <div className="w-full flex flex-col gap-1 flex-grow">
-                      <label className="font-label-sm px-1 text-black font-bold">Search Logs</label>
+                      <label className="audit-logs-modal__label px-1 text-black font-bold">Search Logs</label>
                       <div className="relative group">
                         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline transition-colors group-focus-within:text-[#0052CC]">search</span>
                         <input
@@ -1773,7 +1656,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4 lg:grid-cols-4">
                     {/* Date Range Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Date Range</label>
+                      <label className="audit-logs-modal__label px-1 text-black font-bold">Date Range</label>
                       <div className="relative">
                         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] pointer-events-none">calendar_today</span>
                         <select
@@ -1790,7 +1673,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     </div>
                     {/* Event Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Event Type</label>
+                      <label className="audit-logs-modal__label px-1 text-black font-bold">Event Type</label>
                       <div className="relative">
                         <select
                           value={modalEventType}
@@ -1806,7 +1689,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     </div>
                     {/* Entity Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Label Title</label>
+                      <label className="audit-logs-modal__label px-1 text-black font-bold">Label Title</label>
                       <div className="relative">
                         <select
                           value={modalLabelTitle}
@@ -1822,7 +1705,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     </div>
                     {/* Sort Filter */}
                     <div className="flex flex-col gap-1">
-                      <label className="font-label-sm px-1 text-black font-bold">Sort Order</label>
+                      <label className="audit-logs-modal__label px-1 text-black font-bold">Sort Order</label>
                       <div className="relative">
                         <select
                           value={modalSortOrder}
@@ -1844,19 +1727,19 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     <table className="w-full text-left border-collapse min-w-[800px]">
                       <thead className="border-b border-outline-variant sticky top-0 z-20 bg-slate-200">
                         <tr>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">ID</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">User</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Role</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Event</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">Label Title</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold border-r text-center">CREATED AT</th>
-                          <th className="px-6 py-2 pb-2.5 font-label-sm tracking-wider uppercase whitespace-nowrap text-black font-bold text-center">Details</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">ID</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">User</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">Role</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">Event</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">Label Title</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold border-r text-center">CREATED AT</th>
+                          <th className="audit-logs-modal__table-head px-6 py-2 pb-2.5 uppercase whitespace-nowrap text-black font-bold text-center">Details</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/30">
                         {paginatedAuditLogs.length === 0 && (
                           <tr>
-                            <td className="px-6 py-10 text-center text-sm font-semibold text-[#5e636e]" colSpan={7}>
+                            <td className="audit-logs-modal__table-cell px-6 py-10 text-center text-sm font-semibold text-[#5e636e]" colSpan={7}>
                               {modalAuditLoading ? 'Loading audit logs...' : modalAuditError || 'No audit logs found.'}
                             </td>
                           </tr>
@@ -1868,25 +1751,28 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                           return (
                             <React.Fragment key={log.id}>
                               <tr className="table-row-hover transition-colors group border-b-0">
-                                <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.id}</td>
+                                <td className="audit-logs-modal__table-cell px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.id}</td>
                                 <td className="px-6 whitespace-nowrap py-2 border-r">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs overflow-hidden" style={{ backgroundColor: log.avatarBg }}>
+                                    <div
+                                      className="dashboard-avatar w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs overflow-hidden"
+                                      style={{ '--dashboard-avatar-bg': log.avatarBg }}
+                                    >
                                       {log.avatarUrl ? (
                                         <img src={log.avatarUrl} alt={log.user} className="h-full w-full object-cover" />
                                       ) : (
                                         log.initials
                                       )}
                                     </div>
-                                    <div className="font-body-md font-semibold text-black">{log.user}</div>
+                                    <div className="audit-logs-modal__user font-semibold text-black">{log.user}</div>
                                   </div>
                                 </td>
-                                <td className="px-6 font-body-sm whitespace-nowrap py-2 border-r text-black">{log.role}</td>
-                                <td className="px-6 font-body-md text-on-surface font-medium whitespace-nowrap py-2 border-r">
+                                <td className="audit-logs-modal__table-cell px-6 whitespace-nowrap py-2 border-r text-black">{log.role}</td>
+                                <td className="audit-logs-modal__table-cell px-6 text-on-surface font-medium whitespace-nowrap py-2 border-r">
                                   <span className="text-[#3525cd] font-semibold">{log.event}</span>
                                 </td>
                                 <td className="px-6 whitespace-nowrap py-2 border-r">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-tight ${log.labelTitle === 'User' ? 'bg-blue-100 text-blue-700' :
+                                  <span className={`audit-logs-modal__pill inline-flex items-center px-2.5 py-0.5 rounded-full uppercase tracking-tight ${log.labelTitle === 'User' ? 'bg-blue-100 text-blue-700' :
                                     log.labelTitle === 'Task' ? 'bg-teal-100 text-teal-700' :
                                       log.labelTitle === 'Token' ? 'bg-slate-200 text-slate-700' :
                                         log.labelTitle === 'Attachment' ? 'bg-blue-100 text-blue-700' :
@@ -1895,12 +1781,12 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                     {log.labelTitle}
                                   </span>
                                 </td>
-                                <td className="px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.createdAt}</td>
+                                <td className="audit-logs-modal__table-cell px-6 font-mono text-body-sm whitespace-nowrap py-2 border-r text-black">{log.createdAt}</td>
                                 <td className="px-6 text-center whitespace-nowrap py-2">
                                   <button
                                     type="button"
                                     onClick={() => handleAuditLogToggle(log.id)}
-                                    className="inline-flex items-center gap-1 px-3 py-1 rounded bg-surface-container-low border border-outline-variant text-[#3525cd] font-label-sm transition-colors hover:bg-slate-200 cursor-pointer"
+                                    className="audit-logs-modal__button inline-flex items-center gap-1 px-3 py-1 rounded bg-surface-container-low border border-outline-variant text-[#3525cd] font-label-sm transition-colors hover:bg-slate-200 cursor-pointer"
                                   >
                                     <span className={`material-symbols-outlined text-[18px] ${isDetailLoading ? 'animate-spin' : ''}`}>
                                       {isExpanded ? 'visibility_off' : 'visibility'}
@@ -1914,8 +1800,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                   <td className="px-6 py-4" colSpan={7}>
                                     <div className="rounded-lg border border-outline-variant bg-slate-100 p-4">
                                       <div className="flex items-center justify-between mb-3">
-                                        <h4 className="font-label-md text-black font-semibold">Log Payload</h4>
-                                        <span className="text-[11px] font-mono text-on-surface-variant">{log.id}</span>
+                                        <h4 className="audit-logs-modal__payload-title font-semibold text-black">Log Payload</h4>
+                                        <span className="audit-logs-modal__payload-meta text-[11px] font-mono text-on-surface-variant">{log.id}</span>
                                       </div>
                                       <pre className="font-mono text-xs text-on-surface-variant bg-white p-4 rounded border border-outline-variant overflow-x-auto leading-relaxed shadow-sm">
                                         {isDetailLoading
@@ -1939,7 +1825,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   <div className="px-6 py-4 border-t border-outline-variant flex flex-col md:flex-row items-center gap-6 bg-white md:justify-end">
                     <div className="flex items-center gap-6 text-black">
                       <div className="flex items-center gap-3">
-                        <span className="font-label-md text-on-surface-variant text-sm font-medium">Rows per page</span>
+                        <span className="audit-logs-modal__footer-label text-on-surface-variant text-sm font-medium">Rows per page</span>
                         <div className="relative">
                           <select
                             value={modalRowsPerPage}
@@ -1957,7 +1843,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                         </div>
                       </div>
                       <div className="flex items-center gap-2 border-l border-[#c7c4d8]/40 pl-6">
-                        <span className="font-label-md text-on-surface-variant text-sm font-medium">Page</span>
+                        <span className="audit-logs-modal__footer-label text-on-surface-variant text-sm font-medium">Page</span>
                         <input
                           type="number"
                           min={1}
@@ -1971,9 +1857,9 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                           }}
                           className="w-12 text-center bg-surface-container-lowest border border-[#c7c4d8] rounded-lg py-1 px-1.5 font-body-sm text-on-surface focus:border-slate-600 focus:ring-0 transition-all appearance-none"
                         />
-                        <span className="font-label-md text-on-surface-variant text-sm font-medium">of {maxAuditPages}</span>
+                        <span className="audit-logs-modal__footer-label text-on-surface-variant text-sm font-medium">of {maxAuditPages}</span>
                       </div>
-                      <span className="font-body-sm text-on-surface-variant border-l border-[#c7c4d8]/40 pl-6 text-sm">
+                      <span className="audit-logs-modal__footer-text font-body-sm text-on-surface-variant border-l border-[#c7c4d8]/40 pl-6 text-sm">
                         Showing <span className="font-semibold text-on-surface">{totalAuditLogs === 0 ? 0 : auditStartIndex + 1}-{auditEndIndex}</span> of <span className="font-semibold text-on-surface">{totalAuditLogs}</span> logs
                       </span>
                     </div>
@@ -1982,21 +1868,21 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
               </div>
             </div>
           ) : (
-            <div className="bg-white w-full max-w-[760px] max-h-[82vh] rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="recent-activity-modal bg-white w-full max-w-[760px] max-h-[82vh] rounded-lg shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
               <div className="px-6 pt-6 pb-3 flex items-start justify-between bg-white shrink-0">
                 <div>
-                  <h3 className="text-base font-bold text-[#2f3136] tracking-tight">
+                  <h3 className="recent-activity-modal__title text-base font-bold text-[#2f3136] tracking-tight">
                     Recent activity</h3>
-                  <p className="text-sm text-[#4b5563] mt-0.5">
+                  <p className="recent-activity-modal__description text-sm text-[#4b5563] mt-0.5">
                     Stay up to date with what's happening across the space.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsActivityModalOpen(false)}
-                  className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-[#5e636e] transition-colors"
+                  className="recent-activity-modal__close w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-[#5e636e] transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[22px]">close</span>
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -2010,7 +1896,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   {recentActivityDateGroups.map((group) => {
                     return (
                       <div key={group.heading} className="space-y-2">
-                        <p className="text-[12px] font-bold text-[#2f3136]">{group.heading}</p>
+                        <p className="recent-activity-modal__date-heading text-[12px] font-bold text-[#2f3136]">{group.heading}</p>
                         <div className="space-y-1">
                           {group.items.map((activity, idx) => (
                             <RecentActivityTimelineItem key={`${group.heading}-${activity.targetId || activity.target || 'activity'}-${idx}`} activity={activity} authUser={authUser} />
@@ -2054,7 +1940,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
         {/* 2x2 Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Status Overview (Top Left) */}
-          <div className={`glass-card rounded-2xl flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-6 h-full'}`}>
+          <div className={`status-overview-card glass-card rounded-2xl overflow-hidden flex flex-col ${isEmbeddedSummary ? 'p-6 min-h-[340px]' : 'p-6 h-full'}`}>
             <div className={isEmbeddedSummary ? 'mb-4' : 'mb-4'}>
               <div className="flex items-center justify-between">
                 <h4 className="text-lg font-bold text-[#170338]">Status Overview</h4>
@@ -2067,29 +1953,28 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                 {/* Tooltip Overlay - Absolute to this container */}
                 {hoveredSegment !== null && (
                   <div
-                    className="absolute z-[100] bg-white border border-gray-200 shadow-[0_8px_24px_rgba(0,0,0,0.12)] rounded-[4px] px-3 py-2 flex items-center gap-2.5 whitespace-nowrap pointer-events-none"
+                    className="dashboard-tooltip-position absolute z-[100] bg-white border border-gray-200 shadow-[0_8px_24px_rgba(0,0,0,0.12)] rounded-[4px] px-3 py-2 flex items-center gap-2.5 whitespace-nowrap pointer-events-none"
                     style={{
-                      left: statusData[hoveredSegment].tPos.left,
-                      top: statusData[hoveredSegment].tPos.top,
-                      transform: 'translate(-50%, -100%)'
+                      '--dashboard-tooltip-left': statusData[hoveredSegment].tPos.left,
+                      '--dashboard-tooltip-top': statusData[hoveredSegment].tPos.top
                     }}
                   >
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: statusData[hoveredSegment].color }}></div>
+                    <div className="dashboard-swatch w-3 h-3 rounded-sm" style={{ '--dashboard-swatch-color': statusData[hoveredSegment].color }}></div>
                     <span className="text-sm font-semibold text-[#42526E]">{statusData[hoveredSegment].label} &nbsp; {statusData[hoveredSegment].count}</span>
                   </div>
                 )}
 
                 <svg
-                  className="w-full h-full transform -rotate-90"
-                  viewBox="0 0 36 36"
+                  className="w-full h-full overflow-visible transform -rotate-90"
+                  viewBox="0 0 40 40"
                 >
-                  <circle cx="18" cy="18" fill="transparent" r="15.915" stroke="#F1F5F9" strokeWidth="4"></circle>
+                  <circle cx="20" cy="20" fill="transparent" r="15.915" stroke="#F1F5F9" strokeWidth="4"></circle>
                   {statusData.map((item, index) => (
                     <circle
                       key={index}
-                      className={`donut-segment cursor-pointer transition-all duration-300 ${hoveredSegment === index ? 'opacity-100 scale-[1.02]' : (hoveredSegment !== null ? 'opacity-30' : 'opacity-100')}`}
-                      cx="18"
-                      cy="18"
+                      className={`dashboard-chart-origin donut-segment cursor-pointer transition-all duration-300 ${hoveredSegment === index ? 'opacity-100 scale-[1.02]' : (hoveredSegment !== null ? 'opacity-30' : 'opacity-100')}`}
+                      cx="20"
+                      cy="20"
                       fill="transparent"
                       r="15.915"
                       stroke={item.color}
@@ -2099,7 +1984,6 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                       strokeWidth="4.5"
                       onMouseEnter={() => setHoveredSegment(index)}
                       onMouseLeave={() => setHoveredSegment(null)}
-                      style={{ transformOrigin: 'center' }}
                     />
                   ))}
                 </svg>
@@ -2116,7 +2000,13 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     onMouseEnter={() => setHoveredSegment(item.index)}
                     onMouseLeave={() => setHoveredSegment(null)}
                   >
-                    <div className="w-3 h-3 rounded-full transition-transform shadow-sm" style={{ backgroundColor: item.color, transform: hoveredSegment === item.index ? 'scale(1.25)' : 'scale(1)' }}></div>
+                    <div
+                      className="dashboard-swatch dashboard-scale w-3 h-3 rounded-full transition-transform shadow-sm"
+                      style={{
+                        '--dashboard-swatch-color': item.color,
+                        '--dashboard-scale': hoveredSegment === item.index ? 1.25 : 1
+                      }}
+                    ></div>
                     <span className={`text-xs font-bold transition-colors ${hoveredSegment === item.index ? 'text-[#4C2B74]' : 'text-[#5e636e]'}`}>
                       {item.label}: {item.count}
                     </span>
@@ -2218,11 +2108,9 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                       >
                         {/* Cột dữ liệu - Bây giờ chứa Tooltip để căn chỉnh chuẩn xác */}
                         <div
-                          className={`w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
+                          className={`dashboard-priority-bar w-14 sm:w-16 transition-all duration-300 rounded-t-sm shadow-sm cursor-pointer bg-[#888995] relative ${hoveredPriority?.label === item.label ? 'scale-x-105 bg-[#4C2B74]' : 'opacity-80 hover:opacity-100'
                             }`}
-                          style={{
-                            height: `${(item.value / maxPriorityValue) * 100}%`,
-                          }}
+                          style={{ '--dashboard-bar-height': `${(item.value / maxPriorityValue) * 100}%` }}
                         >
                           {/* Popover khi hover - Gắn trực tiếp vào đầu cột */}
                           {hoveredPriority?.label === item.label && item.value > 0 && (
@@ -2230,7 +2118,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                               <div className="bg-white border border-gray-100 rounded-xl shadow-2xl p-3 min-w-[90px] flex flex-col items-center gap-1 relative">
                                 <span className="text-[9px] font-bold text-[#5e636e] uppercase tracking-wider">{item.label}</span>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-sm shadow-sm" style={{ backgroundColor: item.color }}></div>
+                                  <div className="dashboard-swatch w-3 h-3 rounded-sm shadow-sm" style={{ '--dashboard-swatch-color': item.color }}></div>
                                   <span className="text-lg font-black text-[#170338]">{item.value}</span>
                                 </div>
                                 <div className="absolute top-[99%] left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-white"></div>
@@ -2252,7 +2140,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
             <div className={`flex justify-around pl-14 ${embedded ? 'mt-4' : 'mt-6'}`}>
               {priorityBreakdownData.map((item, idx) => (
                 <div key={idx} className="flex items-center gap-1.5 text-[#5e636e] group cursor-pointer hover:text-[#170338] transition-colors">
-                  <span className="material-symbols-outlined text-[16px] font-bold" style={{ color: item.color }}>{item.icon}</span>
+                  <span className="dashboard-icon-accent material-symbols-outlined text-[16px] font-bold" style={{ '--dashboard-icon-color': item.color }}>{item.icon}</span>
                   <span className="text-[11px] font-bold">{item.label}</span>
                 </div>
               ))}
@@ -2292,8 +2180,8 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
-                        style={{ backgroundColor: item.color }}
+                        className="dashboard-avatar w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0 border-2 border-white ring-1 ring-gray-100 group-hover:scale-110 transition-transform"
+                        style={{ '--dashboard-avatar-bg': item.color }}
                       >
                         <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
                       </div>
@@ -2304,11 +2192,11 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                     <div className="flex items-center gap-4 relative">
                       <div className="flex-1 h-9 bg-gray-50 rounded-lg overflow-hidden relative shadow-inner border border-gray-100/50">
                         <div
-                          className="absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
+                          className="dashboard-bar-fill absolute h-full transition-all duration-1000 ease-out flex items-center justify-end px-3 shadow-lg"
                           style={{
-                            width: `${item.percentage}%`,
-                            background: item.gradient,
-                            boxShadow: `4px 0 12px ${item.glow}`
+                            '--dashboard-bar-width': `${item.percentage}%`,
+                            '--dashboard-bar-bg': item.gradient,
+                            '--dashboard-bar-shadow': `4px 0 12px ${item.glow}`
                           }}
                         >
                           <span className="text-[11px] font-black text-white drop-shadow-sm">{item.count}</span>
@@ -2662,7 +2550,7 @@ const Dashboard = ({ embedded = false, forcedRole = null, spaceMemberCount = 0, 
                                       <p className="mt-1 text-[10px] font-black tracking-wide text-[#8c8c8c]">
                                         {task.assignment_history_id && <span>{task.assignment_history_id}</span>}
                                         {task.assignment_history_id && task.task_id && <span className="mx-1.5 text-[#c7bfd0]">/</span>}
-                                        {task.task_id && <span>{task.task_id}</span>}
+                                        {task.task_id && <span>{task.display_task_id || getDisplayTaskId(task.task_id)}</span>}
                                       </p>
                                     )}
                                   </div>

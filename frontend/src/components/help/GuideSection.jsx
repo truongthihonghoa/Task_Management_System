@@ -74,7 +74,7 @@ const GuideSection = () => {
 
   return (
     <section className="space-y-4">
-      <h2 className="text-2xl font-bold text-gray-900">System Guides</h2>
+      <h2 className="text-2xl font-bold text-[#4C2B74]">System Guides</h2>
 
       <div className="flex flex-col gap-3">
         {loading && (

@@ -1,0 +1,74 @@
+.space-footer-actions {
+  grid-template-columns: repeat(var(--space-footer-action-columns, 1), minmax(0, 1fr));
+}
+
+.space-create-modal .space-create-modal__panel {
+  box-shadow: 0 8px 16px -4px rgba(9, 30, 66, 0.25), 0 0 0 1px rgba(9, 30, 66, 0.08);
+}
+
+.space-create-modal .space-create-modal__header {
+  background-color: #fcfaff;
+}
+
+.space-create-modal .space-create-modal__title {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #172B4D;
+}
+
+.space-create-modal .space-create-modal__close {
+  color: #42526E;
+}
+
+.space-create-modal .space-create-modal__close:hover {
+  color: #42526E;
+}
+
+.space-create-modal .space-create-modal__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5E6C84;
+}
+
+.space-create-modal .space-create-modal__input {
+  color: #172B4D;
+  font-size: 13px;
+}
+
+.space-create-modal .space-create-modal__input::placeholder {
+  color: #A5ADBA;
+  font-size: 12px;
+}
+
+.space-create-modal .space-create-modal__input:focus {
+  background-color: #fff;
+  border-color: #4C2B74;
+}
+
+.space-create-modal .space-create-modal__error {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.space-create-modal .space-create-modal__cancel {
+  color: #42526E;
+}
+
+.space-create-modal .space-create-modal__cancel:hover {
+  background-color: #EBECF0;
+}
+
+.space-create-modal .space-create-modal__submit {
+  background-color: #4C2B74;
+}
+
+.space-create-modal .space-create-modal__submit:hover {
+  background-color: #3D225E;
+}
+
+@media (max-width: 640px) {
+  .space-footer-actions {
+    grid-template-columns: 1fr;
+  }
+}

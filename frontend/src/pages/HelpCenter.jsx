@@ -10,7 +10,7 @@ const HelpCenter = () => {
   }, []);
 
   return (
-    <div className="p-6">
+    <div className="px-6 pt-4 pb-6 md:px-8 md:pt-5 md:pb-8">
       {/* Header Section */}
       <div className="mb-6 pb-6 border-b border-gray-200">
         <h1 className="text-2xl font-bold text-[#4C2B74] mb-1">Help Center</h1>

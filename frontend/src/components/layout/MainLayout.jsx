@@ -21,6 +21,7 @@ import CreateTaskModal from '../tasks/CreateTaskModal';
 import NotificationsModal from '../notifications/NotificationsModal';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 import AvatarDropdown from '../auth/AvatarDropdown';
+import '../../styles/MainLayout.css';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../api/axiosClient';
@@ -722,19 +723,6 @@ export default function MainLayout() {
     <div className="h-screen flex overflow-hidden font-['Inter'] bg-[#F5F7FA]">
 
       {/* Cấu trúc Style nội bộ để giữ nguyên các hiệu ứng CSS cũ */}
-      <style>{`
-        .sidebar-active-indicator {
-          width: 4px;
-          height: 38px;
-          background-color: #2D1B4E;
-          border-radius: 0 4px 4px 0;
-          position: absolute;
-          left: 0;
-          top: 50%;
-          transform: translateY(-50%);
-        }
-      `}</style>
-
       {/* BEGIN: LeftSidebar */}
       <aside className={`bg-[#F6F7FF] border-r border-gray-200 flex flex-col h-full z-20 transition-all duration-300 overflow-hidden ${isSidebarOpen ? 'w-64' : 'w-0 border-r-0'}`} data-purpose="main-navigation">
         {/* Logo Section */}

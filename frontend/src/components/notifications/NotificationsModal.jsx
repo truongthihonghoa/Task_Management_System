@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Search, BellOff, X } from 'lucide-react';
 import NotificationItem from './NotificationItem';
 import { isNotificationWithinDisplayWindow, notificationLimitMessage } from '../../utils/notificationRetention';
+import '../../styles/NotificationsModal.css';
 
 const buildNotificationSearchText = (notification) => [
   notification.title,
@@ -94,38 +95,38 @@ const NotificationsModal = ({
       />
 
       {/* Modal Dialog Content */}
-      <div 
-        className="relative bg-white w-full max-w-3xl h-[80vh] rounded-[24px] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+      <div
+        className="notifications-modal animate-in fade-in zoom-in-95 duration-200"
         data-purpose="notifications-popup-form"
       >
         {/* Header Section */}
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0">
+        <div className="notifications-modal__header">
           <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-black text-[#4C2B74]">Notifications</h2>
+            <div className="notifications-modal__title-row">
+              <h2 className="notifications-modal__title">Notifications</h2>
               {roleFiltered.filter(n => !n.is_read).length > 0 && (
-                <span className="bg-[#EF4444] text-white text-xs font-black px-2.5 py-0.5 rounded-full">
+                <span className="notifications-modal__new-badge">
                   {roleFiltered.filter(n => !n.is_read).length} New
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1 font-medium">
+            <p className="notifications-modal__description">
               {isSuperAdmin || currentRole === "ADMIN"
                 ? "View and manage important Super Admin system notifications."
                 : "View and manage your notifications."}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="notifications-modal__actions">
             <button
               onClick={markAllAsRead}
-              className="px-4 py-2 bg-[#FAF8FF] border border-[#E0D7F0] text-[#4C2B74] text-xs font-bold rounded-xl hover:bg-[#F2EDFA] transition-colors shadow-inner"
+              className="notifications-modal__mark-read"
             >
               Mark all as read
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
+              className="notifications-modal__close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -133,25 +134,21 @@ const NotificationsModal = ({
         </div>
 
         {/* Toolbar & Filters */}
-        <div className="px-6 py-4 border-b border-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/30 flex-shrink-0">
-          <div className="flex bg-gray-100/60 p-1 rounded-xl">
+        <div className="notifications-modal__toolbar">
+          <div className="notifications-modal__filters">
             {['All', 'Unread', 'Read'].map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  filter === f
-                    ? 'bg-white text-[#4C2B74] shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className={`notifications-modal__filter ${filter === f ? 'notifications-modal__filter--active' : ''}`}
               >
                 {f}
               </button>
             ))}
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="notifications-modal__search">
+            <Search className="notifications-modal__search-icon w-4 h-4" />
             <input
               type="text"
               placeholder={
@@ -161,13 +158,13 @@ const NotificationsModal = ({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#4C2B74]/20 focus:border-[#4C2B74]/30"
+              className="notifications-modal__search-input"
             />
           </div>
         </div>
 
         {/* Dynamic List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-gray-50">
+        <div className="notifications-modal__list custom-scrollbar divide-y divide-gray-50">
           {filteredNotifications.length > 0 ? (
             <>
               {filteredNotifications.map(notification => (
@@ -186,17 +183,17 @@ const NotificationsModal = ({
                   onMenuClose={() => setOpenActionMenuId(null)}
                 />
               ))}
-              <div className="py-4 text-center text-xs font-semibold text-gray-400">
+              <div className="notifications-modal__limit">
                 {notificationLimitMessage}
               </div>
             </>
           ) : (
-            <div className="py-20 flex flex-col items-center justify-center text-center px-10">
-              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+            <div className="notifications-modal__empty">
+              <div className="notifications-modal__empty-icon">
                 <BellOff className="w-10 h-10 text-gray-300" />
               </div>
-              <h3 className="font-bold text-gray-700">No {(isSuperAdmin || currentRole === 'ADMIN') ? 'super admin' : 'account'} notifications</h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
+              <h3 className="notifications-modal__empty-title">No {(isSuperAdmin || currentRole === 'ADMIN') ? 'super admin' : 'account'} notifications</h3>
+              <p className="notifications-modal__empty-text">
                 {currentRole === 'USER'
                   ? "You'll see task, space, and owner-level updates that are relevant to your account."
                   : "Only important system management events will appear here."}
@@ -205,22 +202,6 @@ const NotificationsModal = ({
           )}
         </div>
 
-        {/* Scrollbar styling */}
-        <style>{`
-          .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #E4E4E7;
-            border-radius: 10px;
-          }
-          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #D4D4D8;
-          }
-        `}</style>
       </div>
     </div>,
     document.body

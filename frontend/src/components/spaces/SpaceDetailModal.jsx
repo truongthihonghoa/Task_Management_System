@@ -331,7 +331,7 @@ export default function SpaceDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#191326]/45 p-3 backdrop-blur-[2px] sm:p-5"
+      className="space-detail-modal__backdrop fixed inset-0 z-[10000] flex items-center justify-center bg-[#191326]/45 p-3 backdrop-blur-[2px] sm:p-5"
       role="presentation"
       onMouseDown={handleBackdropMouseDown}
     >
@@ -341,7 +341,7 @@ export default function SpaceDetailModal({
         aria-modal="true"
         aria-labelledby="space-detail-modal-title"
         tabIndex={-1}
-        className="flex max-h-[90vh] w-full max-w-[960px] flex-col overflow-hidden rounded-xl border border-[#E6DDF1] bg-[#F8F7FB] shadow-[0_24px_70px_rgba(47,37,58,0.26)]"
+        className="space-detail-modal flex max-h-[90vh] w-full max-w-[960px] flex-col overflow-hidden rounded-xl border border-[#E6DDF1] bg-[#F8F7FB] shadow-[0_24px_70px_rgba(47,37,58,0.26)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="border-b border-[#E6DDF1] bg-white px-5 py-4 sm:px-6">
@@ -428,7 +428,7 @@ export default function SpaceDetailModal({
                   <button
                     type="button"
                     disabled={!canOpenTasks}
-                    onClick={() => onViewTasks(displaySpace, resolvedRoleLabel === 'OWNER')}
+                    onClick={() => onViewTasks(displaySpace, String(resolvedRoleLabel || '').toUpperCase() === 'OWNER')}
                     className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#4C2B74] px-4 py-2.5 text-[12px] font-bold text-white shadow-md transition-all hover:bg-[#3D225E] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span className="material-symbols-outlined text-[17px] leading-none">task_alt</span>

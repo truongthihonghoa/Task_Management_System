@@ -1,0 +1,27 @@
+﻿.sprint-info-popover {
+  top: var(--sprint-popover-top);
+  left: var(--sprint-popover-left);
+  z-index: 9999;
+  width: min(16rem, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+}
+
+@media (max-width: 800px) {
+  .sprint-info-popover {
+    width: min(16rem, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+  }
+}
+
+.sprint-info-popover__dates {
+  justify-content: flex-end;
+  margin-left: 1rem;
+  padding-top: 0;
+}
+
+@media (max-width: 800px) {
+  .sprint-info-popover__dates {
+    margin-left: 0.75rem;
+  }
+}
