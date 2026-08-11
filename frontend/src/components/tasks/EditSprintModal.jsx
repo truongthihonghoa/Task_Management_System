@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import '../../styles/CreateTaskModal.css';
 
@@ -56,6 +56,7 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
   const [sprintName, setSprintName] = useState('');
   const [duration, setDuration] = useState('2 weeks');
   const [startDate, setStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [sprintGoal, setSprintGoal] = useState('');
   const [autoStart, setAutoStart] = useState(false);
   const [autoComplete, setAutoComplete] = useState(false);
@@ -64,31 +65,64 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
     if (!sprint) return;
     setSprintName(sprint.name || '');
     setDuration(`${getDurationWeeks(sprint.duration)} weeks`);
-    setStartDate(formatDateTimeLocal(sprint.startDate || new Date()));
+    const initialStart = formatDateTimeLocal(sprint.startDate || new Date());
+    setStartDate(initialStart);
+    if (sprint.endDate) {
+      setCustomEndDate(formatDateTimeLocal(sprint.endDate));
+    }
     setSprintGoal(sprint.goal || '');
     setAutoStart(!!sprint.autoStart);
     setAutoComplete(!!sprint.autoComplete);
   }, [sprint]);
 
-  const endDate = useMemo(() => {
+  const calculatedEndDateObj = useMemo(() => {
     const parsedStart = parseDate(startDate);
-    if (!parsedStart) return '';
+    if (!parsedStart) return null;
     const end = new Date(parsedStart);
     end.setDate(end.getDate() + getDurationWeeks(duration) * 7);
-    return formatSummaryDate(end);
+    return end;
   }, [startDate, duration]);
+
+  const summaryEndDate = useMemo(() => {
+    if (duration === 'Custom') {
+      const parsedCustom = parseDate(customEndDate);
+      return parsedCustom ? formatSummaryDate(parsedCustom) : '';
+    }
+    return calculatedEndDateObj ? formatSummaryDate(calculatedEndDateObj) : '';
+  }, [duration, customEndDate, calculatedEndDateObj]);
+
+  const handleDurationChange = (e) => {
+    const newDuration = e.target.value;
+    setDuration(newDuration);
+    if (newDuration === 'Custom' && !customEndDate) {
+      setCustomEndDate(formatDateTimeLocal(calculatedEndDateObj || new Date()));
+    }
+  };
 
   if (!isOpen || !sprint) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const parsedStart = parseDate(startDate);
+    let finalEndDateObj = null;
+    let finalDurationWeeks = getDurationWeeks(duration);
+
+    if (duration === 'Custom') {
+      finalEndDateObj = parseDate(customEndDate);
+      if (parsedStart && finalEndDateObj) {
+        const diffMs = finalEndDateObj.getTime() - parsedStart.getTime();
+        finalDurationWeeks = Math.max(1, Math.round(diffMs / (7 * 24 * 60 * 60 * 1000)));
+      }
+    } else {
+      finalEndDateObj = calculatedEndDateObj;
+    }
+
     const updatedSprintData = {
       ...sprint,
       name: sprintName,
-      duration: getDurationWeeks(duration),
+      duration: finalDurationWeeks,
       startDate: parsedStart ? parsedStart.toISOString() : sprint.startDate,
-      endDate: parseDate(endDate)?.toISOString() || sprint.endDate,
+      endDate: finalEndDateObj ? finalEndDateObj.toISOString() : sprint.endDate,
       goal: sprintGoal,
       autoStart,
       autoComplete,
@@ -124,8 +158,10 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                     id="sprint-name"
                     type="text"
                     value={sprintName}
-                    onChange={(e) => setSprintName(e.target.value)}
-                    className="input-custom"
+                    readOnly
+                    onKeyDown={(e) => e.preventDefault()}
+                    className="input-custom !bg-white"
+                    style={{ backgroundColor: '#ffffff', color: '#1F2937' }}
                     placeholder="SCRUM Sprint 2"
                   />
                 </div>
@@ -137,7 +173,7 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                       <select
                         id="duration"
                         value={duration}
-                        onChange={(e) => setDuration(e.target.value)}
+                        onChange={handleDurationChange}
                         className="select-custom"
                       >
                         <option value="1 week">1 week</option>
@@ -165,15 +201,29 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="form-group opacity-80">
+                  <div className="form-group">
                     <label htmlFor="end-date">End date</label>
-                    <input
-                      id="end-date"
-                      type="text"
-                      readOnly
-                      value={endDate}
-                      className="input-custom"
-                    />
+                    {duration === 'Custom' ? (
+                      <div className="relative">
+                        <input
+                          id="end-date"
+                          type="datetime-local"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="input-custom"
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        id="end-date"
+                        type="text"
+                        readOnly
+                        onKeyDown={(e) => e.preventDefault()}
+                        value={summaryEndDate}
+                        className="input-custom !bg-white"
+                        style={{ backgroundColor: '#ffffff', color: '#1F2937' }}
+                      />
+                    )}
                   </div>
                   <div className="hidden md:block"></div>
                 </div>
@@ -242,7 +292,7 @@ const EditSprintModal = ({ isOpen, onClose, sprint, onSave, onUpdate }) => {
                       </div>
                       <div className="sprint-summary-stack">
                         <span>Roadmap</span>
-                        <span className="font-semibold text-[#121c2a] text-right">{formatSummaryDate(startDate)} → {endDate}</span>
+                        <span className="font-semibold text-[#121c2a] text-right">{formatSummaryDate(startDate)} → {summaryEndDate}</span>
                       </div>
                     </div>
                   </div>
