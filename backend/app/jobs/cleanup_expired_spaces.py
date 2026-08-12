@@ -1,18 +1,8 @@
-from app.db.session import SessionLocal
-from app.repository.space import (
-    cleanup_expired_archived_space_reopen_windows,
-    cleanup_expired_deleted_spaces,
-)
+from app.services.space_retention_service import purge_expired_spaces
 
 
 def run() -> tuple[int, int]:
-    db = SessionLocal()
-    try:
-        deleted_count = cleanup_expired_deleted_spaces(db)
-        expired_reopen_count = cleanup_expired_archived_space_reopen_windows(db)
-        return deleted_count, expired_reopen_count
-    finally:
-        db.close()
+    return purge_expired_spaces()
 
 
 def main() -> None:

@@ -1,6 +1,15 @@
 # Space Retention Cron Job
 
-Deleted spaces stay restorable for 14 days. Archived spaces stay reopenable for 7 days. After that, run the cleanup job to hard-delete expired deleted spaces and expire archived-space reopen windows.
+Deleted spaces stay restorable for 14 days. Archived spaces stay reopenable for 7 days. The backend starts a scheduled space-retention job by default to hard-delete expired deleted spaces and expire archived-space reopen windows.
+
+Runtime controls:
+
+```text
+SPACE_RETENTION_JOB_ENABLED=true
+SPACE_RETENTION_JOB_INTERVAL_SECONDS=86400
+```
+
+Set `SPACE_RETENTION_JOB_ENABLED=false` to disable the background job. The default interval is 24 hours.
 
 Run manually from the project root:
 
@@ -8,7 +17,7 @@ Run manually from the project root:
 docker compose exec -T backend python -m app.jobs.cleanup_expired_spaces
 ```
 
-Example Linux cron entry, daily at midnight:
+If the backend background job is disabled, an alternative Linux cron entry can run the cleanup daily at midnight:
 
 ```cron
 0 0 * * * cd /path/to/Task_Managerment_System && docker compose exec -T backend python -m app.jobs.cleanup_expired_spaces
