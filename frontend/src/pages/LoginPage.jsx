@@ -17,19 +17,13 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [remember, setRemember] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
-    const [isDark, setIsDark] = useState(false);
+
     const [isLoading, setIsLoading] = useState(false);
     const [emailError, setEmailError] = useState(false);
     const [formError, setFormError] = useState('');
     const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
 
-    useEffect(() => {
-        if (isDark) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, [isDark]);
+
 
     const handleEmailChange = (e) => {
         const value = e.target.value;
@@ -77,15 +71,7 @@ export default function LoginPage() {
         <div className="bg-surface dark:bg-inverse-surface min-h-screen flex items-center justify-center p-6 transition-colors duration-300 font-['Inter']">
 
             {/* Nút chuyển đổi giao diện Sáng / Tối */}
-            <button
-                type="button"
-                className="fixed top-6 right-6 p-2 bg-surface-container dark:bg-on-surface-variant/20 rounded-full hover:bg-surface-container-high transition-colors"
-                onClick={() => setIsDark(!isDark)}
-            >
-                <span className="material-symbols-outlined text-on-surface-variant dark:text-inverse-primary">
-                    {isDark ? 'light_mode' : 'dark_mode'}
-                </span>
-            </button>
+
 
             <main className="w-full max-w-[440px]">
                 {/* Login Card */}
