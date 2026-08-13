@@ -188,6 +188,34 @@ const formatSprintDateRange = (startDate, endDate) => {
   return [format(startDate), format(endDate)].filter(Boolean).join(' - ');
 };
 
+const formatSprintLongDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getSprintDaysLeftLabel = (sprint) => {
+  if (!sprint?.endDate) return '';
+  const endDate = new Date(sprint.endDate);
+  if (Number.isNaN(endDate.getTime())) return '';
+  if (sprint.status === 'Completed') return 'Completed';
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysLeft = Math.max(0, Math.ceil((endDate.setHours(23, 59, 59, 999) - now.getTime()) / msPerDay));
+  return `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`;
+};
+
+const getSprintProgressPercent = (sprint) => {
+  if (!sprint?.startDate || !sprint?.endDate) return 0;
+  const startDate = new Date(sprint.startDate).getTime();
+  const endDate = new Date(sprint.endDate).getTime();
+  if (Number.isNaN(startDate) || Number.isNaN(endDate) || endDate <= startDate) return 0;
+  if (sprint.status === 'Completed') return 100;
+  const now = Date.now();
+  return Math.max(0, Math.min(100, Math.round(((now - startDate) / (endDate - startDate)) * 100)));
+};
+
 const mapApiSprint = (sprint) => ({
   id: sprint.sprint_id,
   name: sprint.name || 'SCRUM Sprint',
@@ -1759,7 +1787,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const boardSprintAction = boardSprintActionTarget
     ? getSprintAction(boardSprintActionTarget)
     : null;
-  const sprintInfoTasks = view === 'board' ? boardTasks : primarySprintTasks;
+  const sprintInfoSprint = displayedSprints.find(sprint => sprint.status === 'Active') || sprint1Data;
+  const sprintInfoTasks = view === 'board'
+    ? boardTasks
+    : sprintInfoSprint?.id
+      ? getTasksForSprint(sprintInfoSprint.id)
+      : primarySprintTasks;
   const selectedTaskDetailReadOnly = selectedTaskDetail ? isTaskReadOnly(selectedTaskDetail) : false;
 
   const handleCompleteSprint = async () => {
@@ -3194,6 +3227,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
         isOpen={isSprintInfoOpen}
         onClose={() => setIsSprintInfoOpen(false)}
         anchorRef={sprintInfoAnchorRef}
+        sprintName={sprintInfoSprint?.name || 'SCRUM Sprint'}
+        sprintDateRange={sprintInfoSprint?.dateRange || ''}
+        startDate={formatSprintLongDate(sprintInfoSprint?.startDate)}
+        endDate={formatSprintLongDate(sprintInfoSprint?.endDate)}
+        daysLeftLabel={getSprintDaysLeftLabel(sprintInfoSprint)}
+        progressPercent={getSprintProgressPercent(sprintInfoSprint)}
         completedTasksCount={sprintInfoTasks.filter(t => ['Done', 'Cancelled'].includes(t.status)).length}
         openTasksCount={sprintInfoTasks.filter(t => !['Done', 'Cancelled'].includes(t.status)).length}
       />
