@@ -16,6 +16,7 @@ from app.core.media import MEDIA_ROOT, ensure_media_dirs
 from app.db.session import get_db
 from app.services.audit_retention_service import run_audit_retention_job
 from app.services.notification_retention_service import run_notification_retention_job
+from app.services.space_retention_service import run_space_retention_job
 
 
 async def start_scheduled_job(app: FastAPI, *, name: str, enabled_env: str, runner) -> None:
@@ -49,9 +50,16 @@ async def lifespan(app: FastAPI):
         enabled_env="AUDIT_LOG_RETENTION_JOB_ENABLED",
         runner=run_audit_retention_job,
     )
+    await start_scheduled_job(
+        app,
+        name="space_retention",
+        enabled_env="SPACE_RETENTION_JOB_ENABLED",
+        runner=run_space_retention_job,
+    )
     yield
     await stop_scheduled_job(app, name="notification_retention")
     await stop_scheduled_job(app, name="audit_retention")
+    await stop_scheduled_job(app, name="space_retention")
 
 
 app = FastAPI(title="Task Management System API", lifespan=lifespan)

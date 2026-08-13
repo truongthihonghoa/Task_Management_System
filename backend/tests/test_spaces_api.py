@@ -9,6 +9,7 @@ from app.api.v1 import spaces
 from app.repository import space as space_repository
 from app.schemas.pydantic_models import SpaceAddPeopleRequest, SpaceCreate, SpaceUpdate
 from app.services import space_service
+from app.services import space_retention_service
 
 
 def test_space_crud_routes_delegate_to_repository(monkeypatch):
@@ -820,4 +821,37 @@ def test_cleanup_expired_archived_space_reopen_windows_expires_reopen(monkeypatc
     assert archived_space.reopen_until is None
     assert archived_space.updated_at == now
     assert db.committed is True
+    assert db.rolled_back is False
+
+
+def test_space_retention_service_purges_expired_spaces(monkeypatch):
+    class FakeDB:
+        def __init__(self):
+            self.closed = False
+            self.rolled_back = False
+
+        def rollback(self):
+            self.rolled_back = True
+
+        def close(self):
+            self.closed = True
+
+    db = FakeDB()
+    calls = []
+
+    monkeypatch.setattr(space_retention_service, "SessionLocal", lambda: db)
+    monkeypatch.setattr(
+        space_retention_service.space_repository,
+        "cleanup_expired_deleted_spaces",
+        lambda received_db: calls.append(("deleted", received_db)) or 2,
+    )
+    monkeypatch.setattr(
+        space_retention_service.space_repository,
+        "cleanup_expired_archived_space_reopen_windows",
+        lambda received_db: calls.append(("archived", received_db)) or 3,
+    )
+
+    assert space_retention_service.purge_expired_spaces() == (2, 3)
+    assert calls == [("deleted", db), ("archived", db)]
+    assert db.closed is True
     assert db.rolled_back is False
