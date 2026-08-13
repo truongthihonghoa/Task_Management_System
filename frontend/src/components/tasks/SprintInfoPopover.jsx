@@ -2,7 +2,19 @@
 import { createPortal } from 'react-dom';
 import '../../styles/SprintInfoPopover.css';
 
-const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0, openTasksCount = 0 }) => {
+const SprintInfoPopover = ({
+  isOpen,
+  onClose,
+  anchorRef,
+  sprintName = 'SCRUM Sprint',
+  sprintDateRange = '',
+  startDate = '',
+  endDate = '',
+  daysLeftLabel = '',
+  progressPercent = 0,
+  completedTasksCount = 0,
+  openTasksCount = 0,
+}) => {
   const popoverRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
 
@@ -98,11 +110,11 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-bold text-on-surface">SCRUM Sprint 1</h3>
+          <h3 className="text-sm font-bold text-on-surface">{sprintName}</h3>
           <div className="flex items-center gap-2">
-            <span className="text-[12px] text-orange-600 font-medium">4 days left</span>
+            <span className="text-[12px] text-orange-600 font-medium">{daysLeftLabel}</span>
             <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
-              <div className="h-full bg-orange-500 w-[70%]" />
+              <div className="h-full bg-orange-500" style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }} />
             </div>
           </div>
         </div>
@@ -110,11 +122,11 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
         <div className="sprint-info-popover__dates grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1">
             <span className="text-[10px] text-outline font-bold uppercase">Start date</span>
-            <span className="text-[12px] text-on-surface">Jun 18, 2026</span>
+            <span className="text-[12px] text-on-surface">{startDate || sprintDateRange.split(' - ')[0] || ''}</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[10px] text-outline font-bold uppercase">End date</span>
-            <span className="text-[12px] text-on-surface">Jul 2, 2026</span>
+            <span className="text-[12px] text-on-surface">{endDate || sprintDateRange.split(' - ')[1] || ''}</span>
           </div>
         </div>
 
