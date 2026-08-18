@@ -602,6 +602,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('All');
   const [sortOption, setSortOption] = useState('created-newest');
+  const [selectedBoardSprintId, setSelectedBoardSprintId] = useState('');
   const [projectPeople, setProjectPeople] = useState(getInitialProjectPeople);
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [pendingPeopleEmails, setPendingPeopleEmails] = useState([]);
@@ -1694,9 +1695,25 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
   };
   const activeBoardSprint = displayedSprints.find(sprint => sprint.status === 'Active') || null;
-  const boardTasks = activeBoardSprint
-    ? filteredTasks.filter(task => task.sprintId === activeBoardSprint.id)
+  const fallbackBoardSprint = activeBoardSprint || displayedSprints[0] || null;
+  const selectedBoardSprint = displayedSprints.find(sprint => sprint.id === selectedBoardSprintId) || fallbackBoardSprint;
+  const boardTasks = selectedBoardSprint
+    ? filteredTasks.filter(task => task.sprintId === selectedBoardSprint.id)
     : [];
+  const canModifySelectedBoardSprint = canModifyTasks && selectedBoardSprint?.status !== 'Completed';
+
+  useEffect(() => {
+    if (!displayedSprints.length) {
+      if (selectedBoardSprintId) setSelectedBoardSprintId('');
+      return;
+    }
+
+    const selectedSprintStillExists = displayedSprints.some(sprint => sprint.id === selectedBoardSprintId);
+    if (!selectedBoardSprintId || !selectedSprintStillExists) {
+      setSelectedBoardSprintId(fallbackBoardSprint?.id || '');
+    }
+  }, [displayedSprints, fallbackBoardSprint?.id, selectedBoardSprintId]);
+
   const getTasksForSprint = (sprintId) => (
     sprintId ? filteredTasks.filter(task => task.sprintId === sprintId) : filteredTasks
   );
@@ -1781,12 +1798,16 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
     }
     return null;
   };
-  const boardSprintActionTarget = activeBoardSprint
-    || displayedSprints.find(sprint => canStartSprint(sprint))
-    || null;
+  const boardSprintActionTarget = selectedBoardSprint || null;
   const boardSprintAction = boardSprintActionTarget
     ? getSprintAction(boardSprintActionTarget)
     : null;
+  const sprintInfoTasks = view === 'board' ? boardTasks : primarySprintTasks;
+  const handleCreateBoardTask = () => {
+    if (!canModifySelectedBoardSprint || !selectedBoardSprint?.id || !setShowCreateModal) return;
+    if (setCreateTaskInitialSprint) setCreateTaskInitialSprint(selectedBoardSprint.name);
+    setShowCreateModal(true);
+  };
   const sprintInfoSprint = displayedSprints.find(sprint => sprint.status === 'Active') || sprint1Data;
   const sprintInfoTasks = view === 'board'
     ? boardTasks
@@ -2507,6 +2528,23 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {view === 'board' && (
+              <label className="flex items-center gap-2 rounded border border-outline-variant bg-white px-3 py-1.5 shadow-sm transition-colors hover:bg-surface-container">
+                <select
+                  value={selectedBoardSprint?.id || ''}
+                  onChange={(event) => setSelectedBoardSprintId(event.target.value)}
+                  className="bg-transparent text-xs font-bold text-[#5e4db2] outline-none cursor-pointer max-w-[160px] appearance-none"
+                  aria-label="Filter board by sprint"
+                >
+                  {displayedSprints.map(sprint => (
+                    <option key={sprint.id} value={sprint.id}>
+                      {sprint.name}
+                      {sprint.status ? ` (${sprint.status})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {/* Sort Dropdown */}
             <div className="relative group">
               <button className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-outline-variant rounded hover:bg-surface-container transition-colors shadow-sm cursor-pointer ${sortOption !== 'created-newest' ? 'bg-[#EBF0FF] border-[#5e4db2]' : ''}`}>
@@ -2710,7 +2748,12 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
       {/* BOARD VIEW */}
       {view === 'board' && (
         <div className="task-management-board-shell">
-          <DragDropContext onDragStart={startBoardAutoScroll} onDragEnd={onDragEnd}>
+          <DragDropContext
+            onDragStart={() => {
+              if (canModifySelectedBoardSprint) startBoardAutoScroll();
+            }}
+            onDragEnd={onDragEnd}
+          >
             <div ref={boardScrollRef} className="task-management-board-scroll flex gap-4 pb-4 scrollbar-hide" id="board-view-container">
               {visibleStatuses.map(status => (
                 <KanbanColumn
@@ -2718,7 +2761,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   title={status}
                   tasks={boardTasks.filter(t => t.status === status)}
                   setTasks={setTasks}
-                  onCreateTask={canModifyTasks && hasAvailableSprint && setShowCreateModal ? () => setShowCreateModal(true) : undefined}
+                  onCreateTask={canModifySelectedBoardSprint && hasAvailableSprint ? handleCreateBoardTask : undefined}
                   onOpenDetail={handleOpenTaskDetail}
                   onMoveTask={handleMoveTaskWithinStatus}
                   onPatchTask={updateTaskRequest}
@@ -2726,7 +2769,7 @@ export default function TaskManagement({ routeContext = null, spaceIdOverride = 
                   onRemoveAssignee={handleRemoveTaskAssignee}
                   color={status === 'Need Revision' ? 'error' : status === 'Done' ? 'green' : status === 'Cancelled' ? 'grey' : 'outline'}
                   currentRole={currentRole}
-                  canModifyTasks={canModifyTasks}
+                  canModifyTasks={canModifySelectedBoardSprint}
                   canUseCancelledStatus={isSpaceOwner}
                   assigneeOptions={projectAssigneeOptions}
                 />

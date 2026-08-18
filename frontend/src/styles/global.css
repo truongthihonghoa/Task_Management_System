@@ -378,6 +378,12 @@ input[type="time"] {
   padding: 16px;
 }
 
+/* Override cho calendar trong TaskDetailModal: căn về phía phải */
+.task-detail-calendar-dropdown {
+  left: auto;
+  right: 0;
+}
+
 .calendar-header {
   display: flex;
   justify-content: space-between;
