@@ -1,10 +1,55 @@
-﻿import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import '../../styles/SprintInfoPopover.css';
 
-const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0, openTasksCount = 0 }) => {
+const formatDate = (dateValue) => {
+  if (!dateValue) return 'Not set';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getSprintTiming = (startDateValue, endDateValue) => {
+  const startDate = startDateValue ? new Date(startDateValue) : null;
+  const endDate = endDateValue ? new Date(endDateValue) : null;
+  if (!startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return { label: 'No dates set', progress: 0 };
+  }
+
+  const today = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()).getTime();
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime();
+  const current = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const totalDays = Math.max(1, Math.ceil((end - start) / dayMs));
+  const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil((current - start) / dayMs)));
+  const progress = Math.round((elapsedDays / totalDays) * 100);
+
+  if (current < start) {
+    const startsIn = Math.ceil((start - current) / dayMs);
+    return { label: `Starts in ${startsIn} day${startsIn === 1 ? '' : 's'}`, progress: 0 };
+  }
+  if (current > end) return { label: 'Ended', progress: 100 };
+
+  const daysLeft = Math.ceil((end - current) / dayMs);
+  if (daysLeft === 0) return { label: 'Ends today', progress };
+  return { label: `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`, progress };
+};
+
+const SprintInfoPopover = ({
+  isOpen,
+  onClose,
+  anchorRef,
+  sprint = null,
+  completedTasksCount = 0,
+  openTasksCount = 0,
+}) => {
   const popoverRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const sprintTiming = useMemo(
+    () => getSprintTiming(sprint?.startDate, sprint?.endDate),
+    [sprint?.startDate, sprint?.endDate]
+  );
 
   useLayoutEffect(() => {
     if (!isOpen || !anchorRef.current || !popoverRef.current) return undefined;
@@ -67,7 +112,7 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
       anchorObserver?.disconnect();
       popoverObserver?.disconnect();
     };
-  }, [isOpen, anchorRef, completedTasksCount, openTasksCount]);
+  }, [isOpen, anchorRef, completedTasksCount, openTasksCount, sprint?.id]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -98,11 +143,11 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-bold text-on-surface">SCRUM Sprint 1</h3>
+          <h3 className="text-sm font-bold text-on-surface">{sprint?.name || 'Sprint'}</h3>
           <div className="flex items-center gap-2">
-            <span className="text-[12px] text-orange-600 font-medium">4 days left</span>
+            <span className="text-[12px] text-orange-600 font-medium">{sprintTiming.label}</span>
             <div className="flex-1 h-1 bg-surface-container rounded-full overflow-hidden">
-              <div className="h-full bg-orange-500 w-[70%]" />
+              <div className="h-full bg-orange-500" style={{ width: `${sprintTiming.progress}%` }} />
             </div>
           </div>
         </div>
@@ -110,11 +155,11 @@ const SprintInfoPopover = ({ isOpen, onClose, anchorRef, completedTasksCount = 0
         <div className="sprint-info-popover__dates grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1">
             <span className="text-[10px] text-outline font-bold uppercase">Start date</span>
-            <span className="text-[12px] text-on-surface">Jun 18, 2026</span>
+            <span className="text-[12px] text-on-surface">{formatDate(sprint?.startDate)}</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[10px] text-outline font-bold uppercase">End date</span>
-            <span className="text-[12px] text-on-surface">Jul 2, 2026</span>
+            <span className="text-[12px] text-on-surface">{formatDate(sprint?.endDate)}</span>
           </div>
         </div>
 
